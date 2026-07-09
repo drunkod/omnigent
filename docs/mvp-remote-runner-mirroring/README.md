@@ -66,12 +66,19 @@ Do not implement these in the MVP branch unless a later planning review explicit
 - `03-terminal-mirroring-ui-plan.md` — terminal parity, xterm attach, session UI, reconnect, and diff UI tasks.
 - `04-permissions-security-tests.md` — approval model, safety boundaries, tests, telemetry, and rollout gates.
 - `05-implementation-checklist.md` — execution checklist and suggested PR sequence.
+- `06-architecture-diagrams.md` — mermaid diagrams: full system architecture, pairing /
+  session-create / mirroring sequences, local-action approval flow, terminal lifecycle
+  states, tunnel frame protocol.
 
 ## Detailed task specs with example code
 
 The `tasks/` directory turns the plans above into implementation-ready specs. Each file
 is grounded in the actual code (verified module paths, class/function signatures, and
-existing error codes) and carries full example code plus test suites:
+existing error codes) and carries full example code plus test suites.
+
+Important: the embedded code blocks are **implementation sketches**, not copy-paste
+patches. Before landing production code, re-verify current signatures, routing helpers,
+and security assumptions against the live branch:
 
 - `tasks/T01-hello-capabilities.md` — optional `HelloFrame` capability fields, lenient
   decode, capability exposure on `/v1/runners`, version-skew tests. (Checklist P2; first PR.)

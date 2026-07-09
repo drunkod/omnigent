@@ -109,7 +109,9 @@ Readiness     tmux ok · git ok · node ok
 ## 4. Add `omnigent host add-workspace` / `remove-workspace`
 
 Lets the user grow the approved set without re-pairing. Local-only mutation +
-daemon restart (the hello frame re-advertises roots on reconnect, T01):
+**explicit daemon restart or an implemented live-reload path**. A network reconnect by
+itself is not enough unless the daemon process actually re-reads the persisted record and
+rebuilds the hello payload (T01):
 
 ```python
 @host.command("add-workspace")
@@ -130,7 +132,7 @@ def host_add_workspace(ctx: click.Context, path: str, server: str | None) -> Non
     record["workspaces"] = roots
     _write_daemon_record(record)
     click.echo(f"Approved workspace: {canonical}")
-    click.echo("Restart the host daemon (or wait for reconnect) to advertise it.")
+    click.echo("Restart the host daemon to advertise it, unless live reload is implemented.")
 
 
 @host.command("remove-workspace")
@@ -216,5 +218,7 @@ def test_workspace_env_uses_pathsep(tmp_path: Path) -> None:
 - [ ] Approved roots persist in the existing daemon record and survive daemon restart.
 - [ ] `host status` shows runner id, online state, workspaces, and tmux/git/node readiness.
 - [ ] `add-workspace`/`remove-workspace` mutate the approved set with canonicalization.
+- [ ] Workspace mutations are advertised only after an explicit daemon restart or a real
+      live-reload mechanism that re-reads the persisted record.
 - [ ] `host stop` deregisters cleanly; no orphaned tmux agent sessions.
 - [ ] Pairing token never printed or logged.

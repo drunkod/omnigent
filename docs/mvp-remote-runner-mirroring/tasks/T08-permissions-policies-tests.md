@@ -21,15 +21,20 @@ Ground truth (verified against current code):
 ```python
 """Built-in policy presets for remote-local runner sessions.
 
-The preset resolves to a PolicyMode (T05) that the server passes to
-the runner gateway with every local action. The runner re-checks
+The preset resolves to a PolicyMode that the server passes to the
+runner gateway with every local action. The runner re-checks
 classification independently (defense in depth): a compromised or
 stale server cannot grant more than the runner's own blocklist allows.
 """
 
 from __future__ import annotations
 
-from omnigent.runner.workspace_policy import PolicyMode
+from omnigent.policies.types import PolicyMode
+
+# Shared type placement note: keep `PolicyMode` in a lightweight shared module
+# such as `omnigent/policies/types.py` (or `omnigent/entities/local_runner.py`),
+# not in `omnigent.runner.workspace_policy`, so server policy registration does
+# not import runner execution modules.
 
 # Preset id → (PolicyMode, human description). Ids are API contract.
 LOCAL_RUNNER_PRESETS: dict[str, tuple[PolicyMode, str]] = {
@@ -116,9 +121,17 @@ paths only):
 ```python
 _AUDIT_FORBIDDEN_KEYS = ("content", "diff_preview", "stdout", "stderr", "token")
 
-def _sanitize_audit_event(event: dict[str, object]) -> dict[str, object]:
-    """Drop payload-bearing keys before persisting server-side."""
-    return {k: v for k, v in event.items() if k not in _AUDIT_FORBIDDEN_KEYS}
+def _sanitize_audit_event(value: object) -> object:
+    """Recursively drop payload-bearing keys before persisting server-side."""
+    if isinstance(value, dict):
+        return {
+            k: _sanitize_audit_event(v)
+            for k, v in value.items()
+            if k not in _AUDIT_FORBIDDEN_KEYS
+        }
+    if isinstance(value, list):
+        return [_sanitize_audit_event(v) for v in value]
+    return value
 ```
 
 ## 4. Telemetry (checklist P11, plan 04 metrics)
@@ -217,6 +230,24 @@ async def test_audit_events_have_no_payloads(app_as, seeded_local_session, run_l
     for event in audit:
         for key in ("content", "diff_preview", "stdout", "token"):
             assert key not in event
+
+
+import json
+
+
+async def test_audit_sanitizer_is_recursive(app_as, seeded_local_session, persist_fake_audit):
+    session_id = await seeded_local_session(owner="alice")
+    await persist_fake_audit(
+        session_id,
+        {
+            "kind": "write_file",
+            "payload": {"stdout": "secret", "nested": [{"token": "x"}]},
+        },
+    )
+    items = (await app_as("alice").get(f"/v1/sessions/{session_id}/items")).json()
+    audit = [i for i in items["data"] if i["type"] == "session.local_action"]
+    assert "stdout" not in json.dumps(audit)
+    assert "token" not in json.dumps(audit)
 
 
 async def test_logs_leak_no_secrets(caplog, run_local_action, seeded_local_session, app_as):

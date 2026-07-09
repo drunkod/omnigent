@@ -63,9 +63,10 @@ class WorkspaceRoot:
     @property
     def path_label(self) -> str:
         """Home-abbreviated display path, e.g. ``"~/projects/omnigent"``."""
-        home = str(Path.home())
-        raw = str(self.root)
-        return "~" + raw[len(home):] if raw.startswith(home) else raw
+        try:
+            return "~/" + self.root.relative_to(Path.home()).as_posix()
+        except ValueError:
+            return str(self.root)
 
 
 def workspace_id_for_path(canonical: Path) -> str:

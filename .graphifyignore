@@ -12,6 +12,9 @@
 *.tex
 *.html
 *.htm
+# Keep YAML excluded for the offline/code-only profile. If we later want
+# Graphify to understand selected agent configs, add targeted allowlists
+# instead of un-ignoring every YAML/YML file in the repo.
 *.yaml
 *.yml
 

@@ -15,6 +15,24 @@ Two new modules, both runner-side: `omnigent/runner/workspace_policy.py`
 (classification — pure, unit-testable) and `omnigent/runner/local_actions.py`
 (execution + audit). The server never executes workspace file/shell work itself.
 
+## 0. Shared enum — `omnigent/policies/types.py`
+
+`PolicyMode` is imported by both the server policy builtins (T08) and the runner
+gateway, so it lives in a dependency-free shared module — server policy registration
+must never import runner execution code:
+
+```python
+"""Lightweight policy types shared by server policies and the runner gateway."""
+
+from enum import Enum
+
+
+class PolicyMode(str, Enum):
+    MANUAL = "manual"      # MVP default: ask for every side effect
+    ASSISTED = "assisted"  # reads free; writes/shell ask
+    AUTO = "auto"          # writes free in-workspace; risky commands ask
+```
+
 ## 1. `omnigent/runner/workspace_policy.py`
 
 ```python
@@ -31,18 +49,28 @@ import re
 import shlex
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
+
+# PolicyMode lives in the shared lightweight module (see T08 §1) so
+# server policy builtins never import runner execution code. This
+# module re-exports it for runner-side call sites.
+from omnigent.policies.types import PolicyMode
+
+__all__ = [
+    "Decision",
+    "PolicyMode",
+    "Verdict",
+    "classify_action",
+    "classify_path",
+    "classify_shell",
+    "is_sensitive_path",
+]
 
 
 class Decision(str, Enum):
     ALLOW = "allow"
     ASK = "ask"
     BLOCK = "block"
-
-
-class PolicyMode(str, Enum):
-    MANUAL = "manual"      # MVP default: ask for every side effect
-    ASSISTED = "assisted"  # reads free; writes/shell ask
-    AUTO = "auto"          # writes free in-workspace; risky commands ask
 
 
 @dataclass(frozen=True)
@@ -72,12 +100,45 @@ _BLOCKED_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("curl_pipe_sh", re.compile(r"\b(curl|wget)\b[^|;&]*\|\s*(ba)?sh\b")),
 )
 
-# Sensitive path fragments that must never be readable/writable even
+# Sensitive path names / path segments that must never be readable/writable even
 # via shell (defense in depth beyond workspace containment).
-_SENSITIVE_PATHS: tuple[str, ...] = (
-    ".ssh", ".aws", ".gnupg", ".config/gcloud", ".kube/config",
-    ".netrc", ".npmrc", "id_rsa", "id_ed25519", ".password-store",
+_SENSITIVE_SEGMENTS: frozenset[str] = frozenset({
+    ".ssh", ".aws", ".gnupg", ".password-store",
+})
+_SENSITIVE_BASENAMES: frozenset[str] = frozenset({
+    ".env", ".env.local", ".env.production", ".env.development",
+    ".netrc", ".npmrc", ".pypirc", "id_rsa", "id_ed25519",
+})
+_SENSITIVE_PATH_PATTERNS: tuple[tuple[str, ...], ...] = (
+    (".config", "gcloud"),
+    (".kube", "config"),
 )
+
+
+def is_sensitive_path(path: str) -> bool:
+    normalized = path.strip().replace("\\", "/")
+    parts = [p.lower() for p in Path(normalized).parts if p not in {"", "."}]
+    if not parts:
+        return False
+    if any(part in _SENSITIVE_SEGMENTS for part in parts):
+        return True
+    if parts[-1] in _SENSITIVE_BASENAMES:
+        return True
+    return any(tuple(parts[i:i + len(pattern)]) == pattern
+               for pattern in _SENSITIVE_PATH_PATTERNS
+               for i in range(len(parts) - len(pattern) + 1))
+
+
+def classify_path(kind: str, path: str, *, mode: PolicyMode) -> Verdict:
+    """Classify a file-oriented action against sensitive-path policy."""
+    if is_sensitive_path(path):
+        # Safer default for MVP: block obviously secret-bearing paths regardless of mode.
+        return Verdict(
+            Decision.BLOCK,
+            (kind, "sensitive_path"),
+            f"references sensitive path: {path}",
+        )
+    return classify_action(kind, mode=mode)
 
 _ASK_ALWAYS_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("package_install", re.compile(r"\b(pip|pip3|npm|pnpm|yarn|uv|cargo|gem|brew|apt(-get)?)\s+(install|add)\b")),
@@ -86,7 +147,7 @@ _ASK_ALWAYS_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 
-def classify_shell(command: str, *, mode: PolicyMode) -> Verdict:
+def classify_shell(command: str, *, mode: PolicyMode, cwd: str | None = None) -> Verdict:
     """Classify one shell command string.
 
     Fail closed: anything unparseable is ASK (manual/assisted) or
@@ -95,15 +156,22 @@ def classify_shell(command: str, *, mode: PolicyMode) -> Verdict:
     flags: list[str] = ["shell"]
     lowered = command.strip()
 
+    if cwd is not None and is_sensitive_path(cwd):
+        return Verdict(
+            Decision.BLOCK,
+            ("shell", "sensitive_path"),
+            f"references sensitive cwd: {cwd}",
+        )
+
     for flag, pattern in _BLOCKED_PATTERNS:
         if pattern.search(lowered):
             return Verdict(Decision.BLOCK, ("shell", flag), f"blocked pattern: {flag}")
 
-    for fragment in _SENSITIVE_PATHS:
-        if fragment in lowered:
+    for token in re.findall(r"[^\s\"']+", lowered):
+        if is_sensitive_path(token):
             return Verdict(
                 Decision.BLOCK, ("shell", "sensitive_path"),
-                f"references sensitive path fragment: {fragment}",
+                f"references sensitive path: {token}",
             )
 
     for flag, pattern in _ASK_ALWAYS_PATTERNS:
@@ -120,7 +188,13 @@ def classify_shell(command: str, *, mode: PolicyMode) -> Verdict:
     return Verdict(Decision.ASK, tuple(flags), f"{mode.value} mode: shell requires approval")
 
 
-def classify_action(kind: str, *, mode: PolicyMode, command: str | None = None) -> Verdict:
+def classify_action(
+    kind: str,
+    *,
+    mode: PolicyMode,
+    command: str | None = None,
+    cwd: str | None = None,
+) -> Verdict:
     """Classify a gateway action by kind (see local_actions.py)."""
     if kind in _READ_KINDS:
         return Verdict(Decision.ALLOW, ("read",), "read-only inside workspace")
@@ -129,7 +203,7 @@ def classify_action(kind: str, *, mode: PolicyMode, command: str | None = None) 
             return Verdict(Decision.ALLOW, ("writes_files",), "auto mode: in-workspace write")
         return Verdict(Decision.ASK, ("writes_files",), f"{mode.value} mode: write requires approval")
     if kind == "run_shell":
-        return classify_shell(command or "", mode=mode)
+        return classify_shell(command or "", mode=mode, cwd=cwd)
     return Verdict(Decision.BLOCK, ("unknown_kind",), f"unknown action kind: {kind!r}")
 ```
 
@@ -148,13 +222,20 @@ from __future__ import annotations
 import asyncio
 import difflib
 import os
+import signal
 import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from omnigent.errors import ErrorCode, OmnigentError
-from omnigent.runner.workspace_policy import Decision, PolicyMode, Verdict, classify_action
+from omnigent.runner.workspace_policy import (
+    Decision,
+    PolicyMode,
+    Verdict,
+    classify_action,
+    classify_path,
+)
 from omnigent.runner.workspaces import WorkspaceRegistry
 
 _MAX_READ_BYTES = 2 * 1024 * 1024          # refuse larger file reads
@@ -273,7 +354,7 @@ class LocalActionGateway:
         record = self._new_record(session_id=session_id, workspace_id=workspace_id,
                                   kind="read_file", mode=mode)
         record.path_summary = [path]
-        await self._gate(record, classify_action("read_file", mode=mode))
+        await self._gate(record, classify_path("read_file", path, mode=mode))
         resolved = self._workspaces.resolve_in_workspace(workspace_id, path)
         record.started_at = time.time()
         if not resolved.is_file():
@@ -310,6 +391,7 @@ class LocalActionGateway:
         record = self._new_record(session_id=session_id, workspace_id=workspace_id,
                                   kind="write_file", mode=mode)
         record.path_summary = [path]
+        await self._gate(record, classify_path("write_file", path, mode=mode))
         resolved = self._workspaces.resolve_in_workspace(workspace_id, path)
 
         # Diff preview BEFORE approval so the card shows exactly what changes.
@@ -359,7 +441,10 @@ class LocalActionGateway:
                                   kind="run_shell", mode=mode)
         record.command_summary = command[:400]
         record.cwd = cwd
-        await self._gate(record, classify_action("run_shell", mode=mode, command=command))
+        await self._gate(
+            record,
+            classify_action("run_shell", mode=mode, command=command, cwd=cwd),
+        )
 
         resolved_cwd = self._workspaces.resolve_in_workspace(workspace_id, cwd)
         record.started_at = time.time()
@@ -371,11 +456,13 @@ class LocalActionGateway:
             env=_subprocess_env(),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            start_new_session=True,
         )
         try:
             stdout, stderr = await asyncio.wait_for(proc.communicate(), _SHELL_TIMEOUT_S)
         except asyncio.TimeoutError:
-            proc.kill()
+            os.killpg(proc.pid, signal.SIGKILL)
+            await proc.wait()
             record.status = "failed"; record.finished_at = time.time()
             self._publish_audit(record)
             raise OmnigentError("command timed out", code=ErrorCode.INTERNAL_ERROR)
@@ -395,9 +482,11 @@ class LocalActionGateway:
 ```
 
 `search_files`, `apply_patch`, `git_status`, `git_diff` follow the same skeleton:
-resolve → classify → gate → execute → audit. `apply_patch` computes the unified diff
-preview from the patch itself and applies with `git apply --index --directory` pinned to
-the workspace root; `git_*` run through `run_shell`'s subprocess path with
+resolve → classify → gate → execute → audit. For file-oriented actions, classification
+must flow through `classify_path(...)` so `read_file`, `write_file`, `apply_patch`, and
+`search_files` share the same sensitive-path guard. `apply_patch` computes the unified
+diff preview from the patch itself and applies with `git apply --index --directory`
+pinned to the workspace root; `git_*` run through `run_shell`'s subprocess path with
 `classify_action("git_status", ...)` (ALLOW).
 
 ## 3. Runner routes — `omnigent/runner/app.py`
@@ -471,7 +560,13 @@ async def _dispatch_local_action(conv, runner_router, payload: dict) -> dict:
 ```python
 # test_workspace_policy.py — pure classification
 import pytest
-from omnigent.runner.workspace_policy import Decision, PolicyMode, classify_shell, classify_action
+from omnigent.runner.workspace_policy import (
+    Decision,
+    PolicyMode,
+    classify_action,
+    classify_path,
+    classify_shell,
+)
 
 
 @pytest.mark.parametrize("cmd,flag", [
@@ -503,6 +598,17 @@ def test_reads_always_allowed_writes_gated():
     assert classify_action("read_file", mode=PolicyMode.MANUAL).decision is Decision.ALLOW
     assert classify_action("write_file", mode=PolicyMode.MANUAL).decision is Decision.ASK
     assert classify_action("write_file", mode=PolicyMode.AUTO).decision is Decision.ALLOW
+
+
+def test_sensitive_paths_block_file_actions():
+    verdict = classify_path("read_file", ".env", mode=PolicyMode.MANUAL)
+    assert verdict.decision is Decision.BLOCK
+    assert "sensitive_path" in verdict.risk_flags
+
+
+def test_sensitive_path_matching_avoids_substring_false_positives():
+    verdict = classify_path("read_file", "notes/banner.envelope.json", mode=PolicyMode.MANUAL)
+    assert verdict.decision is not Decision.BLOCK
 ```
 
 ```python
@@ -547,6 +653,14 @@ async def test_read_traversal_blocked(gateway):
                            path="../secret", mode=PolicyMode.MANUAL)
 
 
+async def test_read_sensitive_file_blocked(gateway):
+    gw, _, ws_id, root = gateway
+    (root / ".env").write_text("TOKEN=secret\n")
+    with pytest.raises(OmnigentError):
+        await gw.read_file(session_id="conv_1", workspace_id=ws_id,
+                           path=".env", mode=PolicyMode.MANUAL)
+
+
 async def test_write_manual_requires_approval_and_has_diff(gateway):
     gw, rec, ws_id, root = gateway
     await gw.write_file(session_id="conv_1", workspace_id=ws_id,
@@ -574,6 +688,26 @@ async def test_shell_cwd_escape_blocked(gateway):
                            command="ls", cwd="../..", mode=PolicyMode.AUTO)
 
 
+async def test_shell_timeout_kills_process_group(gateway, monkeypatch):
+    gw, _, ws_id, _ = gateway
+    killed = []
+    monkeypatch.setattr("omnigent.runner.local_actions._SHELL_TIMEOUT_S", 0.5)
+    real_killpg = os.killpg
+    monkeypatch.setattr(
+        "omnigent.runner.local_actions.os.killpg",
+        lambda pid, sig: (killed.append((pid, sig)), real_killpg(pid, sig))[1],
+    )
+    with pytest.raises(OmnigentError):
+        await gw.run_shell(
+            session_id="conv_1",
+            workspace_id=ws_id,
+            command="python -c \"import subprocess,time; subprocess.Popen(['sleep','30']); time.sleep(30)\"",
+            cwd=".",
+            mode=PolicyMode.AUTO,
+        )
+    assert killed, "timeout must kill the spawned process group, not only the shell"
+
+
 async def test_shell_env_is_allowlisted(gateway, monkeypatch):
     gw, rec, ws_id, _ = gateway
     monkeypatch.setenv("OMNIGENT_RUNNER_TOKEN", "supersecret")
@@ -595,9 +729,12 @@ async def test_large_output_truncated_deterministically(gateway):
 
 - [ ] Classification blocks the plan's "always block" list in every mode; ask-gates
       installs/destructive git/removals even in auto; allows reads everywhere.
-- [ ] Gateway: all paths via `resolve_in_workspace`; shell cwd forced in-workspace;
-      env allowlisted + secret-stripped; deterministic truncation; per-workspace write lock.
+- [ ] Gateway: all paths via `resolve_in_workspace`; file actions additionally pass the
+      shared sensitive-path guard with path-segment matching (no substring false
+      positives); shell cwd is classified pre-approval and forced in-workspace; env
+      allowlisted + secret-stripped; deterministic truncation; per-workspace write lock.
 - [ ] Diff preview attached to approval payload, not to server-visible audit.
-- [ ] Denied/blocked actions never touch disk; every action emits an audit record.
+- [ ] Denied/blocked actions never touch disk; shell timeout kills the full process group;
+      every action emits an audit record.
 - [ ] Approval flow reuses `pending_approvals` and existing approval cards.
 - [ ] All tests above pass.

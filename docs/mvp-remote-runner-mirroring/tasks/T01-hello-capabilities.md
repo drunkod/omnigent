@@ -143,8 +143,28 @@ Where the runner builds its `HelloFrame` (tunnel client in
 
 ```python
 import platform
+import shutil
 
 from omnigent.runner.workspaces import WorkspaceRegistry  # T02
+
+
+def detect_terminal_transports(*, feature_flags: set[str] | None = None) -> list[str]:
+    """Advertise only transports this runner can actually serve."""
+    # Default to today's working attach behavior unless explicitly disabled:
+    # both transports rely on the tmux-backed terminal bridge, so no tmux
+    # means no advertised terminal transport.
+    flags = feature_flags or {"terminal-pty", "terminal-control"}
+    system = platform.system().lower()
+    tmux_ok = shutil.which("tmux") is not None
+
+    transports: list[str] = []
+    if tmux_ok and system in {"darwin", "linux"}:
+        if "terminal-pty" in flags:
+            transports.append("pty")
+        if "terminal-control" in flags:
+            transports.append("control")
+    return transports
+
 
 def build_hello(
     *,
@@ -153,6 +173,7 @@ def build_hello(
     envs: list[str],
     workspace_registry: WorkspaceRegistry | None,
     mode: str,
+    feature_flags: set[str] | None = None,
 ) -> HelloFrame:
     """Build the capability-bearing hello for this runner process."""
     return HelloFrame(
@@ -166,13 +187,19 @@ def build_hello(
         workspace_roots=(
             workspace_registry.advertise() if workspace_registry is not None else []
         ),
-        terminal_transports=["control", "pty"],
+        terminal_transports=detect_terminal_transports(feature_flags=feature_flags),
         tool_capabilities=[
             "read_file", "write_file", "list_dir", "search_files",
             "apply_patch", "run_shell", "git_status", "git_diff",
         ],
     )
 ```
+
+Do **not** advertise `terminal_transports` unconditionally. Compute them from platform,
+`tmux` availability, and feature flags. In the current design both `pty` and `control`
+ride the tmux-backed terminal bridge, so missing `tmux` should yield `[]`. The default
+flag set should preserve today's working attach behavior on supported Unix platforms;
+`[]` should happen only on genuinely unsupported environments or when tmux is absent.
 
 Never put raw secrets, tokens, or full home paths into `workspace_roots` — use
 `path_label` with `~`-abbreviated display strings (see T02 `advertise()`).
@@ -261,7 +288,7 @@ def test_new_hello_roundtrip() -> None:
                 "capabilities": ["read", "write", "shell", "git", "terminal"],
             }
         ],
-        terminal_transports=["control", "pty"],
+        terminal_transports=["pty"],
         tool_capabilities=["read_file", "run_shell"],
     )
     decoded = decode_frame(encode_frame(frame))
@@ -337,5 +364,7 @@ def test_none_capabilities_omitted_from_wire() -> None:
 - [ ] Encode omits absent fields; decode is lenient (no tunnel rejection on bad capability data).
 - [ ] `GET /v1/runners` and `GET /v1/runners/{id}/status` expose the capability summary,
       owner-scoped as today.
+- [ ] `terminal_transports` are capability-detected from the actual runtime environment,
+      never hard-coded to `['control', 'pty']`.
 - [ ] Compatibility tests above pass; existing `tests/runner/test_ws_tunnel_*` untouched and green.
 - [ ] No secrets/absolute-home-paths in advertised data (only `path_label`).

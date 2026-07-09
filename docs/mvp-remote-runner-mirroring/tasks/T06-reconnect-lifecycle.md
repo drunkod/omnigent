@@ -114,11 +114,16 @@ ATTACH_CLOSE_TRANSPORT_UNSUPPORTED = 4406  # transport=control not available →
 
 In the attach handler, when `runner_ws_factory` raises `OmnigentError` with
 `RUNNER_UNAVAILABLE`, close with `ATTACH_CLOSE_RUNNER_OFFLINE` and a human-readable
-reason instead of a generic 1011:
+reason instead of a generic 1011.
+
+The current route shape uses a single `runner_path` argument and treats the returned
+runner websocket as an async context manager. Keep the implementation aligned with that
+shape (or explicitly adapt the pseudocode if the factory signature changes later):
 
 ```python
+        runner_path = _runner_attach_path(session_id, path, query_string)
         try:
-            runner_ws = await runner_ws_factory(session_id, path, query_string)
+            runner_ws_cm = runner_ws_factory(runner_path)  # current-shape pseudocode
         except OmnigentError as exc:
             if exc.code is ErrorCode.RUNNER_UNAVAILABLE:
                 await ws.close(code=ATTACH_CLOSE_RUNNER_OFFLINE,

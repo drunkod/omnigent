@@ -16,9 +16,12 @@ Ground truth (verified against current code):
   `ErrorCode.RUNNER_CAPABILITY_MISMATCH`.
 - `TunnelRegistry.runner_owner(runner_id)` gives the tunnel owner for ownership checks.
 
-Decision for MVP: **reuse the existing `runner_id` + `workspace` columns; store
-`workspace_id` in `labels`** (`omnigent.workspace_id`). No migration needed; promote to
-a column post-MVP if query patterns demand it.
+Decision for MVP: **reuse the existing `runner_id` column, but do not overload
+`conversations.workspace` with a display label**. The workspace path shown to the user is
+non-authoritative UI metadata; the authoritative binding is the runner-enforced
+`workspace_id`, stored in labels. Prefer labels such as `omnigent.workspace_id`,
+`omnigent.workspace_label`, and `omnigent.execution_mode`. No migration needed; promote a
+first-class column later if query patterns demand it.
 
 ## 1. New error codes — `omnigent/errors.py`
 
@@ -101,11 +104,16 @@ async def _validate_local_runner_binding(
             "runner belongs to another user",
             code=ErrorCode.FORBIDDEN,
         )
-    if harness is not None and harness not in session.hello.harnesses:
-        raise OmnigentError(
-            f"runner {body.runner_id!r} does not support harness {harness!r}",
-            code=ErrorCode.RUNNER_CAPABILITY_MISMATCH,
-        )
+    if harness is not None:
+        canonical = canonicalize_harness(harness) or harness
+        advertised = {
+            canonicalize_harness(h) or h for h in session.hello.harnesses
+        }
+        if canonical not in advertised:
+            raise OmnigentError(
+                f"runner {body.runner_id!r} does not support harness {harness!r}",
+                code=ErrorCode.RUNNER_CAPABILITY_MISMATCH,
+            )
     if body.workspace_id is not None:
         advertised = {
             ws.get("workspace_id") for ws in session.hello.workspace_roots
@@ -138,26 +146,41 @@ Where `create_session` creates the conversation row (the store's `create_convers
 already accepts `runner_id=` and `workspace=`):
 
 ```python
-        workspace_path: str | None = None
+        workspace_label: str | None = None
         if body.workspace_id is not None:
             # Display/UX only; enforcement stays on the runner (T02).
-            workspace_path = _advertised_path_label(session.hello, body.workspace_id)
+            workspace_label = _advertised_path_label(session.hello, body.workspace_id)
 
         conv = conversation_store.create_conversation(
             ...,
             runner_id=body.runner_id,
-            workspace=workspace_path,
+            # Keep the existing workspace column reserved for real runtime paths;
+            # do not write display-only labels into it.
+            workspace=None,
             labels={
                 **(body.labels or {}),
                 **(
-                    {"omnigent.workspace_id": body.workspace_id,
-                     "omnigent.execution_mode": "local_runner"}
-                    if body.workspace_id
+                    {
+                        "omnigent.execution_mode": "local_runner",
+                        **(
+                            {
+                                "omnigent.workspace_id": body.workspace_id,
+                                "omnigent.workspace_label": workspace_label,
+                            }
+                            if body.workspace_id
+                            else {}
+                        ),
+                    }
+                    if body.runner_id
                     else {}
                 ),
             },
         )
 ```
+
+Make this explicit in the implementation notes: `omnigent.workspace_label` is for display
+only and must never be used for path resolution, authorization, or workspace containment.
+Only the runner-side workspace registry (T02) is authoritative.
 
 The **existing** post-create runner notification (`_rc.post("/v1/sessions", json={...})`)
 must carry the binding so the runner can resolve the cwd (T02 §3):
@@ -216,7 +239,7 @@ def _register_fake_runner(registry, runner_id="runner_test1", owner=None, **hell
         envs=["posix"],
         mode="local",
         workspace_roots=hello_kw.pop("workspace_roots", [WS]),
-        terminal_transports=["control", "pty"],
+        terminal_transports=hello_kw.pop("terminal_transports", ["pty"]),
     )
     # FakeWS pattern already used by tests/runner/test_ws_tunnel_* —
     # reuse that fixture here.
@@ -291,8 +314,9 @@ async def test_workspace_without_runner_is_422(app_client):
 - [ ] `SessionCreateRequest` accepts `runner_id` + `workspace_id`; workspace requires runner.
 - [ ] Bind validation: online, owner, harness capability, advertised workspace — each with
       its structured error code.
-- [ ] Binding persisted via existing `runner_id`/`workspace` columns + `omnigent.workspace_id`
-      / `omnigent.execution_mode` labels; visible in the session snapshot.
+- [ ] Binding persisted via existing `runner_id` plus labels such as
+      `omnigent.workspace_id` / `omnigent.workspace_label` /
+      `omnigent.execution_mode`; display labels never replace canonical runtime paths.
 - [ ] Runner notification payload carries `workspace_id`; runner resolves cwd from it (T02 §3).
 - [ ] Fork copies binding; resume never silently rebinds; switch-agent revalidates capability.
 - [ ] Integration tests assert error **codes**, not just statuses.
