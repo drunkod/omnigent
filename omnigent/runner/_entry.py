@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 
 _RUNNER_SERVER_URL_ENV_VAR = "RUNNER_SERVER_URL"
 _RUNNER_PREWARM_SPEC_PATH_ENV_VAR = "RUNNER_PREWARM_SPEC_PATH"
+_RUNNER_MODE_ENV_VAR = "OMNIGENT_RUNNER_MODE"
 # The runner advertises the omnigent version it is actually running (shared
 # with the CLI/server/host) instead of a hard-coded placeholder.
 _RUNNER_VERSION = VERSION
@@ -593,6 +594,31 @@ def _runner_tunnel_binding_token_from_env() -> str | None:
     return token.strip()
 
 
+def _runner_mode_from_env() -> str:
+    """Return the runner placement mode from process wiring.
+
+    Defaults to ``"local"`` so existing CLI-spawned runners preserve their
+    historical behavior until an explicit launcher mode is threaded through.
+
+    :returns: Runner placement mode, one of the hello-frame allowed values.
+    :raises RuntimeError: If the configured mode is empty or unsupported.
+    """
+    from omnigent.runner.transports.ws_tunnel.frames import ALLOWED_HELLO_MODES
+
+    raw_mode = os.environ.get(_RUNNER_MODE_ENV_VAR)
+    if raw_mode is None:
+        return "local"
+    mode = raw_mode.strip()
+    if not mode:
+        raise RuntimeError(f"{_RUNNER_MODE_ENV_VAR} must not be empty")
+    if mode not in ALLOWED_HELLO_MODES:
+        allowed = ", ".join(sorted(ALLOWED_HELLO_MODES))
+        raise RuntimeError(
+            f"{_RUNNER_MODE_ENV_VAR} must be one of: {allowed}"
+        )
+    return mode
+
+
 def _runner_parent_pid_from_env() -> int | None:
     """Return the optional parent process id from the environment.
 
@@ -1074,6 +1100,7 @@ async def _run_tunnel_from_env() -> None:
     from omnigent.runner.transports.ws_tunnel.serve import serve_tunnel
 
     server_url = _server_url_from_env()
+    runner_mode = _runner_mode_from_env()
     auth_token_factory = _make_auth_token_factory()
     auth_token = auth_token_factory() if auth_token_factory is not None else None
     binding_token = _runner_tunnel_binding_token_from_env()
@@ -1139,6 +1166,7 @@ async def _run_tunnel_from_env() -> None:
             server_url=server_url,
             runner_id=runner_id,
             runner_version=_RUNNER_VERSION,
+            runner_mode=runner_mode,
             auth_token=auth_token,
             tunnel_token=binding_token,
             auth_token_factory=auth_token_factory,

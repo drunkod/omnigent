@@ -63,9 +63,10 @@ def detect_terminal_transports(
         ``None`` probes ``shutil.which("tmux")``.
     :returns: Supported terminal transports in preference order.
     """
-
     flags = set(DEFAULT_TERMINAL_FEATURE_FLAGS if feature_flags is None else feature_flags)
     normalized_system = (system or platform.system()).lower()
+    # Re-probe on each hello so reconnects reflect live runner state (for
+    # example tmux installed or removed after process start).
     tmux_ok = shutil.which("tmux") is not None if tmux_available is None else tmux_available
 
     if normalized_system not in _SUPPORTED_TMUX_PLATFORMS or not tmux_ok:
@@ -108,7 +109,6 @@ def build_hello(
     :returns: A :class:`HelloFrame` populated with runner capability metadata.
     :raises ValueError: If *mode* is not a supported hello mode.
     """
-
     if mode not in ALLOWED_HELLO_MODES:
         allowed = ", ".join(sorted(ALLOWED_HELLO_MODES))
         raise ValueError(f"unsupported runner mode {mode!r}; expected one of: {allowed}")

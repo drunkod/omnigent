@@ -18,12 +18,15 @@ from omnigent.runner.identity import (
 )
 from omnigent.runner.transports.ws_tunnel import serve as serve_module
 from omnigent.runner.transports.ws_tunnel.frames import (
+    FRAME_PROTOCOL_VERSION,
+    HelloFrame,
     PingFrame,
     RequestCancelFrame,
     RequestFrame,
     WSCloseFrame,
     WSFrame,
     WSOpenFrame,
+    decode_frame,
     encode_frame,
 )
 from omnigent.runner.transports.ws_tunnel.serve import (
@@ -117,6 +120,7 @@ async def test_serve_tunnel_backs_off_after_clean_close(
         server_url: str = "",
         runner_id: str,
         runner_version: str,
+        runner_mode: str = "local",
         auth_token: str | None = None,
         tunnel_token: str | None = None,
     ) -> None:
@@ -178,6 +182,7 @@ async def test_serve_tunnel_resets_backoff_after_successful_connection(
         server_url: str = "",
         runner_id: str,
         runner_version: str,
+        runner_mode: str = "local",
         auth_token: str | None = None,
         tunnel_token: str | None = None,
     ) -> None:
@@ -227,6 +232,35 @@ async def test_serve_tunnel_resets_backoff_after_successful_connection(
 
 
 @pytest.mark.asyncio
+async def test_serve_tunnel_rejects_invalid_runner_mode_before_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Invalid runner_mode fails before the reconnect loop starts.
+
+    :param monkeypatch: Pytest monkeypatch fixture.
+    :returns: None.
+    """
+
+    async def _serve_once(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("invalid runner_mode should fail before opening a websocket")
+
+    async def _sleep(delay: float) -> None:
+        raise AssertionError(f"invalid runner_mode should not sleep before retry: {delay}")
+
+    monkeypatch.setattr(serve_module, "_serve_tunnel_once", _serve_once)
+    monkeypatch.setattr(serve_module.asyncio, "sleep", _sleep)
+
+    with pytest.raises(RuntimeError, match="unsupported runner mode 'cloud'"):
+        await serve_tunnel(
+            _noop_app,
+            server_url="http://127.0.0.1:8000",
+            runner_id="runner_bad_mode",
+            runner_version="0.1.0",
+            runner_mode="cloud",
+        )
+
+
+@pytest.mark.asyncio
 async def test_serve_tunnel_fails_loud_on_protocol_rejection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -243,6 +277,7 @@ async def test_serve_tunnel_fails_loud_on_protocol_rejection(
         server_url: str = "",
         runner_id: str,
         runner_version: str,
+        runner_mode: str = "local",
         auth_token: str | None = None,
         tunnel_token: str | None = None,
     ) -> None:
@@ -287,6 +322,7 @@ async def test_serve_tunnel_fails_loud_on_http_auth_rejection(
         server_url: str = "",
         runner_id: str,
         runner_version: str,
+        runner_mode: str = "local",
         auth_token: str | None = None,
         tunnel_token: str | None = None,
     ) -> None:
@@ -400,6 +436,7 @@ async def test_serve_tunnel_fails_loud_on_auth_redirect(
         server_url: str = "",
         runner_id: str,
         runner_version: str,
+        runner_mode: str = "local",
         auth_token: str | None = None,
         tunnel_token: str | None = None,
     ) -> None:
@@ -576,6 +613,73 @@ async def test_serve_tunnel_once_sends_bearer_header(
         "ping_timeout": serve_module.TUNNEL_KEEPALIVE_PING_TIMEOUT_S,
     }
     assert isinstance(captured["sent"], str)
+    hello = decode_frame(captured["sent"])
+    assert isinstance(hello, HelloFrame)
+    assert hello.runner_version == "0.1.0"
+    assert hello.frame_protocol_version == FRAME_PROTOCOL_VERSION
+    assert hello.harnesses == [
+        "claude-native",
+        "claude-sdk",
+        "codex",
+        "openai-agents",
+        "open-responses",
+        "pi",
+    ]
+    assert hello.envs == ["os_sandbox"]
+    assert hello.mode == "local"
+
+
+async def test_serve_tunnel_once_advertises_managed_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Managed runners advertise their real placement mode in hello.
+
+    :param monkeypatch: Pytest monkeypatch fixture.
+    :returns: None.
+    """
+    import websockets
+
+    captured: dict[str, object] = {}
+
+    class _FakeWS:
+        async def send(self, data: str) -> None:
+            captured["sent"] = data
+
+        def __aiter__(self) -> _FakeWS:
+            return self
+
+        async def __anext__(self) -> str:
+            raise StopAsyncIteration
+
+    class _Ctx:
+        async def __aenter__(self) -> _FakeWS:
+            return _FakeWS()
+
+        async def __aexit__(self, *_exc: object) -> None:
+            return None
+
+    def _fake_connect(url: str, **kwargs: object) -> _Ctx:
+        del url, kwargs
+        return _Ctx()
+
+    monkeypatch.setattr(websockets, "connect", _fake_connect)
+    monkeypatch.setattr("omnigent.cli_auth.load_databricks_org_id", lambda _server_url: None)
+
+    await _serve_tunnel_once(
+        _noop_app,
+        tunnel_url="wss://example.databricksapps.com/v1/runners/runner_managed/tunnel",
+        server_url="https://example.databricksapps.com",
+        runner_id="runner_managed",
+        runner_version="0.1.0",
+        runner_mode="managed",
+        auth_token="tok-auth",
+        tunnel_token="bind-token",
+    )
+
+    assert isinstance(captured["sent"], str)
+    hello = decode_frame(captured["sent"])
+    assert isinstance(hello, HelloFrame)
+    assert hello.mode == "managed"
 
 
 async def test_serve_tunnel_once_sends_org_header(
@@ -884,6 +988,7 @@ async def test_serve_tunnel_calls_factory_on_each_reconnect(
         server_url: str = "",
         runner_id: str,
         runner_version: str,
+        runner_mode: str = "local",
         auth_token: str | None = None,
         tunnel_token: str | None = None,
     ) -> None:
@@ -957,6 +1062,7 @@ async def test_serve_tunnel_401_with_factory_retries(
         server_url: str = "",
         runner_id: str,
         runner_version: str,
+        runner_mode: str = "local",
         auth_token: str | None = None,
         tunnel_token: str | None = None,
     ) -> None:
@@ -1023,6 +1129,7 @@ async def test_serve_tunnel_401_without_factory_is_fatal(
         server_url: str = "",
         runner_id: str,
         runner_version: str,
+        runner_mode: str = "local",
         auth_token: str | None = None,
         tunnel_token: str | None = None,
     ) -> None:
@@ -1080,6 +1187,7 @@ async def test_serve_tunnel_403_remains_fatal_with_factory(
         server_url: str = "",
         runner_id: str,
         runner_version: str,
+        runner_mode: str = "local",
         auth_token: str | None = None,
         tunnel_token: str | None = None,
     ) -> None:
@@ -1155,6 +1263,7 @@ async def test_serve_tunnel_reconnect_uses_fresh_token_not_stale(
         server_url: str = "",
         runner_id: str,
         runner_version: str,
+        runner_mode: str = "local",
         auth_token: str | None = None,
         tunnel_token: str | None = None,
     ) -> None:
