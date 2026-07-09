@@ -4,18 +4,25 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from omnigent.runner.transports.ws_tunnel.capabilities import (
     DEFAULT_TOOL_CAPABILITIES,
     build_hello,
     detect_terminal_transports,
 )
-from omnigent.runner.transports.ws_tunnel.frames import HelloFrame, decode_frame, encode_frame
+from omnigent.runner.transports.ws_tunnel.frames import (
+    FRAME_PROTOCOL_VERSION,
+    HelloFrame,
+    decode_frame,
+    encode_frame,
+)
 
 
 def test_new_hello_roundtrip() -> None:
     frame = HelloFrame(
         runner_version="0.9.0",
-        frame_protocol_version=1,
+        frame_protocol_version=FRAME_PROTOCOL_VERSION,
         harnesses=["codex", "claude-native"],
         envs=["os_sandbox"],
         mode="local",
@@ -43,7 +50,7 @@ def test_old_runner_hello_decodes_with_defaults() -> None:
         {
             "kind": "hello",
             "runner_version": "0.1.2",
-            "frame_protocol_version": 1,
+            "frame_protocol_version": FRAME_PROTOCOL_VERSION,
             "harnesses": ["codex"],
             "envs": ["os_sandbox"],
         }
@@ -65,7 +72,7 @@ def test_unknown_extra_fields_are_ignored() -> None:
         {
             "kind": "hello",
             "runner_version": "0.9.0",
-            "frame_protocol_version": 1,
+            "frame_protocol_version": FRAME_PROTOCOL_VERSION,
             "harnesses": [],
             "envs": [],
             "some_future_field": {"x": 1},
@@ -82,7 +89,7 @@ def test_malformed_capability_fields_do_not_reject_tunnel() -> None:
         {
             "kind": "hello",
             "runner_version": "0.9.0",
-            "frame_protocol_version": 1,
+            "frame_protocol_version": FRAME_PROTOCOL_VERSION,
             "harnesses": [],
             "envs": [],
             "mode": "unexpected",
@@ -110,27 +117,27 @@ def test_malformed_capability_fields_do_not_reject_tunnel() -> None:
 
 
 def test_detect_terminal_transports_requires_tmux_and_supported_platform() -> None:
-    assert detect_terminal_transports(system="linux", tmux_path="/usr/bin/tmux") == [
+    assert detect_terminal_transports(system="linux", tmux_available=True) == [
         "pty",
         "control",
     ]
-    assert detect_terminal_transports(system="darwin", tmux_path="/opt/bin/tmux") == [
+    assert detect_terminal_transports(system="darwin", tmux_available=True) == [
         "pty",
         "control",
     ]
-    assert detect_terminal_transports(system="linux", tmux_path=None) == []
-    assert detect_terminal_transports(system="windows", tmux_path="C:/tmux.exe") == []
+    assert detect_terminal_transports(system="linux", tmux_available=False) == []
+    assert detect_terminal_transports(system="windows", tmux_available=True) == []
 
 
 def test_detect_terminal_transports_honors_feature_flags() -> None:
     assert detect_terminal_transports(
         system="linux",
-        tmux_path="/usr/bin/tmux",
+        tmux_available=True,
         feature_flags={"terminal-control"},
     ) == ["control"]
     assert detect_terminal_transports(
         system="linux",
-        tmux_path="/usr/bin/tmux",
+        tmux_available=True,
         feature_flags=set(),
     ) == []
 
@@ -147,27 +154,36 @@ class _WorkspaceRegistry:
         ]
 
 
-def test_build_hello_populates_capability_fields(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "omnigent.runner.transports.ws_tunnel.capabilities.detect_terminal_transports",
-        lambda *, feature_flags=None: ["control"],
-    )
-
+def test_build_hello_populates_capability_fields() -> None:
     hello = build_hello(
         runner_version="1.2.3",
         harnesses=["codex"],
         envs=["os_sandbox"],
         mode="local",
         workspace_registry=_WorkspaceRegistry(),
+        system="linux",
+        tmux_available=True,
     )
 
     assert hello.runner_version == "1.2.3"
-    assert hello.frame_protocol_version == 1
+    assert hello.frame_protocol_version == FRAME_PROTOCOL_VERSION
     assert hello.harnesses == ["codex"]
     assert hello.envs == ["os_sandbox"]
     assert hello.mode == "local"
     assert hello.os_name
     assert hello.arch
     assert hello.workspace_roots[0]["workspace_id"] == "ws_123"
-    assert hello.terminal_transports == ["control"]
+    assert hello.terminal_transports == ["pty", "control"]
     assert hello.tool_capabilities == DEFAULT_TOOL_CAPABILITIES
+
+
+def test_build_hello_rejects_invalid_mode() -> None:
+    with pytest.raises(ValueError, match="unsupported runner mode"):
+        build_hello(
+            runner_version="1.2.3",
+            harnesses=[],
+            envs=[],
+            mode="locale",
+            system="linux",
+            tmux_available=True,
+        )
