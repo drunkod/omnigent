@@ -13,9 +13,12 @@ import shutil
 from collections.abc import Iterable
 from typing import Any, Protocol
 
-from omnigent.runner.transports.ws_tunnel.frames import HelloFrame
+from omnigent.runner.transports.ws_tunnel.frames import (
+    ALLOWED_HELLO_MODES,
+    FRAME_PROTOCOL_VERSION,
+    HelloFrame,
+)
 
-FRAME_PROTOCOL_VERSION = 1
 DEFAULT_TERMINAL_FEATURE_FLAGS = frozenset({"terminal-pty", "terminal-control"})
 DEFAULT_TOOL_CAPABILITIES = [
     "read_file",
@@ -34,30 +37,36 @@ class AdvertisedWorkspaceRegistry(Protocol):
     """Small protocol implemented by the T02 workspace registry."""
 
     def advertise(self) -> list[dict[str, Any]]:
-        """Return display-only workspace summaries."""
+        """Return display-only workspace summaries.
 
-
-_DETECT_TMUX = object()
+        :returns: Public workspace metadata safe to expose in a hello frame.
+        """
 
 
 def detect_terminal_transports(
     *,
     feature_flags: Iterable[str] | None = None,
     system: str | None = None,
-    tmux_path: str | None | object = _DETECT_TMUX,
+    tmux_available: bool | None = None,
 ) -> list[str]:
     """Advertise terminal transports the runner can actually serve.
 
     Both MVP transports use the existing tmux-backed terminal bridges. Missing
     tmux or an unsupported platform therefore means no terminal transports are
-    advertised. ``tmux_path`` is injectable for tests; pass ``None`` to force
-    absent tmux, a non-empty string to force present tmux, or leave it unset to
-    probe ``shutil.which("tmux")``.
+    advertised.
+
+    :param feature_flags: Optional feature flag names. ``None`` uses the default
+        flag set that preserves current Unix/tmux attach behavior.
+    :param system: Optional platform override for tests. ``None`` probes
+        :func:`platform.system`.
+    :param tmux_available: Optional tmux availability override for tests.
+        ``None`` probes ``shutil.which("tmux")``.
+    :returns: Supported terminal transports in preference order.
     """
 
     flags = set(DEFAULT_TERMINAL_FEATURE_FLAGS if feature_flags is None else feature_flags)
     normalized_system = (system or platform.system()).lower()
-    tmux_ok = shutil.which("tmux") is not None if tmux_path is _DETECT_TMUX else bool(tmux_path)
+    tmux_ok = shutil.which("tmux") is not None if tmux_available is None else tmux_available
 
     if normalized_system not in _SUPPORTED_TMUX_PLATFORMS or not tmux_ok:
         return []
@@ -78,8 +87,31 @@ def build_hello(
     mode: str,
     workspace_registry: AdvertisedWorkspaceRegistry | None = None,
     feature_flags: Iterable[str] | None = None,
+    system: str | None = None,
+    tmux_available: bool | None = None,
 ) -> HelloFrame:
-    """Build the capability-bearing hello for a runner process."""
+    """Build the capability-bearing hello for a runner process.
+
+    :param runner_version: Runner version string to advertise.
+    :param harnesses: Harness names this runner can spawn.
+    :param envs: OS environment names this runner supports.
+    :param mode: Runner placement mode. Must be one of
+        :data:`ALLOWED_HELLO_MODES`.
+    :param workspace_registry: Optional registry exposing display-only workspace
+        summaries. Path enforcement remains runner-side.
+    :param feature_flags: Optional feature flag names forwarded to
+        :func:`detect_terminal_transports`.
+    :param system: Optional platform override forwarded to
+        :func:`detect_terminal_transports`; useful for tests.
+    :param tmux_available: Optional tmux availability override forwarded to
+        :func:`detect_terminal_transports`; useful for tests.
+    :returns: A :class:`HelloFrame` populated with runner capability metadata.
+    :raises ValueError: If *mode* is not a supported hello mode.
+    """
+
+    if mode not in ALLOWED_HELLO_MODES:
+        allowed = ", ".join(sorted(ALLOWED_HELLO_MODES))
+        raise ValueError(f"unsupported runner mode {mode!r}; expected one of: {allowed}")
 
     return HelloFrame(
         runner_version=runner_version,
@@ -90,6 +122,10 @@ def build_hello(
         os_name=platform.system().lower(),
         arch=platform.machine().lower(),
         workspace_roots=workspace_registry.advertise() if workspace_registry is not None else [],
-        terminal_transports=detect_terminal_transports(feature_flags=feature_flags),
+        terminal_transports=detect_terminal_transports(
+            feature_flags=feature_flags,
+            system=system,
+            tmux_available=tmux_available,
+        ),
         tool_capabilities=list(DEFAULT_TOOL_CAPABILITIES),
     )
