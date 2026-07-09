@@ -169,17 +169,20 @@ def validate_local_runner_binding(
     return session
 
 
-def runner_notification_binding_payload(labels: Mapping[str, str]) -> dict[str, str | None]:
-    """Build the binding keys appended to the runner session-create notify.
+def runner_notification_binding_payload(labels: Mapping[str, str]) -> dict[str, str]:
+    """Build non-null binding keys for the runner session-create notify.
 
     :param labels: Persisted session labels.
-    :returns: ``workspace_id`` and ``execution_mode`` values, both optional.
+    :returns: ``workspace_id`` and/or ``execution_mode`` values when present.
+        Missing labels are omitted so old/new runner skew never sees explicit
+        JSON nulls for optional binding fields.
     """
 
-    return {
+    payload = {
         "workspace_id": labels.get(WORKSPACE_ID_LABEL_KEY),
         "execution_mode": labels.get(EXECUTION_MODE_LABEL_KEY),
     }
+    return {key: value for key, value in payload.items() if value is not None}
 
 
 def _runner_supports_harness(hello: RunnerHelloLike, harness: str) -> bool:
