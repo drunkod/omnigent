@@ -28,8 +28,9 @@ from omnigent.runner.identity import (
     OMNIGENT_INTERNAL_WS_ORIGIN,
     RUNNER_TUNNEL_TOKEN_HEADER,
 )
+from omnigent.runner.transports.ws_tunnel.capabilities import build_hello
 from omnigent.runner.transports.ws_tunnel.frames import (
-    HelloFrame,
+    ALLOWED_HELLO_MODES,
     PingFrame,
     PongFrame,
     RequestCancelFrame,
@@ -92,6 +93,15 @@ _TUNNEL_RECYCLE_CLOSE_CODES = {1001, 1012}
 _TUNNEL_RECYCLE_HTTP_STATUSES = {502}
 _RUNNER_TUNNEL_CLOSE_TIMEOUT_S = 0.25
 RUNNER_TUNNEL_REJECTION_PREFIX = "runner tunnel rejected by server "
+_RUNNER_HELLO_HARNESSES = (
+    "claude-native",
+    "claude-sdk",
+    "codex",
+    "openai-agents",
+    "open-responses",
+    "pi",
+)
+_RUNNER_HELLO_ENVS = ("os_sandbox",)
 
 # Schemes that, when surfaced through ``InvalidURI.uri``, indicate
 # the WebSocket upgrade request was redirected somewhere the
@@ -237,6 +247,7 @@ async def serve_tunnel(
     server_url: str,
     runner_id: str,
     runner_version: str,
+    runner_mode: str = "local",
     auth_token: str | None = None,
     tunnel_token: str | None = None,
     auth_token_factory: Callable[[], str | None] | None = None,
@@ -263,6 +274,8 @@ async def serve_tunnel(
     :param runner_id: Stable runner id, e.g.
         ``"runner_0123456789abcdef"``.
     :param runner_version: Runner version string, e.g. ``"0.1.0"``.
+    :param runner_mode: Runner placement mode advertised in the hello frame,
+        e.g. ``"local"`` or ``"managed"``.
     :param auth_token: Optional bearer token for authenticated
         remote tunnel endpoints. Used as the initial token and as
         a fallback when *auth_token_factory* fails.
@@ -280,7 +293,13 @@ async def serve_tunnel(
         server-to-runner work frames. Tunnel pings are excluded so
         keepalives do not keep an otherwise idle runner alive.
     :returns: Never returns during normal operation.
+    :raises RuntimeError: If *runner_mode* is unsupported and retrying cannot help.
     """
+    if runner_mode not in ALLOWED_HELLO_MODES:
+        allowed = ", ".join(sorted(ALLOWED_HELLO_MODES))
+        raise RuntimeError(
+            f"unsupported runner mode {runner_mode!r}; expected one of: {allowed}"
+        )
     delay_s = _INITIAL_RECONNECT_DELAY_S
     tunnel_url = _tunnel_url(server_url, runner_id)
     _connected_before = False
@@ -302,6 +321,7 @@ async def serve_tunnel(
                 server_url=server_url,
                 runner_id=runner_id,
                 runner_version=runner_version,
+                runner_mode=runner_mode,
                 auth_token=auth_token,
                 tunnel_token=tunnel_token,
                 **activity_kwargs,
@@ -502,6 +522,7 @@ async def _serve_tunnel_once(
     server_url: str,
     runner_id: str,
     runner_version: str,
+    runner_mode: str = "local",
     auth_token: str | None = None,
     tunnel_token: str | None = None,
     on_activity: Callable[[], None] | None = None,
@@ -518,6 +539,8 @@ async def _serve_tunnel_once(
     :param runner_id: Stable runner id, e.g. ``"runner_abc"``.
     :param runner_version: Runner version string for the hello
         frame, e.g. ``"0.1.0"``.
+    :param runner_mode: Runner placement mode advertised in the hello frame,
+        e.g. ``"local"`` or ``"managed"``.
     :param auth_token: Optional bearer token for the WebSocket
         handshake.
     :param tunnel_token: Optional secret token that binds this
@@ -555,7 +578,7 @@ async def _serve_tunnel_once(
         ping_interval=TUNNEL_KEEPALIVE_PING_INTERVAL_S,
         ping_timeout=TUNNEL_KEEPALIVE_PING_TIMEOUT_S,
     ) as ws:
-        await _send_hello(ws.send, runner_version)
+        await _send_hello(ws.send, runner_version, runner_mode)
         _logger.info("runner %s connected to %s", runner_id, tunnel_url)
         try:
             async for raw in ws:
@@ -575,28 +598,23 @@ async def _serve_tunnel_once(
 async def _send_hello(
     send_text: Callable[[str], Awaitable[None]],
     runner_version: str,
+    runner_mode: str,
 ) -> None:
     """Send the runner's opening hello frame.
 
     :param send_text: Async WebSocket text sender.
     :param runner_version: Runner version string for the hello
         frame, e.g. ``"0.1.0"``.
+    :param runner_mode: Runner placement mode advertised in the hello frame.
     :returns: None.
     """
     await send_text(
         encode_frame(
-            HelloFrame(
+            build_hello(
                 runner_version=runner_version,
-                frame_protocol_version=1,
-                harnesses=[
-                    "claude-native",
-                    "claude-sdk",
-                    "codex",
-                    "openai-agents",
-                    "open-responses",
-                    "pi",
-                ],
-                envs=["os_sandbox"],
+                harnesses=_RUNNER_HELLO_HARNESSES,
+                envs=_RUNNER_HELLO_ENVS,
+                mode=runner_mode,
             )
         )
     )

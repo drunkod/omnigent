@@ -27,6 +27,7 @@ from omnigent.runner._entry import (
     _resolve_agent_spec_from_server,
     _run_inactivity_monitor,
     _run_parent_death_killer,
+    _runner_mode_from_env,
     _runner_parent_pid_from_env,
     _runner_tunnel_binding_token_from_env,
     _runner_workspace_from_env,
@@ -829,6 +830,60 @@ def test_runner_tunnel_binding_token_from_env_strips_value(
     monkeypatch.setenv("OMNIGENT_RUNNER_TUNNEL_BINDING_TOKEN", " bind-token ")
 
     assert _runner_tunnel_binding_token_from_env() == "bind-token"
+
+
+def test_runner_mode_from_env_defaults_to_local(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Absent explicit mode, runners preserve historical local-mode behavior.
+
+    :param monkeypatch: Pytest environment patch fixture.
+    :returns: None.
+    """
+    monkeypatch.delenv("OMNIGENT_RUNNER_MODE", raising=False)
+
+    assert _runner_mode_from_env() == "local"
+
+
+def test_runner_mode_from_env_rejects_invalid_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unsupported runner modes fail before the tunnel advertises a lie.
+
+    :param monkeypatch: Pytest environment patch fixture.
+    :returns: None.
+    """
+    monkeypatch.setenv("OMNIGENT_RUNNER_MODE", " cloud ")
+
+    with pytest.raises(RuntimeError, match="OMNIGENT_RUNNER_MODE must be one of"):
+        _runner_mode_from_env()
+
+
+def test_runner_mode_from_env_rejects_empty_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Configured blank runner mode fails loud.
+
+    :param monkeypatch: Pytest environment patch fixture.
+    :returns: None.
+    """
+    monkeypatch.setenv("OMNIGENT_RUNNER_MODE", "   ")
+
+    with pytest.raises(RuntimeError, match="OMNIGENT_RUNNER_MODE must not be empty"):
+        _runner_mode_from_env()
+
+
+def test_runner_mode_from_env_strips_valid_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Configured runner mode is parsed from the environment.
+
+    :param monkeypatch: Pytest environment patch fixture.
+    :returns: None.
+    """
+    monkeypatch.setenv("OMNIGENT_RUNNER_MODE", " managed ")
+
+    assert _runner_mode_from_env() == "managed"
 
 
 def test_runner_parent_pid_from_env_returns_none_without_pid(

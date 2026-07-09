@@ -26,6 +26,10 @@ from enum import Enum
 from typing import Any
 
 
+FRAME_PROTOCOL_VERSION = 1
+ALLOWED_HELLO_MODES = frozenset({"local", "managed", "in_process"})
+
+
 class FrameKind(str, Enum):
     """All frame kinds; the value is the JSON wire string."""
 
@@ -57,12 +61,29 @@ class HelloFrame:
         on major mismatch (RUNNER.md §2 "Version skew").
     :param harnesses: Names of harness kinds the runner can spawn.
     :param envs: Names of OS env types the runner supports.
+    :param mode: Execution placement: ``"local"`` (user-installed
+        daemon on a trusted machine), ``"managed"`` (server-launched
+        sandbox), or ``"in_process"`` (dev/test). ``None`` for
+        pre-capability runners.
+    :param os_name: Runner OS, e.g. ``"darwin"``/``"linux"``.
+    :param arch: Runner arch, e.g. ``"arm64"``.
+    :param workspace_roots: Advertised workspace summaries. Display
+        metadata only — path enforcement always happens runner-side.
+    :param terminal_transports: Attach transports the runner's
+        terminal bridges support, subset of ``["control", "pty"]``.
+    :param tool_capabilities: Local action kinds the runner will accept.
     """
 
     runner_version: str
     frame_protocol_version: int
     harnesses: list[str] = field(default_factory=list)
     envs: list[str] = field(default_factory=list)
+    mode: str | None = None
+    os_name: str | None = None
+    arch: str | None = None
+    workspace_roots: list[dict[str, Any]] = field(default_factory=list)
+    terminal_transports: list[str] = field(default_factory=list)
+    tool_capabilities: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -193,15 +214,26 @@ def encode_frame(frame: Frame) -> str:
     The output is what goes onto the WebSocket as a text message.
     """
     if isinstance(frame, HelloFrame):
-        return json.dumps(
-            {
-                "kind": FrameKind.HELLO.value,
-                "runner_version": frame.runner_version,
-                "frame_protocol_version": frame.frame_protocol_version,
-                "harnesses": list(frame.harnesses),
-                "envs": list(frame.envs),
-            }
-        )
+        payload: dict[str, Any] = {
+            "kind": FrameKind.HELLO.value,
+            "runner_version": frame.runner_version,
+            "frame_protocol_version": frame.frame_protocol_version,
+            "harnesses": list(frame.harnesses),
+            "envs": list(frame.envs),
+        }
+        if frame.mode is not None:
+            payload["mode"] = frame.mode
+        if frame.os_name is not None:
+            payload["os_name"] = frame.os_name
+        if frame.arch is not None:
+            payload["arch"] = frame.arch
+        if frame.workspace_roots:
+            payload["workspace_roots"] = [dict(item) for item in frame.workspace_roots]
+        if frame.terminal_transports:
+            payload["terminal_transports"] = list(frame.terminal_transports)
+        if frame.tool_capabilities:
+            payload["tool_capabilities"] = list(frame.tool_capabilities)
+        return json.dumps(payload)
     if isinstance(frame, RequestFrame):
         return json.dumps(
             {
@@ -357,16 +389,25 @@ def _decode_known_frame(kind: FrameKind, msg: dict[str, Any]) -> Frame:
 
 
 def _decode_hello(msg: dict[str, Any]) -> HelloFrame:
-    """Decode a hello frame.
+    """Decode a hello frame, tolerating absent/malformed capability fields.
 
     :param msg: Decoded frame object.
     :returns: Typed hello frame.
     """
+    mode = _lenient_optional_str(msg, "mode")
+    if mode not in ALLOWED_HELLO_MODES:
+        mode = None
     return HelloFrame(
         runner_version=_required_str(msg, "runner_version"),
         frame_protocol_version=_required_int(msg, "frame_protocol_version"),
         harnesses=_optional_str_list(msg, "harnesses"),
         envs=_optional_str_list(msg, "envs"),
+        mode=mode,
+        os_name=_lenient_optional_str(msg, "os_name"),
+        arch=_lenient_optional_str(msg, "arch"),
+        workspace_roots=_lenient_dict_list(msg, "workspace_roots"),
+        terminal_transports=_lenient_str_list(msg, "terminal_transports"),
+        tool_capabilities=_lenient_str_list(msg, "tool_capabilities"),
     )
 
 
@@ -549,6 +590,43 @@ def _optional_str_list(msg: dict[str, Any], key: str) -> list[str]:
     if not isinstance(val, list) or not all(isinstance(item, str) for item in val):
         raise ValueError(f"frame field must be a list of strings: {key!r}")
     return list(val)
+
+
+def _lenient_optional_str(msg: dict[str, Any], key: str) -> str | None:
+    """Return a string field or ``None``; never raises.
+
+    :param msg: Decoded frame object.
+    :param key: Field name.
+    :returns: The string value, or ``None`` for absent/malformed values.
+    """
+    val = msg.get(key)
+    return val if isinstance(val, str) else None
+
+
+def _lenient_str_list(msg: dict[str, Any], key: str) -> list[str]:
+    """Return a string-list field, dropping non-string items; never raises.
+
+    :param msg: Decoded frame object.
+    :param key: Field name.
+    :returns: A list containing only string items.
+    """
+    val = msg.get(key)
+    if not isinstance(val, list):
+        return []
+    return [item for item in val if isinstance(item, str)]
+
+
+def _lenient_dict_list(msg: dict[str, Any], key: str) -> list[dict[str, Any]]:
+    """Return a dict-list field, dropping non-dict items; never raises.
+
+    :param msg: Decoded frame object.
+    :param key: Field name.
+    :returns: A list containing shallow copies of dictionary items.
+    """
+    val = msg.get(key)
+    if not isinstance(val, list):
+        return []
+    return [dict(item) for item in val if isinstance(item, dict)]
 
 
 def _optional_headers(msg: dict[str, Any]) -> list[list[str]]:
