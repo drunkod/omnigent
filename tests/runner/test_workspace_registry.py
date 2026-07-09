@@ -72,6 +72,11 @@ def test_workspace_root_advertise_excludes_absolute_root(tmp_path: Path) -> None
     assert "root" not in advertised
 
 
+def test_workspace_root_rejects_empty_path() -> None:
+    with pytest.raises(WorkspaceRegistryError, match="must not be empty"):
+        WorkspaceRoot.from_path("")
+
+
 def test_workspace_root_rejects_missing_directory_by_default(tmp_path: Path) -> None:
     missing = tmp_path / "missing"
 
