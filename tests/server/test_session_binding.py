@@ -210,3 +210,7 @@ def test_runner_notification_binding_payload_reads_contract_labels() -> None:
         "workspace_id": "ws_abc123",
         "execution_mode": LOCAL_RUNNER_EXECUTION_MODE,
     }
+
+
+def test_runner_notification_binding_payload_omits_missing_labels() -> None:
+    assert runner_notification_binding_payload({}) == {}
