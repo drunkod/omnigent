@@ -83,7 +83,7 @@ _BLOCKED_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         re.compile(r">>?\s*(~|\$HOME)/\.(bashrc|zshrc|profile|bash_profile)\b", re.IGNORECASE),
     ),
     ("git_global_config", re.compile(r"\bgit\s+config\s+--global\b", re.IGNORECASE)),
-    ("reverse_shell", re.compile(r"\b(nc|ncat|socat)\b.*\b(-e|exec:)", re.IGNORECASE)),
+    ("reverse_shell", re.compile(r"\b(nc|ncat|socat)\b.*(?:\s-e(?:\s|$)|\bexec:)", re.IGNORECASE)),
     ("curl_pipe_sh", re.compile(r"\b(curl|wget)\b[^|;&]*\|\s*(ba)?sh\b", re.IGNORECASE)),
 )
 
