@@ -69,6 +69,8 @@ Do not implement these in the MVP branch unless a later planning review explicit
 - `06-architecture-diagrams.md` — mermaid diagrams: full system architecture, pairing /
   session-create / mirroring sequences, local-action approval flow, terminal lifecycle
   states, tunnel frame protocol.
+- `07-ui-ux-codebase-files.md` — mermaid mapping of every MVP UX surface (picker, badge,
+  terminal panel, approval cards) to its frontend/server/runner implementation files.
 
 ## Detailed task specs with example code
 

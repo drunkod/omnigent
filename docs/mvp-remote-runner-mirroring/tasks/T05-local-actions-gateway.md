@@ -495,6 +495,11 @@ from the patch itself and applies with `git apply --index --directory` pinned to
 workspace root; `git_*` run through `run_shell`'s subprocess path with
 `classify_action("git_status", ...)` (ALLOW).
 
+Implementation note (review follow-up): several methods call `resolve_in_workspace(...)`
+after the gate; wrap `WorkspaceEscapeError` / unknown-workspace errors so they publish a
+`blocked` (escape) or `failed` (invalid workspace) audit event before re-raising — the
+"every action emits an audit record" rule includes path-resolution failures.
+
 ## 3. Runner routes — `omnigent/runner/app.py`
 
 ```python
