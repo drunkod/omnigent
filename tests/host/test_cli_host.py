@@ -15,8 +15,9 @@ import psutil
 import pytest
 from click.testing import CliRunner
 
-from omnigent.cli import _ensure_host_daemon, _host_daemon_alive, cli
+from omnigent.cli import _HostDaemonRecord, _daemon_status_payload, _ensure_host_daemon, _host_daemon_alive, cli
 from omnigent.host.local_server import LocalServerStartup
+from omnigent.host.workspace_pairing import RUNNER_WORKSPACES_ENV_VAR
 
 
 @dataclass(frozen=True)
@@ -223,6 +224,37 @@ def test_host_accepts_empty_positional_as_local_marker(
     assert runs == [_HostRun(server_url="http://127.0.0.1:8123")]
 
 
+def test_host_workspace_option_sets_runner_workspace_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``host --workspace`` exposes approvals to the foreground daemon."""
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    monkeypatch.setenv("OMNIGENT_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setattr("omnigent.cli._HOST_PID_PATH", tmp_path / "host.pid")
+    seen: list[str | None] = []
+
+    def _fake_run(server_url: str, **kwargs: object) -> None:
+        del server_url, kwargs
+        seen.append(os.environ.get(RUNNER_WORKSPACES_ENV_VAR))
+
+    with (
+        patch(
+            "omnigent.cli.ensure_local_omnigent_server",
+            lambda: LocalServerStartup(url="http://127.0.0.1:8123", spawned=False),
+        ),
+        patch("omnigent.host.connect.run_host_process", _fake_run),
+    ):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["host", "--workspace", str(workspace)])
+
+    assert result.exit_code == 0, result.output
+    assert seen == [str(workspace.resolve())]
+    assert RUNNER_WORKSPACES_ENV_VAR not in os.environ
+
+
+
 def test_host_status_subcommand_still_dispatches(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -267,6 +299,52 @@ def test_host_status_subcommand_still_dispatches(
         f"run_host_process must not run for 'host status', but got {runs}. "
         f"A non-empty list means 'status' was treated as a positional server URL."
     )
+
+
+def test_daemon_status_payload_includes_workspaces_and_readiness(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Host status payloads surface paired workspaces and local readiness."""
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    monkeypatch.setattr("omnigent.cli._pid_alive", lambda pid: True)
+    monkeypatch.setattr("omnigent.cli._add_daemon_host_status", lambda payload: None)
+    monkeypatch.setattr(
+        "omnigent.cli.local_readiness",
+        lambda: {"tmux": True, "git": True, "node": False},
+    )
+    record = _HostDaemonRecord(
+        pid=4242,
+        target="local",
+        mode="local",
+        server_url=None,
+        log_path=str(tmp_path / "daemon.log"),
+        started_at=1,
+        host_id="host_abc",
+        resolved_server_url="http://127.0.0.1:8123",
+        config_sig="sig",
+        workspaces=[str(workspace.resolve())],
+        runner_mode="local",
+    )
+
+    payload = _daemon_status_payload(
+        record,
+        include_sessions=False,
+        connected_sessions_only=True,
+    )
+
+    assert payload["runner_mode"] == "local"
+    assert payload["readiness"] == {"tmux": True, "git": True, "node": False}
+    assert payload["workspaces"] == [
+        {
+            "path": str(workspace.resolve()),
+            "label": str(workspace.resolve()),
+            "capabilities": ["read", "write", "shell", "git", "terminal"],
+            "missing": False,
+        }
+    ]
+
 
 
 def test_host_rejects_unknown_plain_token_as_subcommand(
@@ -328,6 +406,79 @@ def test_host_rejects_positional_and_server_option_together(
         f"Expected the conflict message mentioning 'not both', got: {result.output}"
     )
     assert runs == [], "run_host_process must not run when the args are rejected"
+
+
+def test_host_add_workspace_updates_record(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``host add-workspace`` persists the approved root on the target record."""
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    monkeypatch.setenv("OMNIGENT_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setattr("omnigent.cli._HOST_PID_PATH", tmp_path / "host.pid")
+    record = _HostDaemonRecord(
+        pid=4242,
+        target="local",
+        mode="local",
+        server_url=None,
+        log_path=None,
+        started_at=1,
+        host_id="host_abc",
+        resolved_server_url="http://127.0.0.1:8123",
+        config_sig="sig",
+    )
+    monkeypatch.setattr("omnigent.cli._selected_single_daemon_record", lambda ctx, server: record)
+    writes: list[_HostDaemonRecord] = []
+    monkeypatch.setattr("omnigent.cli._write_daemon_record", lambda updated: writes.append(updated))
+    monkeypatch.setattr("omnigent.cli._pid_alive", lambda pid: False)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["host", "add-workspace", str(workspace)])
+
+    assert result.exit_code == 0, result.output
+    assert len(writes) == 1
+    assert writes[0].workspaces == [str(workspace.resolve())]
+    assert writes[0].runner_mode == "local"
+    assert "saved (will apply when the daemon next starts)" in result.output
+
+
+def test_host_remove_workspace_updates_record(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``host remove-workspace`` revokes an approved root from the target record."""
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    monkeypatch.setenv("OMNIGENT_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setattr("omnigent.cli._HOST_PID_PATH", tmp_path / "host.pid")
+    record = _HostDaemonRecord(
+        pid=4242,
+        target="local",
+        mode="local",
+        server_url=None,
+        log_path=None,
+        started_at=1,
+        host_id="host_abc",
+        resolved_server_url="http://127.0.0.1:8123",
+        config_sig="sig",
+        workspaces=[str(workspace.resolve())],
+        runner_mode="local",
+    )
+    monkeypatch.setattr("omnigent.cli._selected_single_daemon_record", lambda ctx, server: record)
+    writes: list[_HostDaemonRecord] = []
+    monkeypatch.setattr("omnigent.cli._write_daemon_record", lambda updated: writes.append(updated))
+    monkeypatch.setattr("omnigent.cli._pid_alive", lambda pid: False)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["host", "remove-workspace", str(workspace)])
+
+    assert result.exit_code == 0, result.output
+    assert len(writes) == 1
+    assert writes[0].workspaces == []
+    assert writes[0].runner_mode == "local"
+    assert "will apply when the daemon next starts" in result.output
+
 
 
 def test_host_daemon_alive_returns_false_when_no_pid_file(

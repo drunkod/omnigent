@@ -17,7 +17,7 @@ import tempfile
 import time
 import types
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field, replace
 from importlib import resources
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, BinaryIO, TypeAlias, cast
@@ -43,6 +43,19 @@ from omnigent.host.local_server import (
     server_config_signature,
     stop_local_omnigent_server,
     stop_untracked_local_server,
+)
+from omnigent.host.workspace_pairing import (
+    RUNNER_MODE_LOCAL,
+    RUNNER_WORKSPACES_ENV_VAR,
+    HostWorkspaceError,
+    add_record_workspace,
+    canonicalize_roots,
+    extract_record_workspaces,
+    local_readiness,
+    remove_record_workspace,
+    stored_record_workspaces,
+    workspace_env,
+    workspace_status_rows,
 )
 from omnigent.inner import _proc, ui
 from omnigent.onboarding.sandboxes import available_providers as _sandbox_providers
@@ -1494,6 +1507,10 @@ class _HostDaemonRecord:
         ``None`` for legacy records written before config-signature
         tracking existed; a ``None`` signature is never treated as a
         config mismatch (we can't know what it was started with).
+    :param workspaces: Approved local workspace roots for host-spawned
+        runners, e.g. ``["/Users/alice/proj"]``.
+    :param runner_mode: Optional runner mode metadata persisted alongside
+        workspace approvals, e.g. ``"local"``.
     """
 
     pid: int
@@ -1505,6 +1522,8 @@ class _HostDaemonRecord:
     host_id: str | None = None
     resolved_server_url: str | None = None
     config_sig: str | None = None
+    workspaces: list[str] = field(default_factory=list)
+    runner_mode: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1705,6 +1724,8 @@ def _record_from_json(raw: _HostJsonObject) -> _HostDaemonRecord | None:
     host_id = raw.get("host_id")
     resolved_server_url = raw.get("resolved_server_url")
     config_sig = raw.get("config_sig")
+    workspaces = stored_record_workspaces(extract_record_workspaces(raw), include_missing=True)
+    runner_mode = raw.get("runner_mode")
     return _HostDaemonRecord(
         pid=pid,
         target=target,
@@ -1719,6 +1740,8 @@ def _record_from_json(raw: _HostJsonObject) -> _HostDaemonRecord | None:
             else None
         ),
         config_sig=config_sig if isinstance(config_sig, str) and config_sig else None,
+        workspaces=workspaces,
+        runner_mode=(runner_mode if isinstance(runner_mode, str) and runner_mode else None),
     )
 
 
@@ -1790,6 +1813,7 @@ def _legacy_daemon_record() -> _HostDaemonRecord | None:
         log_path=None,
         started_at=0,
         host_id=_load_existing_host_id(),
+        runner_mode=RUNNER_MODE_LOCAL if mode == "local" else None,
     )
 
 
@@ -1839,14 +1863,7 @@ def _update_daemon_resolved_server_url(target: str, server_url: str) -> None:
     record = _find_daemon_record(target)
     if record is None:
         return
-    _write_daemon_record(
-        _HostDaemonRecord(
-            **{
-                **asdict(record),
-                "resolved_server_url": server_url.rstrip("/"),
-            }
-        )
-    )
+    _write_daemon_record(replace(record, resolved_server_url=server_url.rstrip("/")))
 
 
 def _load_existing_host_id() -> str | None:
@@ -2081,6 +2098,7 @@ def _persist_spawned_daemon(
     target: str,
     spawned: _SpawnedDaemonProcess,
     config_sig: str,
+    workspaces: Sequence[str] = (),
 ) -> None:
     """
     Persist registry and legacy pidfile entries for a spawned daemon.
@@ -2091,6 +2109,7 @@ def _persist_spawned_daemon(
         e.g. ``"3f9a1c2b4d5e6f70"`` (see :func:`server_config_signature`).
     """
     mode = "local" if target == _LOCAL_DAEMON_MARKER else "server"
+    persisted_workspaces = stored_record_workspaces(workspaces, include_missing=True)
     _write_daemon_record(
         _HostDaemonRecord(
             pid=spawned.pid,
@@ -2101,6 +2120,8 @@ def _persist_spawned_daemon(
             started_at=int(time.time()),
             host_id=_load_existing_host_id(),
             config_sig=config_sig,
+            workspaces=persisted_workspaces,
+            runner_mode=RUNNER_MODE_LOCAL if persisted_workspaces else None,
         )
     )
     _HOST_PID_PATH.write_text(f"{spawned.pid}\n{target}\n")
@@ -2111,6 +2132,7 @@ def _foreground_daemon_record(
     target: str,
     server_url: str,
     host_id: str | None,
+    workspaces: Sequence[str] = (),
 ) -> _HostDaemonRecord:
     """
     Build the registry record for the current foreground host process.
@@ -2120,9 +2142,12 @@ def _foreground_daemon_record(
     :param server_url: Concrete Omnigent server URL being connected to, e.g.
         ``"http://127.0.0.1:8123"``.
     :param host_id: Local host id, e.g. ``"host_abc123"``.
+    :param workspaces: Approved local workspace roots to persist on the
+        foreground record.
     :returns: Daemon registry record for ``os.getpid()``.
     """
     mode = "local" if target == _LOCAL_DAEMON_MARKER else "server"
+    canonical_workspaces = stored_record_workspaces(workspaces, include_missing=True) if workspaces else []
     return _HostDaemonRecord(
         pid=os.getpid(),
         target=target,
@@ -2133,6 +2158,8 @@ def _foreground_daemon_record(
         host_id=host_id,
         resolved_server_url=server_url.rstrip("/") if mode == "local" else None,
         config_sig=server_config_signature(),
+        workspaces=canonical_workspaces,
+        runner_mode=RUNNER_MODE_LOCAL if canonical_workspaces else None,
     )
 
 
@@ -2229,12 +2256,18 @@ def _load_or_create_host_id() -> str | None:
         return None
 
 
-def _ensure_host_daemon(server_url: str | None) -> bool:
+def _ensure_host_daemon(
+    server_url: str | None,
+    *,
+    workspaces: Sequence[str] = (),
+) -> bool:
     """Start or reuse a host daemon for one target.
 
     :param server_url: Omnigent server URL the daemon connects to, or ``None``
         for local mode — the daemon starts (or reuses) a persistent local
         Omnigent server and connects to that.
+    :param workspaces: Approved local workspace roots to inject into the
+        spawned daemon environment and persist on its record.
     :returns: ``True`` when an existing daemon was torn down and respawned
         because its config (auth source) changed — the caller
         should ask the user to re-run against the freshly-restarted server
@@ -2242,6 +2275,12 @@ def _ensure_host_daemon(server_url: str | None) -> bool:
         plain reuse, a transparent tunnel-health heal, or a first spawn.
     """
     target = _normalize_daemon_target(server_url)
+    existing = _find_daemon_record(target)
+    approved_workspaces = (
+        canonicalize_roots(workspaces)
+        if workspaces
+        else (existing.workspaces if existing is not None else [])
+    )
     decision = _reuse_existing_daemon_record(target)
     if decision.reuse:
         return False
@@ -2252,7 +2291,8 @@ def _ensure_host_daemon(server_url: str | None) -> bool:
     mode_args = ["--local"] if not server_url else ["--server", server_url]
     args = [sys.executable, "-m", "omnigent.host._daemon_entry", *mode_args]
     spawned = _spawn_host_daemon_process(
-        args=args, env=_build_host_daemon_env(server_url=server_url)
+        args=args,
+        env=_build_host_daemon_env(server_url=server_url, workspaces=approved_workspaces),
     )
     if spawned is None:
         return False
@@ -2260,6 +2300,7 @@ def _ensure_host_daemon(server_url: str | None) -> bool:
         target=target,
         spawned=spawned,
         config_sig=server_config_signature(),
+        workspaces=approved_workspaces,
     )
     return decision.config_changed
 
@@ -2267,6 +2308,7 @@ def _ensure_host_daemon(server_url: str | None) -> bool:
 def _build_host_daemon_env(
     *,
     server_url: str | None,
+    workspaces: Sequence[str] = (),
 ) -> dict[str, str]:
     """
     Build the environment for the background host daemon.
@@ -2285,6 +2327,8 @@ def _build_host_daemon_env(
     :param server_url: Omnigent server URL for remote mode, e.g.
         ``"https://example.databricksapps.com"``, or a falsey value
         such as ``None`` / ``""`` for local daemon mode.
+    :param workspaces: Approved local workspace roots to expose to daemon-
+        spawned runners via ``OMNIGENT_RUNNER_WORKSPACES``.
     :returns: Environment dict for ``subprocess.Popen``.
     """
     from omnigent.host.connect import (
@@ -2312,6 +2356,11 @@ def _build_host_daemon_env(
             for key, value in os.environ.items()
             if key in _RUNNER_ENV_ALLOWLIST or key.startswith(daemon_env_prefixes)
         }
+    active_workspaces = stored_record_workspaces(workspaces, include_missing=False)
+    if active_workspaces:
+        env.update(workspace_env(active_workspaces))
+    else:
+        env.pop(RUNNER_WORKSPACES_ENV_VAR, None)
     return env
 
 
@@ -6822,6 +6871,15 @@ def _prompt_stop_local_server() -> None:
 @cli.group("host", cls=_HostGroup, invoke_without_command=True)
 @click.option("--server", default=None, help="Remote omnigent server URL.")
 @click.option(
+    "--workspace",
+    "workspaces",
+    multiple=True,
+    help=(
+        "Approve a local workspace root for host-spawned runners. Repeatable. "
+        "When omitted, any previously-persisted approvals for the target are reused."
+    ),
+)
+@click.option(
     "--non-interactive",
     "non_interactive",
     is_flag=True,
@@ -6833,7 +6891,12 @@ def _prompt_stop_local_server() -> None:
     ),
 )
 @click.pass_context
-def host(ctx: click.Context, server: str | None, non_interactive: bool) -> None:
+def host(
+    ctx: click.Context,
+    server: str | None,
+    workspaces: tuple[str, ...],
+    non_interactive: bool,
+) -> None:
     """
     Register this machine as a host with a server.
 
@@ -6858,12 +6921,14 @@ def host(ctx: click.Context, server: str | None, non_interactive: bool) -> None:
     :param server: Remote Omnigent server URL, e.g.
         ``"https://example.databricksapps.com"``. ``None`` falls back
         to config; empty string selects local mode.
+    :param workspaces: Approved workspace roots to persist for this target.
     :param non_interactive: When ``True``, never launch the browser login
         for an un-authed remote server — fail with the ``omnigent login``
         hint instead.
     """
     ctx.ensure_object(dict)
     ctx.obj["server"] = server
+    ctx.obj["workspaces"] = workspaces
     if ctx.invoked_subcommand is not None:
         return
     cfg = _load_effective_config()
@@ -6883,6 +6948,15 @@ def host(ctx: click.Context, server: str | None, non_interactive: bool) -> None:
     # the given remote/local URL. Unlike the background commands, we do not
     # spawn a second daemon via ``_ensure_host_daemon``.
     target = _normalize_daemon_target(server)
+    existing = _find_daemon_record(target)
+    try:
+        approved_workspaces = (
+            canonicalize_roots(workspaces)
+            if workspaces
+            else (existing.workspaces if existing is not None else [])
+        )
+    except HostWorkspaceError as exc:
+        raise click.ClickException(str(exc)) from exc
     # Only true when THIS invocation started the local server (vs reusing one
     # already started by `omnigent server` or a prior host/run daemon) —
     # gates the Ctrl-C stop-server prompt so we never offer to stop a server
@@ -6896,6 +6970,7 @@ def host(ctx: click.Context, server: str | None, non_interactive: bool) -> None:
         target=target,
         server_url=server,
         host_id=_load_or_create_host_id(),
+        workspaces=approved_workspaces,
     )
     previous = _claim_foreground_daemon_record(record)
     # Only offer to stop the local server after a clean stop (Ctrl-C / normal
@@ -6911,7 +6986,20 @@ def host(ctx: click.Context, server: str | None, non_interactive: bool) -> None:
         # (or a headless invocation) fails loud with the command to run.
         if remote_mode:
             _ensure_databricks_server_auth(server, non_interactive=non_interactive)
-        run_host_process(server_url=server)
+        active_workspaces = stored_record_workspaces(approved_workspaces, include_missing=False)
+        workspace_overrides = workspace_env(active_workspaces) if active_workspaces else {}
+        prior_runner_workspaces = os.environ.get(RUNNER_WORKSPACES_ENV_VAR)
+        if workspace_overrides:
+            os.environ.update(workspace_overrides)
+        else:
+            os.environ.pop(RUNNER_WORKSPACES_ENV_VAR, None)
+        try:
+            run_host_process(server_url=server)
+        finally:
+            if prior_runner_workspaces is None:
+                os.environ.pop(RUNNER_WORKSPACES_ENV_VAR, None)
+            else:
+                os.environ[RUNNER_WORKSPACES_ENV_VAR] = prior_runner_workspaces
         stopped_cleanly = True
     except KeyboardInterrupt:
         # Ctrl-C is the normal way to stop the foreground daemon — swallow it
@@ -6929,16 +7017,26 @@ def host(ctx: click.Context, server: str | None, non_interactive: bool) -> None:
             _prompt_stop_local_server()
 
 
-def _host_group_option(ctx: click.Context, key: str) -> str | None:
+def _host_group_option(ctx: click.Context, key: str) -> str | tuple[str, ...] | None:
     """
     Read a group-level ``omnigent host`` option for a subcommand.
 
     :param ctx: Click context passed to a host subcommand.
-    :param key: Group option key, e.g. ``"server"``.
-    :returns: The string option value, or ``None``.
+    :param key: Group option key, e.g. ``"server"`` or ``"workspaces"``.
+    :returns: The option value, or ``None``.
     """
     obj = ctx.obj if isinstance(ctx.obj, dict) else {}
     value = obj.get(key)
+    if isinstance(value, str):
+        return value
+    if isinstance(value, tuple) and all(isinstance(item, str) for item in value):
+        return value
+    return None
+
+
+def _host_group_server(ctx: click.Context) -> str | None:
+    """Return the group-level ``--server`` value, if any."""
+    value = _host_group_option(ctx, "server")
     return value if isinstance(value, str) else None
 
 
@@ -7293,6 +7391,11 @@ def _base_daemon_status_payload(record: _HostDaemonRecord) -> _HostPayload:
         "log_path": record.log_path,
         "host_id": host_id,
         "host_status": None,
+        "runner_mode": record.runner_mode,
+        "workspaces": cast(_HostJsonValue, workspace_status_rows(record.workspaces)),
+        "readiness": cast(_HostJsonValue, local_readiness())
+        if record.runner_mode == RUNNER_MODE_LOCAL
+        else None,
         "sessions": [],
         "error": None,
     }
@@ -7654,6 +7757,27 @@ def _echo_daemon_payloads(payloads: list[_HostPayload]) -> None:
         )
         console.print(f"  server={_host_markup(server_text)}")
         console.print(f"  host_id={_host_markup(payload.get('host_id'))}")
+        runner_mode = payload.get("runner_mode")
+        if runner_mode:
+            console.print(f"  runner_mode={_host_markup(runner_mode)}")
+        readiness = payload.get("readiness")
+        if isinstance(readiness, dict):
+            readiness_parts = [
+                f"{name}={'ok' if bool(ready) else 'missing'}"
+                for name, ready in readiness.items()
+                if isinstance(name, str)
+            ]
+            if readiness_parts:
+                console.print(f"  readiness={_host_markup('  '.join(readiness_parts))}")
+        raw_workspaces = payload.get("workspaces")
+        if isinstance(raw_workspaces, list) and raw_workspaces:
+            labels = [
+                str(workspace["label"])
+                for workspace in raw_workspaces
+                if isinstance(workspace, dict) and isinstance(workspace.get("label"), str)
+            ]
+            if labels:
+                console.print(f"  workspaces={_host_markup(', '.join(labels))}")
         if payload.get("log_path"):
             console.print(f"  log={_host_markup(payload.get('log_path'))}")
         if payload.get("error"):
@@ -7686,7 +7810,7 @@ def host_status(
     :param json_output: Whether to emit machine-readable JSON.
     """
     if server is None:
-        server = _host_group_option(ctx, "server")
+        server = _host_group_server(ctx)
     records = _selected_daemon_records(server=server, all_targets=all_targets, default_all=True)
     payloads = [
         _daemon_status_payload(
@@ -7700,6 +7824,108 @@ def host_status(
         click.echo(json.dumps({"daemons": payloads}, indent=2, sort_keys=True))
         return
     _echo_daemon_payloads(payloads)
+
+
+def _selected_single_daemon_record(ctx: click.Context, server: str | None) -> _HostDaemonRecord:
+    """Select exactly one daemon record for a host-management mutation.
+
+    :param ctx: Click context carrying group-level options.
+    :param server: Optional explicit server selector.
+    :returns: The selected daemon record.
+    :raises click.ClickException: If no matching daemon record exists.
+    """
+    if server is None:
+        group_server = _host_group_option(ctx, "server")
+        server = group_server if isinstance(group_server, str) else None
+    records = _selected_daemon_records(server=server, all_targets=False, default_all=False)
+    if not records:
+        raise click.ClickException("No matching host daemon found.")
+    return records[0]
+
+
+def _record_with_workspace_payload(
+    record: _HostDaemonRecord,
+    payload: Mapping[str, object],
+) -> _HostDaemonRecord:
+    """Build a daemon record from a mutated JSON-style payload.
+
+    :param record: Existing daemon record to update.
+    :param payload: Mutated JSON-style record payload.
+    :returns: Parsed daemon record with workspace fields applied.
+    :raises click.ClickException: If the payload cannot be re-parsed.
+    """
+    updated_payload = {**asdict(record), **payload}
+    updated = _record_from_json(cast(_HostJsonObject, updated_payload))
+    if updated is None:
+        raise click.ClickException("workspace update produced an invalid daemon record")
+    return updated
+
+
+def _record_spawn_server(record: _HostDaemonRecord) -> str | None:
+    """Return the server selector needed to respawn *record*.
+
+    :param record: Daemon record to respawn.
+    :returns: ``None`` for local mode, otherwise the remote/local server URL.
+    """
+    if record.mode == "local":
+        return None
+    return record.server_url or record.target
+
+
+def _apply_workspace_record_update(
+    record: _HostDaemonRecord,
+    updated: _HostDaemonRecord,
+) -> str:
+    """Persist a workspace-mutated daemon record and apply it when possible.
+
+    :param record: Original daemon record.
+    :param updated: Updated daemon record to persist.
+    :returns: Human-readable outcome suffix for CLI output.
+    """
+    _write_daemon_record(updated)
+    if not _pid_alive(record.pid):
+        return "saved (will apply when the daemon next starts)"
+    if record.log_path is None:
+        return "saved; restart the foreground `omnigent host` process to apply it"
+    _terminate_host_unit(record, reason="workspace approvals changed")
+    _ensure_host_daemon(_record_spawn_server(record), workspaces=updated.workspaces)
+    return "saved and applied by restarting the daemon"
+
+
+@host.command("add-workspace")
+@click.argument("workspace")
+@click.option("--server", default=None, help="Update only this server target.")
+@click.pass_context
+def host_add_workspace(ctx: click.Context, workspace: str, server: str | None) -> None:
+    """Approve one local workspace root for a host target."""
+    record = _selected_single_daemon_record(ctx, server)
+    payload = asdict(record)
+    try:
+        payload, added, canonical = add_record_workspace(payload, workspace)
+    except HostWorkspaceError as exc:
+        raise click.ClickException(str(exc)) from exc
+    updated = _record_with_workspace_payload(record, payload)
+    outcome = _apply_workspace_record_update(record, updated)
+    verb = "Approved" if added else "Already approved"
+    click.echo(f"{verb} workspace {canonical} for {record.target}; {outcome}.")
+
+
+@host.command("remove-workspace")
+@click.argument("workspace")
+@click.option("--server", default=None, help="Update only this server target.")
+@click.pass_context
+def host_remove_workspace(ctx: click.Context, workspace: str, server: str | None) -> None:
+    """Revoke one approved local workspace root for a host target."""
+    record = _selected_single_daemon_record(ctx, server)
+    payload = asdict(record)
+    try:
+        payload, canonical = remove_record_workspace(payload, workspace)
+    except HostWorkspaceError as exc:
+        raise click.ClickException(str(exc)) from exc
+    updated = _record_with_workspace_payload(record, payload)
+    outcome = _apply_workspace_record_update(record, updated)
+    click.echo(f"Removed workspace {canonical} from {record.target}; {outcome}.")
+
 
 
 def _stop_session_on_server(
@@ -7836,7 +8062,7 @@ def host_stop(
     :param force: Continue after failures and use SIGKILL if needed.
     """
     if server is None:
-        server = _host_group_option(ctx, "server")
+        server = _host_group_server(ctx)
     records = _selected_daemon_records(server=server, all_targets=all_targets, default_all=False)
     if not records:
         click.echo("No matching host daemon found.")
@@ -7872,7 +8098,7 @@ def host_stop_session(
     :param force: Continue after individual stop failures.
     """
     if server is None:
-        server = _host_group_option(ctx, "server")
+        server = _host_group_server(ctx)
     resolved_server = _resolve_host_server(server)
     if resolved_server is None:
         resolved_server = local_server_url_if_healthy()

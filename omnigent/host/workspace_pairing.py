@@ -14,13 +14,23 @@ from collections.abc import Iterable, Mapping, MutableMapping
 from pathlib import Path
 from typing import Any
 
-RUNNER_WORKSPACES_ENV_VAR = "OMNIGENT_RUNNER_WORKSPACES"
+from omnigent.runner.identity import RUNNER_WORKSPACES_ENV_VAR
+
 RUNNER_MODE_LOCAL = "local"
 DEFAULT_WORKSPACE_CAPABILITIES = ("read", "write", "shell", "git", "terminal")
 
 
 class HostWorkspaceError(ValueError):
     """Raised when workspace pairing input or persisted state is invalid."""
+
+
+def _normalize_root_path(path: str | os.PathLike[str]) -> Path:
+    """Return an absolute normalized workspace path without existence checks."""
+
+    raw_text = os.fspath(path)
+    if not str(raw_text).strip():
+        raise HostWorkspaceError("workspace path must not be empty")
+    return Path(raw_text).expanduser().resolve(strict=False)
 
 
 def canonicalize_root(path: str | os.PathLike[str]) -> Path:
@@ -31,10 +41,7 @@ def canonicalize_root(path: str | os.PathLike[str]) -> Path:
     :raises HostWorkspaceError: If *path* is empty or not an existing directory.
     """
 
-    raw_text = os.fspath(path)
-    if not str(raw_text).strip():
-        raise HostWorkspaceError("workspace path must not be empty")
-    root = Path(raw_text).expanduser().resolve(strict=False)
+    root = _normalize_root_path(path)
     if not root.is_dir():
         raise HostWorkspaceError(f"workspace path must be an existing directory: {root}")
     return root
@@ -56,6 +63,36 @@ def canonicalize_roots(paths: Iterable[str | os.PathLike[str]]) -> list[str]:
             continue
         seen.add(canonical)
         roots.append(canonical)
+    return roots
+
+
+def stored_record_workspaces(
+    workspaces: Iterable[str | os.PathLike[str]],
+    *,
+    include_missing: bool = True,
+) -> list[str]:
+    """Normalize stored workspace roots without bricking on deleted dirs.
+
+    :param workspaces: Stored workspace values from daemon-record state.
+    :param include_missing: When ``True``, keep deleted/missing directories in the
+        returned list so status can still surface them. When ``False``, skip
+        paths that no longer exist.
+    :returns: Deduplicated absolute path strings.
+    """
+
+    seen: set[str] = set()
+    roots: list[str] = []
+    for path in workspaces:
+        try:
+            normalized = str(_normalize_root_path(path))
+        except HostWorkspaceError:
+            continue
+        if not include_missing and not Path(normalized).is_dir():
+            continue
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        roots.append(normalized)
     return roots
 
 
@@ -124,8 +161,9 @@ def workspace_status_rows(
             "path": root,
             "label": workspace_display_label(root, home=home),
             "capabilities": list(DEFAULT_WORKSPACE_CAPABILITIES),
+            "missing": not Path(root).is_dir(),
         }
-        for root in canonicalize_roots(workspaces)
+        for root in stored_record_workspaces(workspaces, include_missing=True)
     ]
 
 
@@ -172,12 +210,14 @@ def add_record_workspace(
     """
 
     canonical = str(canonicalize_root(path))
-    roots = canonicalize_roots(extract_record_workspaces(record))
+    roots = stored_record_workspaces(extract_record_workspaces(record), include_missing=True)
     if canonical in roots:
-        set_record_workspaces(record, roots)
+        record["workspaces"] = roots
+        record["runner_mode"] = RUNNER_MODE_LOCAL
         return record, False, canonical
     roots.append(canonical)
-    set_record_workspaces(record, roots)
+    record["workspaces"] = roots
+    record["runner_mode"] = RUNNER_MODE_LOCAL
     return record, True, canonical
 
 
@@ -193,10 +233,14 @@ def remove_record_workspace(
     :raises HostWorkspaceError: If *path* is invalid or not approved.
     """
 
-    canonical = str(canonicalize_root(path))
-    roots = canonicalize_roots(extract_record_workspaces(record))
+    try:
+        canonical = str(canonicalize_root(path))
+    except HostWorkspaceError:
+        canonical = str(_normalize_root_path(path))
+    roots = stored_record_workspaces(extract_record_workspaces(record), include_missing=True)
     kept = [root for root in roots if root != canonical]
     if len(kept) == len(roots):
         raise HostWorkspaceError(f"not an approved workspace: {canonical}")
-    set_record_workspaces(record, kept)
+    record["workspaces"] = kept
+    record["runner_mode"] = RUNNER_MODE_LOCAL
     return record, canonical

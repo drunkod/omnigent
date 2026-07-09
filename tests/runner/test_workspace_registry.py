@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 
+from omnigent.runner.identity import RUNNER_WORKSPACES_ENV_VAR
 from omnigent.runner.workspace_registry import (
     DEFAULT_WORKSPACE_CAPABILITIES,
     WorkspaceRegistry,
@@ -217,6 +219,7 @@ def test_registry_from_env_returns_empty_without_workspace(monkeypatch: pytest.M
     from omnigent.runner.identity import RUNNER_WORKSPACE_ENV_VAR
 
     monkeypatch.delenv(RUNNER_WORKSPACE_ENV_VAR, raising=False)
+    monkeypatch.delenv(RUNNER_WORKSPACES_ENV_VAR, raising=False)
 
     registry = WorkspaceRegistry.from_env()
 
@@ -232,6 +235,7 @@ def test_registry_from_env_registers_workspace(
     root = tmp_path / "project"
     root.mkdir()
     monkeypatch.setenv(RUNNER_WORKSPACE_ENV_VAR, f" {root} ")
+    monkeypatch.delenv(RUNNER_WORKSPACES_ENV_VAR, raising=False)
 
     registry = WorkspaceRegistry.from_env()
 
@@ -239,10 +243,57 @@ def test_registry_from_env_registers_workspace(
     assert registry.advertise(home=tmp_path)[0]["path_label"] == "~/project"
 
 
+def test_registry_from_env_registers_plural_workspace_roots(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    monkeypatch.setenv(
+        RUNNER_WORKSPACES_ENV_VAR,
+        os.pathsep.join([f" {first} ", str(second)]),
+    )
+
+    registry = WorkspaceRegistry.from_env()
+
+    advertised = registry.advertise(home=tmp_path)
+    assert [item["path_label"] for item in advertised] == ["~/first", "~/second"]
+
+
+def test_registry_from_env_plural_takes_precedence_over_legacy_single(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from omnigent.runner.identity import RUNNER_WORKSPACE_ENV_VAR
+
+    plural_root = tmp_path / "plural"
+    legacy_root = tmp_path / "legacy"
+    plural_root.mkdir()
+    legacy_root.mkdir()
+    monkeypatch.setenv(RUNNER_WORKSPACES_ENV_VAR, str(plural_root))
+    monkeypatch.setenv(RUNNER_WORKSPACE_ENV_VAR, str(legacy_root))
+
+    registry = WorkspaceRegistry.from_env()
+
+    assert [item["path_label"] for item in registry.advertise(home=tmp_path)] == ["~/plural"]
+
+
 def test_registry_from_env_rejects_empty_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
     from omnigent.runner.identity import RUNNER_WORKSPACE_ENV_VAR
 
     monkeypatch.setenv(RUNNER_WORKSPACE_ENV_VAR, "   ")
+    monkeypatch.delenv(RUNNER_WORKSPACES_ENV_VAR, raising=False)
+
+    with pytest.raises(WorkspaceRegistryError, match="must not be empty"):
+        WorkspaceRegistry.from_env()
+
+
+def test_registry_from_env_rejects_empty_plural_workspace_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(RUNNER_WORKSPACES_ENV_VAR, f" {os.pathsep} ")
 
     with pytest.raises(WorkspaceRegistryError, match="must not be empty"):
         WorkspaceRegistry.from_env()

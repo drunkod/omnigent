@@ -181,20 +181,28 @@ class WorkspaceRegistry:
         :param env: Environment mapping. Defaults to :data:`os.environ`.
         :param require_existing: Whether the configured root must exist.
         :returns: Empty registry when no workspace env var is set; otherwise a
-            registry containing that single root.
+            registry containing the configured roots.
         :raises WorkspaceRegistryError: If the env var is present but empty or
             invalid.
         """
 
-        from omnigent.runner.identity import RUNNER_WORKSPACE_ENV_VAR
+        from omnigent.runner.identity import RUNNER_WORKSPACE_ENV_VAR, RUNNER_WORKSPACES_ENV_VAR
 
         source = os.environ if env is None else env
-        raw = source.get(RUNNER_WORKSPACE_ENV_VAR)
-        if raw is None:
+        raw_many = source.get(RUNNER_WORKSPACES_ENV_VAR)
+        if raw_many is not None:
+            if not raw_many.strip():
+                raise WorkspaceRegistryError(f"{RUNNER_WORKSPACES_ENV_VAR} must not be empty")
+            roots = [item.strip() for item in raw_many.split(os.pathsep) if item.strip()]
+            if not roots:
+                raise WorkspaceRegistryError(f"{RUNNER_WORKSPACES_ENV_VAR} must not be empty")
+            return cls.from_paths(roots, require_existing=require_existing)
+        raw_single = source.get(RUNNER_WORKSPACE_ENV_VAR)
+        if raw_single is None:
             return cls()
-        if not raw.strip():
+        if not raw_single.strip():
             raise WorkspaceRegistryError(f"{RUNNER_WORKSPACE_ENV_VAR} must not be empty")
-        return cls.from_paths([raw.strip()], require_existing=require_existing)
+        return cls.from_paths([raw_single.strip()], require_existing=require_existing)
 
     def register(self, root: WorkspaceRoot) -> WorkspaceRoot:
         """Register an already-created workspace root.

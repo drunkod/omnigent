@@ -40,6 +40,7 @@ from omnigent.cli import (
     cli as cli_group,
 )
 from omnigent.host.local_server import LocalServerStartup
+from omnigent.host.workspace_pairing import RUNNER_WORKSPACES_ENV_VAR
 
 
 @pytest.fixture(autouse=True)
@@ -98,6 +99,8 @@ def _write_daemon_registry_record(
     host_id: str | None = "host_abc",
     config_sig: str | None = None,
     resolved_server_url: str | None = None,
+    workspaces: list[str] | None = None,
+    runner_mode: str | None = None,
 ) -> None:
     """Write a daemon registry JSON fixture.
 
@@ -116,6 +119,8 @@ def _write_daemon_registry_record(
         ``"3f9a1c2b4d5e6f70"``, or ``None`` for a legacy record.
     :param resolved_server_url: Concrete local server URL, e.g.
         ``"http://127.0.0.1:8123"``, or ``None``.
+    :param workspaces: Optional approved workspace roots to persist.
+    :param runner_mode: Optional runner mode metadata.
     """
     digest = hashlib.sha256(target.encode("utf-8")).hexdigest()[:16]
     path = tmp_path / "daemons" / f"{digest}.json"
@@ -132,6 +137,8 @@ def _write_daemon_registry_record(
                 "host_id": host_id,
                 "resolved_server_url": resolved_server_url,
                 "config_sig": config_sig,
+                "workspaces": workspaces or [],
+                "runner_mode": runner_mode,
             },
             sort_keys=True,
         )
@@ -202,6 +209,28 @@ def test_ensure_host_daemon_local_inherits_data_dir_and_db_uri(
     assert isinstance(env, dict)
     assert env["OMNIGENT_CONFIG_HOME"] == str(tmp_path / "iso")
     assert env["OMNIGENT_DATABASE_URI"] == "postgresql://u:pw@h/db"
+
+
+def test_ensure_host_daemon_local_injects_workspace_env_and_persists_record(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Explicit workspace approvals reach the daemon env and registry."""
+    captured: dict[str, object] = {}
+    _patch_daemon_spawn(monkeypatch, tmp_path, captured)
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+
+    _ensure_host_daemon(None, workspaces=[str(workspace)])
+
+    env = captured["env"]
+    assert isinstance(env, dict)
+    assert env[RUNNER_WORKSPACES_ENV_VAR] == str(workspace.resolve())
+    records = list((tmp_path / "daemons").glob("*.json"))
+    assert len(records) == 1
+    payload = json.loads(records[0].read_text())
+    assert payload["workspaces"] == [str(workspace.resolve())]
+    assert payload["runner_mode"] == "local"
+
 
 
 def test_build_host_daemon_env_local_preserves_server_credentials(
@@ -419,6 +448,8 @@ def test_ensure_host_daemon_respawns_on_config_drift(
     """
     captured: dict[str, object] = {}
     _patch_daemon_spawn(monkeypatch, tmp_path, captured)
+    workspace = tmp_path / "project"
+    workspace.mkdir()
     _write_daemon_registry_record(
         tmp_path,
         pid=4242,
@@ -429,6 +460,8 @@ def test_ensure_host_daemon_respawns_on_config_drift(
         started_at=1_000_000,
         config_sig="stale-signature-0000",
         resolved_server_url="http://127.0.0.1:8123",
+        workspaces=[str(workspace.resolve())],
+        runner_mode="local",
     )
     monkeypatch.setattr(cli, "_pid_alive", lambda pid: True)
     torn_down: list[str] = []
@@ -440,6 +473,9 @@ def test_ensure_host_daemon_respawns_on_config_drift(
 
     assert len(torn_down) == 1 and "config" in torn_down[0]
     assert "args" in captured  # fresh daemon spawned
+    env = captured["env"]
+    assert isinstance(env, dict)
+    assert env[RUNNER_WORKSPACES_ENV_VAR] == str(workspace.resolve())
 
 
 def test_ensure_host_daemon_heals_offline_tunnel(

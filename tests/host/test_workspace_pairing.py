@@ -19,6 +19,7 @@ from omnigent.host.workspace_pairing import (
     local_readiness,
     remove_record_workspace,
     set_record_workspaces,
+    stored_record_workspaces,
     workspace_display_label,
     workspace_env,
     workspace_status_rows,
@@ -86,7 +87,39 @@ def test_workspace_status_rows_are_sanitized_and_display_only(tmp_path: Path) ->
             "path": str(project.resolve()),
             "label": "~/project",
             "capabilities": list(DEFAULT_WORKSPACE_CAPABILITIES),
+            "missing": False,
         }
+    ]
+
+
+def test_workspace_status_rows_keep_deleted_roots_visible(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    deleted = str(project.resolve())
+    project.rmdir()
+
+    rows = workspace_status_rows([deleted], home=tmp_path)
+
+    assert rows == [
+        {
+            "path": deleted,
+            "label": "~/project",
+            "capabilities": list(DEFAULT_WORKSPACE_CAPABILITIES),
+            "missing": True,
+        }
+    ]
+
+
+def test_stored_record_workspaces_skips_missing_when_requested(tmp_path: Path) -> None:
+    present = tmp_path / "present"
+    deleted = tmp_path / "deleted"
+    present.mkdir()
+    deleted.mkdir()
+    deleted_path = str(deleted.resolve())
+    deleted.rmdir()
+
+    assert stored_record_workspaces([present, deleted_path], include_missing=False) == [
+        str(present.resolve())
     ]
 
 
@@ -123,6 +156,29 @@ def test_add_record_workspace_adds_once_and_is_idempotent(tmp_path: Path) -> Non
     assert record["runner_mode"] == RUNNER_MODE_LOCAL
 
 
+def test_add_record_workspace_allows_missing_sibling(tmp_path: Path) -> None:
+    alive = tmp_path / "alive"
+    doomed = tmp_path / "doomed"
+    fresh = tmp_path / "fresh"
+    alive.mkdir()
+    doomed.mkdir()
+    fresh.mkdir()
+    doomed_path = str(doomed.resolve())
+    record: dict[str, object] = {
+        "workspaces": [str(alive.resolve()), doomed_path],
+        "runner_mode": RUNNER_MODE_LOCAL,
+    }
+    doomed.rmdir()
+
+    _, added, canonical = add_record_workspace(record, fresh)
+
+    assert added is True
+    assert canonical == str(fresh.resolve())
+    assert record["workspaces"] == [str(alive.resolve()), doomed_path, str(fresh.resolve())]
+    assert record["runner_mode"] == RUNNER_MODE_LOCAL
+
+
+
 def test_remove_record_workspace_removes_canonical_root(tmp_path: Path) -> None:
     project = tmp_path / "project"
     other = tmp_path / "other"
@@ -135,6 +191,20 @@ def test_remove_record_workspace_removes_canonical_root(tmp_path: Path) -> None:
 
     assert canonical == str(project.resolve())
     assert record["workspaces"] == [str(other.resolve())]
+
+
+def test_remove_record_workspace_allows_deleted_approved_root(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    record = {"workspaces": [str(project.resolve())], "runner_mode": RUNNER_MODE_LOCAL}
+    deleted_path = str(project.resolve())
+    project.rmdir()
+
+    _, canonical = remove_record_workspace(record, deleted_path)
+
+    assert canonical == deleted_path
+    assert record["workspaces"] == []
+    assert record["runner_mode"] == RUNNER_MODE_LOCAL
 
 
 def test_remove_record_workspace_fails_for_unapproved_root(tmp_path: Path) -> None:
