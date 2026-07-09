@@ -38,6 +38,16 @@ class ErrorCode:
     :cvar FORBIDDEN: Authenticated but insufficient permissions (HTTP 403).
     :cvar RUNNER_CAPABILITY_MISMATCH: The selected runner cannot
         spawn the requested harness kind (HTTP 503).
+    :cvar WORKSPACE_NOT_FOUND: Requested runner workspace id is not
+        advertised by the selected runner (HTTP 404).
+    :cvar WORKSPACE_OUTSIDE_ALLOWED_ROOTS: Requested workspace path
+        escapes the runner's approved workspace roots (HTTP 409).
+    :cvar TERMINAL_TRANSPORT_UNSUPPORTED: Requested terminal transport
+        is not advertised by the selected runner (HTTP 409).
+    :cvar LOCAL_ACTION_REQUIRES_APPROVAL: A runner-local action is
+        blocked on explicit user approval (HTTP 409).
+    :cvar LOCAL_ACTION_BLOCKED_BY_POLICY: A runner-local action was
+        denied by policy (HTTP 403).
     :cvar HARNESS_NOT_CONFIGURED: The session's harness is not
         configured on the selected host — its CLI is missing or no
         default credential is set (the host refused the launch with
@@ -57,6 +67,11 @@ class ErrorCode:
     HARNESS_PROTOCOL_VIOLATION = "harness_protocol_violation"
     RUNNER_UNAVAILABLE = "runner_unavailable"
     RUNNER_CAPABILITY_MISMATCH = "runner_capability_mismatch"
+    WORKSPACE_NOT_FOUND = "workspace_not_found"
+    WORKSPACE_OUTSIDE_ALLOWED_ROOTS = "workspace_outside_allowed_roots"
+    TERMINAL_TRANSPORT_UNSUPPORTED = "terminal_transport_unsupported"
+    LOCAL_ACTION_REQUIRES_APPROVAL = "local_action_requires_approval"
+    LOCAL_ACTION_BLOCKED_BY_POLICY = "local_action_blocked_by_policy"
     # Keep the string equal to frames.HARNESS_NOT_CONFIGURED_ERROR_CODE —
     # the host's wire error code passes through as the API error code.
     HARNESS_NOT_CONFIGURED = "harness_not_configured"
@@ -77,6 +92,11 @@ _CODE_TO_HTTP_STATUS: dict[str, int] = {
     ErrorCode.HARNESS_PROTOCOL_VIOLATION: 500,
     ErrorCode.RUNNER_UNAVAILABLE: 503,
     ErrorCode.RUNNER_CAPABILITY_MISMATCH: 503,
+    ErrorCode.WORKSPACE_NOT_FOUND: 404,
+    ErrorCode.WORKSPACE_OUTSIDE_ALLOWED_ROOTS: 409,
+    ErrorCode.TERMINAL_TRANSPORT_UNSUPPORTED: 409,
+    ErrorCode.LOCAL_ACTION_REQUIRES_APPROVAL: 409,
+    ErrorCode.LOCAL_ACTION_BLOCKED_BY_POLICY: 403,
     # 412 Precondition Failed: the request is well-formed but the host
     # can't satisfy it until the user runs `omnigent setup` there —
     # neither a 400 (input is fine) nor a 503 (a retry won't help).
