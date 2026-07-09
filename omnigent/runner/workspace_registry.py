@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import os
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -58,18 +58,19 @@ class WorkspaceRoot:
         :param capabilities: Capability labels to advertise for this root.
         :param require_existing: Whether *root* must already be a directory.
         :returns: Canonical workspace record.
-        :raises WorkspaceRegistryError: If the root is empty, not absolute after
-            expansion, not an existing directory when required, or has an invalid
-            id.
+        :raises WorkspaceRegistryError: If the root is empty, not an absolute
+            path after expansion, not an existing directory when required, or
+            has an invalid id.
         """
 
         raw_text = os.fspath(root)
-        if not str(raw_text).strip():
+        stripped = str(raw_text).strip()
+        if not stripped:
             raise WorkspaceRegistryError("workspace root must not be empty")
-        raw = Path(raw_text).expanduser()
+        raw = Path(stripped).expanduser()
+        if not raw.is_absolute():
+            raise WorkspaceRegistryError(f"workspace root must be an absolute path: {root!r}")
         canonical = raw.resolve(strict=False)
-        if not canonical.is_absolute():
-            raise WorkspaceRegistryError(f"workspace root must resolve to an absolute path: {root!r}")
         if require_existing and not canonical.is_dir():
             raise WorkspaceRegistryError(f"workspace root must be an existing directory: {canonical}")
         resolved_id = workspace_id or workspace_id_for_root(canonical)
@@ -193,7 +194,7 @@ class WorkspaceRegistry:
             return cls()
         if not raw.strip():
             raise WorkspaceRegistryError(f"{RUNNER_WORKSPACE_ENV_VAR} must not be empty")
-        return cls.from_paths([raw], require_existing=require_existing)
+        return cls.from_paths([raw.strip()], require_existing=require_existing)
 
     def register(self, root: WorkspaceRoot) -> WorkspaceRoot:
         """Register an already-created workspace root.
@@ -316,7 +317,7 @@ class WorkspaceRegistry:
 
         return len(self._by_id)
 
-    def __iter__(self) -> Iterable[WorkspaceRoot]:
+    def __iter__(self) -> Iterator[WorkspaceRoot]:
         """Iterate over registered workspace records."""
 
         return iter(self._by_id.values())

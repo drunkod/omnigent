@@ -84,6 +84,11 @@ def test_workspace_root_rejects_missing_directory_by_default(tmp_path: Path) -> 
         WorkspaceRoot.from_path(missing)
 
 
+def test_workspace_root_rejects_relative_path() -> None:
+    with pytest.raises(WorkspaceRegistryError, match="absolute path"):
+        WorkspaceRoot.from_path("project")
+
+
 def test_workspace_root_can_allow_missing_directory_for_deferred_setup(tmp_path: Path) -> None:
     missing = tmp_path / "missing"
 
