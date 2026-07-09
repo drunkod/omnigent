@@ -48,6 +48,7 @@ import pytest
 from fastapi import FastAPI
 
 from omnigent.runner import create_runner_app
+from omnigent.runner.workspace_policy import PolicyMode
 from omnigent.runner.app import (
     _build_spawn_env_from_spec,
     _forward_harness_response,
@@ -1976,6 +1977,172 @@ async def test_runner_os_env_tools_default_to_conversation_workspace(monkeypatch
         )
         assert json.loads(out)["created"] is True
         assert Path(td, "conv_default_workspace", "workspace", "created.txt").read_text() == "hi"
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_routes_local_runner_os_write_through_gateway() -> None:
+    from omnigent.runner import tool_dispatch
+    from omnigent.runner.tool_dispatch import execute_tool
+
+    tool_dispatch._LOCAL_RUNNER_BINDINGS.clear()  # noqa: SLF001 - test isolation
+
+    class _Gateway:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        async def write_file(self, **kwargs: Any) -> dict[str, Any]:
+            self.calls.append({"kind": "write_file", **kwargs})
+            return {
+                "path": kwargs["path"],
+                "bytes_written": len(kwargs["content"].encode("utf-8")),
+                "created": True,
+            }
+
+    def _server_handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/sessions/conv_local_runner"
+        return httpx.Response(
+            200,
+            json={
+                "labels": {
+                    "omnigent.execution_mode": "local_runner",
+                    "omnigent.workspace_id": "ws_test1",
+                }
+            },
+            request=request,
+        )
+
+    gateway = _Gateway()
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(_server_handler),
+        base_url="http://server",
+    ) as server_client:
+        output = await execute_tool(
+            tool_name="sys_os_write",
+            arguments=json.dumps({"path": "note.txt", "content": "hello"}),
+            server_client=server_client,
+            conversation_id="conv_local_runner",
+            local_action_gateway=gateway,
+        )
+
+    assert json.loads(output) == {
+        "path": "note.txt",
+        "bytes_written": len("hello".encode("utf-8")),
+        "created": True,
+    }
+    assert gateway.calls == [
+        {
+            "kind": "write_file",
+            "session_id": "conv_local_runner",
+            "workspace_id": "ws_test1",
+            "path": "note.txt",
+            "content": "hello",
+            "mode": PolicyMode.MANUAL,
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_local_runner_binding_indeterminate_fails_closed() -> None:
+    from omnigent.runner import tool_dispatch
+    from omnigent.runner.tool_dispatch import execute_tool
+
+    tool_dispatch._LOCAL_RUNNER_BINDINGS.clear()  # noqa: SLF001 - test isolation
+
+    class _Gateway:
+        async def write_file(self, **kwargs: Any) -> dict[str, Any]:
+            raise AssertionError("gateway should not be called when binding is indeterminate")
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda request: httpx.Response(503, json={}, request=request)),
+        base_url="http://server",
+    ) as server_client:
+        output = await execute_tool(
+            tool_name="sys_os_write",
+            arguments=json.dumps({"path": "note.txt", "content": "hello"}),
+            server_client=server_client,
+            conversation_id="conv_local_runner_indeterminate",
+            local_action_gateway=_Gateway(),
+        )
+
+    assert json.loads(output) == {"error": "cannot verify session execution mode; retry"}
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_routes_local_runner_shell_with_cached_policy_mode_and_cwd() -> None:
+    from omnigent.runner import tool_dispatch
+    from omnigent.runner.tool_dispatch import execute_tool
+
+    tool_dispatch._LOCAL_RUNNER_BINDINGS.clear()  # noqa: SLF001 - test isolation
+    server_calls = 0
+
+    class _Gateway:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        async def run_shell(self, **kwargs: Any) -> dict[str, Any]:
+            self.calls.append(kwargs)
+            return {"stdout": "ok\n", "stderr": "", "exit_code": 0}
+
+    def _server_handler(request: httpx.Request) -> httpx.Response:
+        nonlocal server_calls
+        server_calls += 1
+        return httpx.Response(
+            200,
+            json={
+                "labels": {
+                    "omnigent.execution_mode": "local_runner",
+                    "omnigent.workspace_id": "ws_test1",
+                    "omnigent.local_runner_policy": "assisted",
+                }
+            },
+            request=request,
+        )
+
+    gateway = _Gateway()
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(_server_handler),
+        base_url="http://server",
+    ) as server_client:
+        first = await execute_tool(
+            tool_name="sys_os_shell",
+            arguments=json.dumps({"command": "pwd", "cwd": "subdir"}),
+            server_client=server_client,
+            conversation_id="conv_local_runner_shell",
+            local_action_gateway=gateway,
+        )
+        second = await execute_tool(
+            tool_name="sys_os_shell",
+            arguments=json.dumps({"command": "pwd", "cwd": "subdir"}),
+            server_client=server_client,
+            conversation_id="conv_local_runner_shell",
+            local_action_gateway=gateway,
+        )
+
+    assert json.loads(first) == {
+        "stdout": "ok\n",
+        "stderr": "",
+        "exit_code": 0,
+        "timed_out": False,
+        "cwd": "subdir",
+    }
+    assert json.loads(second) == json.loads(first)
+    assert server_calls == 1
+    assert gateway.calls == [
+        {
+            "session_id": "conv_local_runner_shell",
+            "workspace_id": "ws_test1",
+            "command": "pwd",
+            "cwd": "subdir",
+            "mode": PolicyMode.ASSISTED,
+        },
+        {
+            "session_id": "conv_local_runner_shell",
+            "workspace_id": "ws_test1",
+            "command": "pwd",
+            "cwd": "subdir",
+            "mode": PolicyMode.ASSISTED,
+        },
+    ]
 
 
 def test_clone_os_env_spec_preserves_all_sandbox_fields() -> None:

@@ -271,8 +271,9 @@ class LocalActionGateway:
         if verdict.decision is Decision.BLOCK:
             await self._gate(record, verdict)
         resolved = self._resolve_or_audit(record, path)
+        existed = resolved.is_file()
         before = ""
-        if resolved.is_file():
+        if existed:
             before = await asyncio.to_thread(resolved.read_text, "utf-8", "replace")
         diff_preview = "\n".join(
             difflib.unified_diff(
@@ -292,7 +293,7 @@ class LocalActionGateway:
         record.status = "completed"
         record.finished_at = time.time()
         self._publish_audit(record)
-        return {"path": path, "bytes_written": len(content.encode())}
+        return {"path": path, "bytes_written": len(content.encode()), "created": not existed}
 
     async def run_shell(
         self,

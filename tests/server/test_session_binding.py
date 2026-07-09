@@ -11,6 +11,7 @@ from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.server.session_binding import (
     EXECUTION_MODE_LABEL_KEY,
     LOCAL_RUNNER_EXECUTION_MODE,
+    LOCAL_RUNNER_POLICY_LABEL_KEY,
     WORKSPACE_ID_LABEL_KEY,
     WORKSPACE_LABEL_LABEL_KEY,
     advertised_workspace_ids,
@@ -214,3 +215,12 @@ def test_runner_notification_binding_payload_reads_contract_labels() -> None:
 
 def test_runner_notification_binding_payload_omits_missing_labels() -> None:
     assert runner_notification_binding_payload({}) == {}
+
+
+def test_runner_tool_dispatch_binding_constants_match_server_contract() -> None:
+    from omnigent.runner import tool_dispatch
+
+    assert tool_dispatch._LOCAL_RUNNER_EXECUTION_MODE == LOCAL_RUNNER_EXECUTION_MODE  # noqa: SLF001
+    assert tool_dispatch._EXECUTION_MODE_LABEL_KEY == EXECUTION_MODE_LABEL_KEY  # noqa: SLF001
+    assert tool_dispatch._WORKSPACE_ID_LABEL_KEY == WORKSPACE_ID_LABEL_KEY  # noqa: SLF001
+    assert tool_dispatch._LOCAL_RUNNER_POLICY_LABEL_KEY == LOCAL_RUNNER_POLICY_LABEL_KEY  # noqa: SLF001

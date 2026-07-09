@@ -18353,6 +18353,7 @@ def create_runner_app(
                         harness_client=None,
                         publish_event=_publish_event,
                         filesystem_registry=filesystem_registry,
+                        local_action_gateway=app.state.local_action_gateway,
                     )
                 except Exception as exc:  # noqa: BLE001
                     return JSONResponse(
