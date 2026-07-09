@@ -22,6 +22,14 @@ class WorkspaceRegistryError(ValueError):
     """Raised when workspace registration or path resolution fails."""
 
 
+class UnknownWorkspaceError(WorkspaceRegistryError):
+    """Raised when a workspace id is not registered."""
+
+
+class WorkspaceEscapeError(WorkspaceRegistryError):
+    """Raised when a requested path is absolute or escapes its workspace root."""
+
+
 @dataclass(frozen=True)
 class WorkspaceRoot:
     """Canonical runner-owned workspace root.
@@ -274,12 +282,12 @@ class WorkspaceRegistry:
 
         :param workspace_id: Workspace id.
         :returns: Workspace record.
-        :raises WorkspaceRegistryError: If the id is unknown.
+        :raises UnknownWorkspaceError: If the id is unknown.
         """
 
         root = self.get(workspace_id)
         if root is None:
-            raise WorkspaceRegistryError(f"unknown workspace id: {workspace_id!r}")
+            raise UnknownWorkspaceError(f"unknown workspace id: {workspace_id!r}")
         return root
 
     def advertise(self, *, home: Path | None = None) -> list[dict[str, object]]:
@@ -305,17 +313,18 @@ class WorkspaceRegistry:
         :param relative_path: Relative path requested by an agent/tool. Absolute
             paths are rejected; callers should identify roots via *workspace_id*.
         :returns: Canonical path contained within the workspace root.
-        :raises WorkspaceRegistryError: If the workspace is unknown, the path is
-            absolute, or resolution escapes the root, including via symlinks.
+        :raises UnknownWorkspaceError: If the workspace is unknown.
+        :raises WorkspaceEscapeError: If the path is absolute or resolution
+            escapes the root, including via symlinks.
         """
 
         root = self.require(workspace_id)
         requested = Path(relative_path)
         if requested.is_absolute():
-            raise WorkspaceRegistryError("workspace paths must be relative")
+            raise WorkspaceEscapeError("workspace paths must be relative")
         resolved = (root.root / requested).resolve(strict=False)
         if not resolved.is_relative_to(root.root):
-            raise WorkspaceRegistryError(
+            raise WorkspaceEscapeError(
                 f"path escapes workspace {workspace_id!r}: {relative_path!r}"
             )
         return resolved
