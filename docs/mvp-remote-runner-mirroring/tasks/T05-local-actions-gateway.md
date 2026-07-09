@@ -375,7 +375,7 @@ class LocalActionGateway:
         record = self._new_record(session_id=session_id, workspace_id=workspace_id,
                                   kind="list_dir", mode=mode)
         record.path_summary = [path]
-        await self._gate(record, classify_action("list_dir", mode=mode))
+        await self._gate(record, classify_path("list_dir", path, mode=mode))
         resolved = self._workspaces.resolve_in_workspace(workspace_id, path)
         entries = sorted(
             {"name": p.name, "dir": p.is_dir()} for p in resolved.iterdir()
@@ -391,7 +391,10 @@ class LocalActionGateway:
         record = self._new_record(session_id=session_id, workspace_id=workspace_id,
                                   kind="write_file", mode=mode)
         record.path_summary = [path]
-        await self._gate(record, classify_path("write_file", path, mode=mode))
+        verdict = classify_path("write_file", path, mode=mode)
+        if verdict.decision is Decision.BLOCK:
+            await self._gate(record, verdict)
+
         resolved = self._workspaces.resolve_in_workspace(workspace_id, path)
 
         # Diff preview BEFORE approval so the card shows exactly what changes.
@@ -407,7 +410,7 @@ class LocalActionGateway:
         # payload), NOT in the audit record (no full contents server-side).
         record_extra = {"diff_preview": diff[:64_000]}
 
-        await self._gate_with_payload(record, classify_action("write_file", mode=mode), record_extra)
+        await self._gate_with_payload(record, verdict, record_extra)
 
         async with self._write_lock(workspace_id):
             record.started_at = time.time()
@@ -483,10 +486,13 @@ class LocalActionGateway:
 
 `search_files`, `apply_patch`, `git_status`, `git_diff` follow the same skeleton:
 resolve → classify → gate → execute → audit. For file-oriented actions, classification
-must flow through `classify_path(...)` so `read_file`, `write_file`, `apply_patch`, and
-`search_files` share the same sensitive-path guard. `apply_patch` computes the unified
-diff preview from the patch itself and applies with `git apply --index --directory`
-pinned to the workspace root; `git_*` run through `run_shell`'s subprocess path with
+must flow through `classify_path(...)` so `read_file`, `list_dir`, `write_file`,
+`apply_patch`, and `search_files` share the same sensitive-path guard. For `write_file`
+and `apply_patch`, classify first, block immediately if needed, then compute the diff
+preview and call `_gate_with_payload(...)` exactly once so the user sees the proposed
+change before the only approval prompt. `apply_patch` computes the unified diff preview
+from the patch itself and applies with `git apply --index --directory` pinned to the
+workspace root; `git_*` run through `run_shell`'s subprocess path with
 `classify_action("git_status", ...)` (ALLOW).
 
 ## 3. Runner routes — `omnigent/runner/app.py`
@@ -600,8 +606,13 @@ def test_reads_always_allowed_writes_gated():
     assert classify_action("write_file", mode=PolicyMode.AUTO).decision is Decision.ALLOW
 
 
-def test_sensitive_paths_block_file_actions():
-    verdict = classify_path("read_file", ".env", mode=PolicyMode.MANUAL)
+@pytest.mark.parametrize("kind,path", [
+    ("read_file", ".env"),
+    ("list_dir", ".ssh"),
+    ("write_file", ".npmrc"),
+])
+def test_sensitive_paths_block_file_actions(kind, path):
+    verdict = classify_path(kind, path, mode=PolicyMode.MANUAL)
     assert verdict.decision is Decision.BLOCK
     assert "sensitive_path" in verdict.risk_flags
 
@@ -659,6 +670,14 @@ async def test_read_sensitive_file_blocked(gateway):
     with pytest.raises(OmnigentError):
         await gw.read_file(session_id="conv_1", workspace_id=ws_id,
                            path=".env", mode=PolicyMode.MANUAL)
+
+
+async def test_list_dir_sensitive_path_blocked(gateway):
+    gw, _, ws_id, root = gateway
+    (root / ".ssh").mkdir()
+    with pytest.raises(OmnigentError):
+        await gw.list_dir(session_id="conv_1", workspace_id=ws_id,
+                          path=".ssh", mode=PolicyMode.MANUAL)
 
 
 async def test_write_manual_requires_approval_and_has_diff(gateway):
@@ -733,7 +752,8 @@ async def test_large_output_truncated_deterministically(gateway):
       shared sensitive-path guard with path-segment matching (no substring false
       positives); shell cwd is classified pre-approval and forced in-workspace; env
       allowlisted + secret-stripped; deterministic truncation; per-workspace write lock.
-- [ ] Diff preview attached to approval payload, not to server-visible audit.
+- [ ] Diff preview attached to approval payload, not to server-visible audit; writes and
+      patches ask at most once, and only after the preview is available.
 - [ ] Denied/blocked actions never touch disk; shell timeout kills the full process group;
       every action emits an audit record.
 - [ ] Approval flow reuses `pending_approvals` and existing approval cards.

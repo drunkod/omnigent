@@ -123,8 +123,14 @@ sequenceDiagram
     SRV->>TR: ws.open channel → tunneled attach
     TR->>RN: dispatch runner ASGI attach route
     RN->>TM: control bridge — capture-pane seed, then %output stream
-    TM-->>UI: terminal bytes, byte-exact (colors, TUI, alt-screen)
-    UI->>TM: keystrokes via send-keys -H (owner only)
+    TM-->>RN: raw pane bytes / %output
+    RN-->>TR: ws.frame over tunnel
+    TR-->>SRV: proxied WS frame
+    SRV-->>UI: binary terminal frame
+    UI-->>SRV: binary input / resize
+    SRV-->>TR: ws.frame
+    TR-->>RN: tunneled input
+    RN-->>TM: send-keys -H / resize
     end
 ```
 
@@ -137,6 +143,7 @@ sequenceDiagram
     participant SRV as Server workflow
     participant GW as LocalActionGateway (T05)
     participant WP as workspace_policy
+    participant PA as pending_approvals
     participant FS as Workspace filesystem
     actor Own as Session owner
 
@@ -152,10 +159,12 @@ sequenceDiagram
     else ASK — manual / assisted, or risky in auto
         WP-->>GW: Verdict ASK
         GW->>GW: compute diff preview (before approval)
-        GW-->>SRV: approval request + diff + risk flags
+        GW->>PA: create approval request
+        PA-->>SRV: approval event via tunnel
         SRV-->>Own: approval card (diff, command, cwd)
         Own-->>SRV: approve / deny (owner-only, T08)
-        SRV-->>GW: decision
+        SRV-->>PA: decision
+        PA-->>GW: resolved decision
         alt approved
             GW->>FS: resolve_in_workspace → write under per-workspace lock
             GW-->>SRV: audit(completed) — status, duration, exit code
@@ -180,6 +189,7 @@ stateDiagram-v2
     terminal_unknown --> terminal_starting: session create
     terminal_starting --> terminal_running: launch ok
     terminal_starting --> terminal_failed: launch error
+    terminal_starting --> runner_offline: tunnel drop
 
     terminal_running --> terminal_detached: browser detaches (tmux alive)
     terminal_detached --> terminal_running: re-attach
@@ -194,6 +204,7 @@ stateDiagram-v2
     runner_reconnected --> terminal_relaunching: dead + required lifecycle
     terminal_relaunching --> terminal_running: relaunch ok
     terminal_relaunching --> terminal_failed: relaunch error
+    terminal_relaunching --> runner_offline: tunnel drop
 
     terminal_exited --> [*]
     terminal_failed --> [*]

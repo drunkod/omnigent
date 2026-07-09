@@ -116,7 +116,9 @@ def _publish_audit(record: AuditRecord) -> None:
 ```
 
 Server-side redaction guard (belt and braces — the runner already sends relative
-paths only):
+paths only). For MVP the forbidden-key matching is exact; a later hardening pass can
+make it case-insensitive / alias-aware (`Token`, `auth_token`, etc.) if producers prove
+messy in practice:
 
 ```python
 _AUDIT_FORBIDDEN_KEYS = ("content", "diff_preview", "stdout", "stderr", "token")

@@ -155,8 +155,9 @@ already accepts `runner_id=` and `workspace=`):
             ...,
             runner_id=body.runner_id,
             # Keep the existing workspace column reserved for real runtime paths;
-            # do not write display-only labels into it.
-            workspace=None,
+            # do not write display-only labels into it. Omit the argument or
+            # preserve existing behavior unless the current store requires an
+            # explicit value.
             labels={
                 **(body.labels or {}),
                 **(
