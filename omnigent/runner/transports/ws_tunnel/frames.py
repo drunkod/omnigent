@@ -26,6 +26,10 @@ from enum import Enum
 from typing import Any
 
 
+FRAME_PROTOCOL_VERSION = 1
+ALLOWED_HELLO_MODES = frozenset({"local", "managed", "in_process"})
+
+
 class FrameKind(str, Enum):
     """All frame kinds; the value is the JSON wire string."""
 
@@ -57,16 +61,17 @@ class HelloFrame:
         on major mismatch (RUNNER.md §2 "Version skew").
     :param harnesses: Names of harness kinds the runner can spawn.
     :param envs: Names of OS env types the runner supports.
-    :param mode: Execution placement: ``"local"`` for a user-installed
-        runner, ``"managed"`` for server-launched sandboxes, or
-        ``"in_process"`` for tests/dev. ``None`` for legacy runners.
-    :param os_name: Runner OS, e.g. ``"darwin"`` or ``"linux"``.
-    :param arch: Runner arch, e.g. ``"arm64"`` or ``"x86_64"``.
-    :param workspace_roots: Display-only workspace summaries. The
-        runner remains authoritative for path resolution/enforcement.
-    :param terminal_transports: Supported terminal attach transports,
-        subset of ``["control", "pty"]``.
-    :param tool_capabilities: Local action kinds accepted by this runner.
+    :param mode: Execution placement: ``"local"`` (user-installed
+        daemon on a trusted machine), ``"managed"`` (server-launched
+        sandbox), or ``"in_process"`` (dev/test). ``None`` for
+        pre-capability runners.
+    :param os_name: Runner OS, e.g. ``"darwin"``/``"linux"``.
+    :param arch: Runner arch, e.g. ``"arm64"``.
+    :param workspace_roots: Advertised workspace summaries. Display
+        metadata only — path enforcement always happens runner-side.
+    :param terminal_transports: Attach transports the runner's
+        terminal bridges support, subset of ``["control", "pty"]``.
+    :param tool_capabilities: Local action kinds the runner will accept.
     """
 
     runner_version: str
@@ -149,6 +154,12 @@ class WSOpenFrame:
     The runner dispatches its local ASGI app at ``path`` with
     ``query_string`` and pumps frames between that endpoint and the
     server using ``ch_id`` for correlation.
+
+    :param ch_id: Per-channel id, e.g. ``"a1b2c3d4"``. Unique within
+        one runner session.
+    :param path: ASGI path on the runner, e.g.
+        ``"/v1/sessions/conv_abc/resources/terminals/terminal_bash_s1/attach"``.
+    :param query_string: URL-encoded query string sans ``?``.
     """
 
     ch_id: str
@@ -160,8 +171,9 @@ class WSOpenFrame:
 class WSFrame:
     """Either direction: one WebSocket frame on a channel.
 
-    ``encoding="utf-8"`` carries the literal string payload. ``encoding="base64"``
-    carries a base64 binary payload.
+    ``encoding="utf-8"`` carries the literal string payload (xterm.js
+    resize JSON). ``encoding="base64"`` carries a base64 binary
+    payload (PTY bytes).
     """
 
     ch_id: str
@@ -191,9 +203,6 @@ Frame = (
     | WSFrame
     | WSCloseFrame
 )
-
-
-_ALLOWED_HELLO_MODES = {"local", "managed", "in_process"}
 
 
 # ── Encode / decode ──────────────────────────────────────
@@ -313,7 +322,12 @@ def decode_frame(text: str) -> Frame:
 
 
 def _parse_frame_object(text: str) -> dict[str, Any]:
-    """Parse a JSON frame object."""
+    """Parse a JSON frame object.
+
+    :param text: Raw JSON frame text.
+    :returns: Decoded frame object.
+    :raises ValueError: If the payload is not a JSON object.
+    """
     try:
         msg = json.loads(text)
     except json.JSONDecodeError as exc:
@@ -324,7 +338,12 @@ def _parse_frame_object(text: str) -> dict[str, Any]:
 
 
 def _parse_frame_kind(msg: dict[str, Any]) -> FrameKind:
-    """Parse the frame kind discriminator."""
+    """Parse the frame kind discriminator.
+
+    :param msg: Decoded frame object.
+    :returns: Frame kind enum.
+    :raises ValueError: If ``kind`` is missing or unknown.
+    """
     kind = msg.get("kind")
     if not isinstance(kind, str):
         raise ValueError("frame missing 'kind' field")
@@ -335,7 +354,13 @@ def _parse_frame_kind(msg: dict[str, Any]) -> FrameKind:
 
 
 def _decode_known_frame(kind: FrameKind, msg: dict[str, Any]) -> Frame:
-    """Decode a frame with a validated kind."""
+    """Decode a frame with a validated kind.
+
+    :param kind: Parsed frame kind.
+    :param msg: Decoded frame object.
+    :returns: The typed frame dataclass.
+    :raises ValueError: If the kind is unexpectedly unhandled.
+    """
     match kind:
         case FrameKind.HELLO:
             return _decode_hello(msg)
@@ -359,13 +384,18 @@ def _decode_known_frame(kind: FrameKind, msg: dict[str, Any]) -> Frame:
             return _decode_ws_frame(msg)
         case FrameKind.WS_CLOSE:
             return _decode_ws_close(msg)
+    # Unreachable — all enum members handled above.
     raise ValueError(f"unhandled frame kind: {kind.value!r}")  # pragma: no cover
 
 
 def _decode_hello(msg: dict[str, Any]) -> HelloFrame:
-    """Decode a hello frame, tolerating absent/malformed capability fields."""
+    """Decode a hello frame, tolerating absent/malformed capability fields.
+
+    :param msg: Decoded frame object.
+    :returns: Typed hello frame.
+    """
     mode = _lenient_optional_str(msg, "mode")
-    if mode not in _ALLOWED_HELLO_MODES:
+    if mode not in ALLOWED_HELLO_MODES:
         mode = None
     return HelloFrame(
         runner_version=_required_str(msg, "runner_version"),
@@ -382,7 +412,11 @@ def _decode_hello(msg: dict[str, Any]) -> HelloFrame:
 
 
 def _decode_request(msg: dict[str, Any]) -> RequestFrame:
-    """Decode a request frame."""
+    """Decode a request frame.
+
+    :param msg: Decoded frame object.
+    :returns: Typed request frame.
+    """
     return RequestFrame(
         id=_required_str(msg, "id"),
         method=_required_str(msg, "method"),
@@ -396,7 +430,11 @@ def _decode_request(msg: dict[str, Any]) -> RequestFrame:
 
 
 def _decode_response_head(msg: dict[str, Any]) -> ResponseHeadFrame:
-    """Decode a response-head frame."""
+    """Decode a response-head frame.
+
+    :param msg: Decoded frame object.
+    :returns: Typed response-head frame.
+    """
     return ResponseHeadFrame(
         id=_required_str(msg, "id"),
         status=_required_int(msg, "status"),
@@ -405,7 +443,11 @@ def _decode_response_head(msg: dict[str, Any]) -> ResponseHeadFrame:
 
 
 def _decode_response_body(msg: dict[str, Any]) -> ResponseBodyFrame:
-    """Decode a response-body frame."""
+    """Decode a response-body frame.
+
+    :param msg: Decoded frame object.
+    :returns: Typed response-body frame.
+    """
     return ResponseBodyFrame(
         id=_required_str(msg, "id"),
         body=_required_str(msg, "body"),
@@ -414,7 +456,11 @@ def _decode_response_body(msg: dict[str, Any]) -> ResponseBodyFrame:
 
 
 def _decode_request_cancel(msg: dict[str, Any]) -> RequestCancelFrame:
-    """Decode a request-cancel frame."""
+    """Decode a request-cancel frame.
+
+    :param msg: Decoded frame object.
+    :returns: Typed request-cancel frame.
+    """
     return RequestCancelFrame(
         id=_required_str(msg, "id"),
         reason=_optional_str(msg, "reason", "client_disconnected"),
@@ -422,7 +468,11 @@ def _decode_request_cancel(msg: dict[str, Any]) -> RequestCancelFrame:
 
 
 def _decode_ws_open(msg: dict[str, Any]) -> WSOpenFrame:
-    """Decode a WebSocket-open frame."""
+    """Decode a WebSocket-open frame.
+
+    :param msg: Decoded frame object.
+    :returns: Typed WebSocket-open frame.
+    """
     return WSOpenFrame(
         ch_id=_required_str(msg, "ch_id"),
         path=_required_str(msg, "path"),
@@ -431,7 +481,11 @@ def _decode_ws_open(msg: dict[str, Any]) -> WSOpenFrame:
 
 
 def _decode_ws_frame(msg: dict[str, Any]) -> WSFrame:
-    """Decode a WebSocket data frame."""
+    """Decode a WebSocket data frame.
+
+    :param msg: Decoded frame object.
+    :returns: Typed WebSocket data frame.
+    """
     return WSFrame(
         ch_id=_required_str(msg, "ch_id"),
         data=_required_str(msg, "data"),
@@ -440,7 +494,11 @@ def _decode_ws_frame(msg: dict[str, Any]) -> WSFrame:
 
 
 def _decode_ws_close(msg: dict[str, Any]) -> WSCloseFrame:
-    """Decode a WebSocket-close frame."""
+    """Decode a WebSocket-close frame.
+
+    :param msg: Decoded frame object.
+    :returns: Typed WebSocket-close frame.
+    """
     return WSCloseFrame(
         ch_id=_required_str(msg, "ch_id"),
         code=_optional_int(msg, "code", 1000),
@@ -463,7 +521,14 @@ def _required_int(msg: dict[str, Any], key: str) -> int:
 
 
 def _optional_str(msg: dict[str, Any], key: str, default: str) -> str:
-    """Return an optional string field."""
+    """Return an optional string field.
+
+    :param msg: Decoded frame object.
+    :param key: Field name, e.g. ``"encoding"``.
+    :param default: Protocol default used when the field is absent.
+    :returns: The string value.
+    :raises ValueError: If the field is present but not a string.
+    """
     val = msg.get(key, default)
     if not isinstance(val, str):
         raise ValueError(f"frame field must be a string: {key!r}")
@@ -471,7 +536,14 @@ def _optional_str(msg: dict[str, Any], key: str, default: str) -> str:
 
 
 def _optional_bool(msg: dict[str, Any], key: str, default: bool) -> bool:
-    """Return an optional boolean field."""
+    """Return an optional boolean field.
+
+    :param msg: Decoded frame object.
+    :param key: Field name, e.g. ``"stream"``.
+    :param default: Protocol default used when the field is absent.
+    :returns: The boolean value.
+    :raises ValueError: If the field is present but not a boolean.
+    """
     val = msg.get(key, default)
     if not isinstance(val, bool):
         raise ValueError(f"frame field must be a boolean: {key!r}")
@@ -479,7 +551,14 @@ def _optional_bool(msg: dict[str, Any], key: str, default: bool) -> bool:
 
 
 def _optional_int(msg: dict[str, Any], key: str, default: int) -> int:
-    """Return an optional integer field."""
+    """Return an optional integer field.
+
+    :param msg: Decoded frame object.
+    :param key: Field name, e.g. ``"code"``.
+    :param default: Protocol default used when the field is absent.
+    :returns: The integer value.
+    :raises ValueError: If the field is present but not an integer.
+    """
     val = msg.get(key, default)
     if not isinstance(val, int) or isinstance(val, bool):
         raise ValueError(f"frame field must be an integer: {key!r}")
@@ -487,7 +566,12 @@ def _optional_int(msg: dict[str, Any], key: str, default: int) -> int:
 
 
 def _optional_body(msg: dict[str, Any]) -> str | None:
-    """Return an optional request body field."""
+    """Return an optional request body field.
+
+    :param msg: Decoded request frame object.
+    :returns: The body string, or ``None`` when absent.
+    :raises ValueError: If ``body`` is present but not a string.
+    """
     val = msg.get("body")
     if val is not None and not isinstance(val, str):
         raise ValueError("frame field must be a string or null: 'body'")
@@ -497,8 +581,10 @@ def _optional_body(msg: dict[str, Any]) -> str | None:
 def _optional_str_list(msg: dict[str, Any], key: str) -> list[str]:
     """Return an optional list of strings.
 
-    Existing core fields stay strict because a malformed required-core hello
-    should still be rejected. Capability extension fields use lenient helpers.
+    :param msg: Decoded frame object.
+    :param key: Field name, e.g. ``"harnesses"``.
+    :returns: A list of strings, empty when absent.
+    :raises ValueError: If the field is not a string list.
     """
     val = msg.get(key, [])
     if not isinstance(val, list) or not all(isinstance(item, str) for item in val):
@@ -507,13 +593,23 @@ def _optional_str_list(msg: dict[str, Any], key: str) -> list[str]:
 
 
 def _lenient_optional_str(msg: dict[str, Any], key: str) -> str | None:
-    """Return a string field or ``None``; never raises."""
+    """Return a string field or ``None``; never raises.
+
+    :param msg: Decoded frame object.
+    :param key: Field name.
+    :returns: The string value, or ``None`` for absent/malformed values.
+    """
     val = msg.get(key)
     return val if isinstance(val, str) else None
 
 
 def _lenient_str_list(msg: dict[str, Any], key: str) -> list[str]:
-    """Return a string-list field, dropping non-string items; never raises."""
+    """Return a string-list field, dropping non-string items; never raises.
+
+    :param msg: Decoded frame object.
+    :param key: Field name.
+    :returns: A list containing only string items.
+    """
     val = msg.get(key)
     if not isinstance(val, list):
         return []
@@ -521,7 +617,12 @@ def _lenient_str_list(msg: dict[str, Any], key: str) -> list[str]:
 
 
 def _lenient_dict_list(msg: dict[str, Any], key: str) -> list[dict[str, Any]]:
-    """Return a dict-list field, dropping non-dict items; never raises."""
+    """Return a dict-list field, dropping non-dict items; never raises.
+
+    :param msg: Decoded frame object.
+    :param key: Field name.
+    :returns: A list containing shallow copies of dictionary items.
+    """
     val = msg.get(key)
     if not isinstance(val, list):
         return []
@@ -529,7 +630,12 @@ def _lenient_dict_list(msg: dict[str, Any], key: str) -> list[dict[str, Any]]:
 
 
 def _optional_headers(msg: dict[str, Any]) -> list[list[str]]:
-    """Return optional HTTP headers."""
+    """Return optional HTTP headers.
+
+    :param msg: Decoded request or response-head frame object.
+    :returns: Header pairs as ``[[name, value], ...]``.
+    :raises ValueError: If ``headers`` is not a list of string pairs.
+    """
     val = msg.get("headers", [])
     if not isinstance(val, list):
         raise ValueError("frame field must be a list of header pairs: 'headers'")
@@ -558,13 +664,20 @@ _TEXT_CONTENT_TYPES = (
 
 
 def is_text_content_type(content_type: str) -> bool:
-    """Decide whether a body of this content-type can be utf-8-encoded."""
+    """Decide whether a body of this content-type can be utf-8-encoded.
+
+    True for the standard text-shaped types per RUNNER.md §3 "Frame
+    wire format". False otherwise — those bodies must be base64-encoded.
+    """
     ct = content_type.lower()
     return any(ct.startswith(prefix) for prefix in _TEXT_CONTENT_TYPES)
 
 
 def encode_body(body: bytes, content_type: str) -> tuple[str, str]:
-    """Return ``(encoded_body, encoding)`` for a body+content-type pair."""
+    """Return ``(encoded_body, encoding)`` for a body+content-type pair.
+
+    Picks utf-8 inline for text-shaped content, base64 otherwise.
+    """
     if is_text_content_type(content_type):
         return body.decode("utf-8", errors="replace"), "utf-8"
     return base64.b64encode(body).decode("ascii"), "base64"
