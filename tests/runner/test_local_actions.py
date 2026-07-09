@@ -61,6 +61,69 @@ def test_read_file_allowed_and_audited(tmp_path: Path) -> None:
     assert audits[-1]["path_summary"] == ["hello.txt"]
 
 
+def test_list_dir_sorts_multiple_entries_by_name(tmp_path: Path) -> None:
+    gateway, workspace_id, root, audits, _ = _make_gateway(tmp_path)
+    (root / "b.txt").write_text("b", encoding="utf-8")
+    (root / "a.txt").write_text("a", encoding="utf-8")
+    (root / "sub").mkdir()
+
+    result = asyncio.run(
+        gateway.list_dir(
+            session_id="conv_test1",
+            workspace_id=workspace_id,
+            path=".",
+            mode=PolicyMode.AUTO,
+        )
+    )
+
+    assert result == {
+        "path": ".",
+        "entries": [
+            {"name": "a.txt", "dir": False},
+            {"name": "b.txt", "dir": False},
+            {"name": "sub", "dir": True},
+        ],
+    }
+    assert audits[-1]["status"] == "completed"
+
+
+def test_list_dir_not_directory_is_not_found(tmp_path: Path) -> None:
+    gateway, workspace_id, root, audits, _ = _make_gateway(tmp_path)
+    (root / "file.txt").write_text("hello", encoding="utf-8")
+
+    with pytest.raises(OmnigentError) as excinfo:
+        asyncio.run(
+            gateway.list_dir(
+                session_id="conv_test1",
+                workspace_id=workspace_id,
+                path="file.txt",
+                mode=PolicyMode.AUTO,
+            )
+        )
+
+    assert excinfo.value.code == ErrorCode.NOT_FOUND
+    assert audits[-1]["status"] == "failed"
+
+
+def test_list_dir_sensitive_directory_blocks_before_resolution(tmp_path: Path) -> None:
+    gateway, workspace_id, root, audits, _ = _make_gateway(tmp_path)
+    (root / ".ssh").mkdir()
+
+    with pytest.raises(OmnigentError) as excinfo:
+        asyncio.run(
+            gateway.list_dir(
+                session_id="conv_test1",
+                workspace_id=workspace_id,
+                path=".ssh",
+                mode=PolicyMode.AUTO,
+            )
+        )
+
+    assert excinfo.value.code == ErrorCode.LOCAL_ACTION_BLOCKED_BY_POLICY
+    assert audits[-1]["status"] == "blocked"
+    assert "sensitive_path" in audits[-1]["risk_flags"]
+
+
 def test_write_file_manual_requests_approval_with_diff_and_writes(tmp_path: Path) -> None:
     gateway, workspace_id, root, audits, approvals = _make_gateway(tmp_path, approval=True)
     (root / "demo.txt").write_text("before\n", encoding="utf-8")
