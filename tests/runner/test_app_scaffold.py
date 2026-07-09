@@ -18,12 +18,16 @@ the runner. The scaffold's job is to prove the boundary works.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
 from fastapi import FastAPI
 
+from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.runner import create_runner_app
+from omnigent.runner.workspace_policy import PolicyMode
 from tests.runner.helpers import NullServerClient
 
 # ── Fixtures ─────────────────────────────────────────────
@@ -100,6 +104,110 @@ async def test_elicitation_reply_returns_501_stub(
     assert response.status_code == 501
     body = response.json()
     assert body["error"] == "not_implemented"
+
+
+def test_create_runner_app_local_action_gateway_seeds_env_workspaces(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    env_workspace = tmp_path / "env-workspace"
+    env_workspace.mkdir()
+    monkeypatch.setenv("OMNIGENT_RUNNER_WORKSPACES", str(env_workspace))
+
+    app = create_runner_app(server_client=NullServerClient())  # type: ignore[arg-type]
+    gateway = app.state.local_action_gateway
+    advertised = gateway._workspaces.advertise(home=tmp_path)  # noqa: SLF001 - targeted registry assertion
+
+    assert any(item["path_label"] == "~/env-workspace" for item in advertised)
+
+
+@pytest.mark.asyncio
+async def test_local_actions_route_dispatches_to_gateway(runner_app: FastAPI, runner_client: httpx.AsyncClient) -> None:
+    class _Gateway:
+        calls: list[dict[str, Any]]
+
+        def __init__(self) -> None:
+            self.calls = []
+
+        async def read_file(self, **kwargs: Any) -> dict[str, object]:
+            self.calls.append(kwargs)
+            return {"path": kwargs["path"], "content": "hello"}
+
+    gateway = _Gateway()
+    runner_app.state.local_action_gateway = gateway
+
+    response = await runner_client.post(
+        "/v1/runner/local-actions",
+        json={
+            "session_id": "conv_test1",
+            "workspace_id": "ws_test1",
+            "kind": "read_file",
+            "path": "demo.txt",
+            "policy_mode": "auto",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"path": "demo.txt", "content": "hello"}
+    assert gateway.calls == [
+        {
+            "session_id": "conv_test1",
+            "workspace_id": "ws_test1",
+            "path": "demo.txt",
+            "mode": PolicyMode.AUTO,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_local_actions_route_rejects_unknown_kind(runner_client: httpx.AsyncClient) -> None:
+    response = await runner_client.post(
+        "/v1/runner/local-actions",
+        json={
+            "session_id": "conv_test1",
+            "workspace_id": "ws_test1",
+            "kind": "launch_missiles",
+        },
+    )
+
+    assert response.status_code == 400, response.text
+    assert response.json() == {
+        "error": {
+            "code": ErrorCode.INVALID_INPUT,
+            "message": "unknown action kind: 'launch_missiles'",
+        }
+    }
+
+
+@pytest.mark.asyncio
+async def test_local_actions_route_uses_omnigent_error_http_status(
+    runner_app: FastAPI,
+    runner_client: httpx.AsyncClient,
+) -> None:
+    class _Gateway:
+        async def run_shell(self, **kwargs: Any) -> dict[str, object]:
+            del kwargs
+            raise OmnigentError("command timed out", code=ErrorCode.INTERNAL_ERROR)
+
+    runner_app.state.local_action_gateway = _Gateway()
+
+    response = await runner_client.post(
+        "/v1/runner/local-actions",
+        json={
+            "session_id": "conv_test1",
+            "workspace_id": "ws_test1",
+            "kind": "run_shell",
+            "command": "sleep 999",
+        },
+    )
+
+    assert response.status_code == 500, response.text
+    assert response.json() == {
+        "error": {
+            "code": ErrorCode.INTERNAL_ERROR,
+            "message": "command timed out",
+        }
+    }
 
 
 @pytest.mark.asyncio
