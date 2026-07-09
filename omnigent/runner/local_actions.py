@@ -9,6 +9,7 @@ execution failures, and path-resolution failures.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import difflib
 import os
 import signal
@@ -22,7 +23,11 @@ from typing import Any
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.runner.identity import strip_runner_auth_secrets
 from omnigent.runner.workspace_policy import Decision, PolicyMode, Verdict, classify_action, classify_path
-from omnigent.runner.workspace_registry import WorkspaceRegistry, WorkspaceRegistryError
+from omnigent.runner.workspace_registry import (
+    UnknownWorkspaceError,
+    WorkspaceEscapeError,
+    WorkspaceRegistry,
+)
 
 _MAX_READ_BYTES = 2 * 1024 * 1024
 _MAX_OUTPUT_BYTES = 256 * 1024
@@ -30,7 +35,6 @@ _SHELL_TIMEOUT_S = 600.0
 _ENV_ALLOWLIST = frozenset({"PATH", "HOME", "LANG", "LC_ALL", "TERM", "TMPDIR", "USER", "SHELL"})
 
 AuditPublisher = Callable[["AuditRecord"], None]
-ApprovalRequester = Callable[["AuditRecord"], Awaitable[bool]]
 PayloadApprovalRequester = Callable[..., Awaitable[bool]]
 
 
@@ -180,16 +184,16 @@ class LocalActionGateway:
 
         try:
             return self._workspaces.resolve_in_workspace(record.workspace_id, path)
-        except WorkspaceRegistryError as exc:
-            message = str(exc)
+        except UnknownWorkspaceError as exc:
             record.finished_at = time.time()
-            if message.startswith("unknown workspace id"):
-                record.status = "failed"
-                self._publish_audit(record)
-                raise OmnigentError(message, code=ErrorCode.WORKSPACE_NOT_FOUND) from exc
+            record.status = "failed"
+            self._publish_audit(record)
+            raise OmnigentError(str(exc), code=ErrorCode.WORKSPACE_NOT_FOUND) from exc
+        except WorkspaceEscapeError as exc:
+            record.finished_at = time.time()
             record.status = "blocked"
             self._publish_audit(record)
-            raise OmnigentError(message, code=ErrorCode.WORKSPACE_OUTSIDE_ALLOWED_ROOTS) from exc
+            raise OmnigentError(str(exc), code=ErrorCode.WORKSPACE_OUTSIDE_ALLOWED_ROOTS) from exc
 
     async def read_file(
         self,
@@ -241,7 +245,10 @@ class LocalActionGateway:
             record.finished_at = time.time()
             self._publish_audit(record)
             raise OmnigentError(f"not a directory: {path}", code=ErrorCode.NOT_FOUND)
-        entries = sorted({"name": item.name, "dir": item.is_dir()} for item in resolved.iterdir())
+        entries = sorted(
+            ({"name": item.name, "dir": item.is_dir()} for item in resolved.iterdir()),
+            key=lambda entry: entry["name"],
+        )
         record.status = "completed"
         record.finished_at = time.time()
         self._publish_audit(record)
@@ -342,7 +349,8 @@ class LocalActionGateway:
 def _kill_process_group(pid: int) -> None:
     """Best-effort process-group kill used after shell timeouts."""
 
-    if hasattr(os, "killpg"):
-        os.killpg(pid, signal.SIGKILL)
-    else:  # pragma: no cover - Windows fallback
-        os.kill(pid, signal.SIGKILL)
+    with contextlib.suppress(ProcessLookupError):
+        if hasattr(os, "killpg"):
+            os.killpg(pid, signal.SIGKILL)
+        else:  # pragma: no cover - Windows fallback
+            os.kill(pid, signal.SIGKILL)
