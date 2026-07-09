@@ -63,9 +63,10 @@ class WorkspaceRoot:
             id.
         """
 
-        raw = Path(root).expanduser()
-        if not str(raw).strip():
+        raw_text = os.fspath(root)
+        if not str(raw_text).strip():
             raise WorkspaceRegistryError("workspace root must not be empty")
+        raw = Path(raw_text).expanduser()
         canonical = raw.resolve(strict=False)
         if not canonical.is_absolute():
             raise WorkspaceRegistryError(f"workspace root must resolve to an absolute path: {root!r}")
