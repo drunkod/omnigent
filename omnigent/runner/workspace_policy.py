@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
+from omnigent.policies.types import PolicyMode
+
 __all__ = [
     "Decision",
     "PolicyMode",
@@ -22,20 +24,6 @@ __all__ = [
     "classify_shell",
     "is_sensitive_path",
 ]
-
-
-class PolicyMode(str, Enum):
-    """Local-action policy mode for runner-side classification.
-
-    :cvar MANUAL: Ask for every side effect. Reads remain free once
-        workspace containment passes.
-    :cvar ASSISTED: Reads free; writes and shell ask.
-    :cvar AUTO: In-workspace writes and plain shell allowed; risky shell asks.
-    """
-
-    MANUAL = "manual"
-    ASSISTED = "assisted"
-    AUTO = "auto"
 
 
 class Decision(str, Enum):
