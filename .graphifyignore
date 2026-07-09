@@ -1,0 +1,72 @@
+# Graphify offline profile for this repo: keep extraction code-only.
+
+# Docs / prose
+*.md
+*.mdx
+*.rst
+*.adoc
+*.asciidoc
+*.org
+*.txt
+*.rtf
+*.tex
+*.html
+*.htm
+*.yaml
+*.yml
+
+# Papers / office / exported data
+*.pdf
+*.doc
+*.docx
+*.ppt
+*.pptx
+*.xls
+*.xlsx
+*.csv
+*.tsv
+
+# Images / media
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.bmp
+*.tif
+*.tiff
+*.svg
+*.ico
+*.mp3
+*.wav
+*.ogg
+*.mp4
+*.mov
+*.avi
+*.mkv
+
+# Generated / local / vendor
+.graphify-src/
+.venv/
+venv/
+graphify-out/
+result/
+node_modules/
+dist/
+build/
+.cache/
+coverage/
+target/
+.pytest_cache/
+__pycache__/
+
+# Repo-specific non-code / asset-heavy areas
+.claude/
+docs/
+designs/
+web/public/
+web/platform-assets/
+web/src/assets/
+editors/vscode/media/
+tests/resources/
+tests/e2e_ui/visual/snapshots/

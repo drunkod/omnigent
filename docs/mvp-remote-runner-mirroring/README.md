@@ -65,6 +65,33 @@ Do not implement these in the MVP branch unless a later planning review explicit
 - `02-server-runner-work-plan.md` — backend, runner, host, session, workspace, and tunnel tasks.
 - `03-terminal-mirroring-ui-plan.md` — terminal parity, xterm attach, session UI, reconnect, and diff UI tasks.
 - `04-permissions-security-tests.md` — approval model, safety boundaries, tests, telemetry, and rollout gates.
+- `05-implementation-checklist.md` — execution checklist and suggested PR sequence.
+
+## Detailed task specs with example code
+
+The `tasks/` directory turns the plans above into implementation-ready specs. Each file
+is grounded in the actual code (verified module paths, class/function signatures, and
+existing error codes) and carries full example code plus test suites:
+
+- `tasks/T01-hello-capabilities.md` — optional `HelloFrame` capability fields, lenient
+  decode, capability exposure on `/v1/runners`, version-skew tests. (Checklist P2; first PR.)
+- `tasks/T02-runner-workspaces.md` — `omnigent/runner/workspaces.py`: approved roots,
+  stable ids, symlink/traversal escape blocking, list/validate endpoints. (P4.)
+- `tasks/T03-cli-pairing.md` — extend `omnigent host` with `--workspace`,
+  `add-workspace`/`remove-workspace`, status readiness output. (P3.)
+- `tasks/T04-session-binding.md` — `runner_id`/`workspace_id` on session create,
+  ownership/capability validation, structured error codes, fork/resume rules. (P5.)
+- `tasks/T05-local-actions-gateway.md` — `workspace_policy.py` risk classification +
+  `local_actions.py` gateway with approvals, diff previews, audit records. (P7.)
+- `tasks/T06-reconnect-lifecycle.md` — `TerminalUiState` vocabulary, runner
+  connect/disconnect fan-out, attach close-code contract, terminal reconciliation. (P10 states.)
+- `tasks/T07-terminal-mirroring-ui.md` — runner badge, workspace picker, transport
+  default + reconnect overlay on the existing `TerminalSession.ts`, approval cards. (P9.)
+- `tasks/T08-permissions-policies-tests.md` — policy presets, owner-only approvals,
+  audit persistence/redaction, telemetry names, permission test suite, rollout gates. (P8/P11.)
+
+Implementation order matches the checklist's PR sequence: T01 → T02+T03 → T04 → T06 →
+T05 → T08 → T07.
 
 ## Suggested implementation shape
 
