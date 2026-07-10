@@ -26,6 +26,7 @@ import { PresenceAvatars } from "@/components/PresenceAvatars";
 import type { Agent } from "@/hooks/useAgents";
 import { cn } from "@/lib/utils";
 import { TAB_BADGE_BASE } from "./railTabs";
+import { RunnerStatusBadge } from "./RunnerStatusBadge";
 
 /**
  * Gating flags + handlers for the mobile-only session-menu FAB (the
@@ -101,6 +102,8 @@ interface ChatHeaderProps {
   parentSessionId: string | null | undefined;
   /** Active session id, or undefined on the landing composer. */
   conversationId: string | undefined;
+  /** Session execution mode label used to gate the local-runner badge. */
+  executionMode?: string | null;
   /** The bound agent (mcp_servers + policies) for the info popover. */
   boundAgent: Agent | undefined;
   /** Whether the Share button/menu entry should render. */
@@ -158,6 +161,7 @@ export function ChatHeader({
   isChildSession,
   parentSessionId,
   conversationId,
+  executionMode,
   boundAgent,
   canShare,
   shareDisabled = false,
@@ -263,6 +267,9 @@ export function ChatHeader({
             Self-contained — reads the chat store directly, renders
             nothing when the user is alone. */}
         {conversationId && <PresenceAvatars />}
+        {conversationId && (
+          <RunnerStatusBadge conversationId={conversationId} executionMode={executionMode} />
+        )}
         {/* Desktop (md+) action buttons. On mobile these collapse into
             the three-dot "Session actions" menu below, which renders
             the same set off the same gating booleans. Clone has no

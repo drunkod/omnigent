@@ -1115,6 +1115,7 @@ export function AppShell() {
                   isChildSession={isChildSession}
                   parentSessionId={activeSession?.parentSessionId}
                   conversationId={conversationId}
+                  executionMode={activeSession?.labels?.["omnigent.execution_mode"]}
                   boundAgent={boundAgent}
                   canShare={canShare}
                   shareDisabled={shareDisabled}
