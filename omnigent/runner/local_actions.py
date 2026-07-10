@@ -38,6 +38,15 @@ AuditPublisher = Callable[["AuditRecord"], None]
 PayloadApprovalRequester = Callable[..., Awaitable[bool]]
 
 
+class LocalActionTimeoutError(OmnigentError):
+    """Raised when a runner-local shell action exceeds its timeout."""
+
+    def __init__(self) -> None:
+        """Create the stable timeout error used by dispatch formatting."""
+
+        super().__init__("command timed out", code=ErrorCode.INTERNAL_ERROR)
+
+
 @dataclass
 class AuditRecord:
     """Server-visible audit entry for one local action.
@@ -330,7 +339,7 @@ class LocalActionGateway:
             record.status = "failed"
             record.finished_at = time.time()
             self._publish_audit(record)
-            raise OmnigentError("command timed out", code=ErrorCode.INTERNAL_ERROR) from exc
+            raise LocalActionTimeoutError() from exc
         out_text, out_truncated = truncate_output(stdout)
         err_text, err_truncated = truncate_output(stderr)
         record.exit_code = proc.returncode
