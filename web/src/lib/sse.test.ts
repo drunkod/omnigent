@@ -2,7 +2,52 @@
 
 import { describe, expect, it } from "vitest";
 import { parseEvent } from "./sse";
-import type { SessionStatusEvent, SessionSupersededEvent, TextDelta } from "./events";
+import type {
+  SessionRunnerStateEvent,
+  SessionStatusEvent,
+  SessionSupersededEvent,
+  SessionTerminalStateEvent,
+  TextDelta,
+} from "./events";
+
+describe("parseEvent — session lifecycle", () => {
+  it("parses runner lifecycle events", () => {
+    expect(
+      parseEvent("session.runner_state", {
+        conversation_id: "c1",
+        runner_id: "r1",
+        state: "runner_offline",
+      }),
+    ).toEqual({
+      type: "session_runner_state",
+      conversationId: "c1",
+      runnerId: "r1",
+      state: "runner_offline",
+    } satisfies SessionRunnerStateEvent);
+  });
+
+  it("parses terminal lifecycle events and rejects malformed payloads", () => {
+    expect(
+      parseEvent("session.terminal_state", {
+        conversation_id: "c1",
+        terminal_id: "t1",
+        state: "terminal_running",
+      }),
+    ).toEqual({
+      type: "session_terminal_state",
+      conversationId: "c1",
+      terminalId: "t1",
+      state: "terminal_running",
+    } satisfies SessionTerminalStateEvent);
+    expect(
+      parseEvent("session.terminal_state", {
+        conversation_id: "c1",
+        terminal_id: "t1",
+        state: "not_a_state",
+      }),
+    ).toBeNull();
+  });
+});
 
 describe("parseEvent — response.output_text.delta", () => {
   it("parses a plain delta with no streaming identifiers", () => {

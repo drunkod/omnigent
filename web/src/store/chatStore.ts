@@ -75,6 +75,7 @@ import { childSessionsQueryKey, type ChildSessionInfo } from "@/hooks/useChildSe
 import type { Conversation, ConversationsPage } from "@/hooks/useConversations";
 import type { ConversationsInfiniteData } from "@/lib/sessionListCache";
 import { useTerminalActivityStore } from "./terminalActivity";
+import { useTerminalLifecycleStore } from "./terminalLifecycleStore";
 import {
   terminalInfoFromResource,
   terminalsQueryKey,
@@ -1505,6 +1506,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   switchTo: async (conversationId) => {
     if (get().conversationId === conversationId) return;
+
+    const previousConversationId = get().conversationId;
+    if (previousConversationId !== null) {
+      useTerminalLifecycleStore.getState().clearConversation(previousConversationId);
+    }
 
     // Abort the prior session's stream. The reader loop in
     // bindStream's pump unwinds via AbortError and stops applying
@@ -4272,10 +4278,10 @@ export function handleSessionEvent(event: StreamEvent): void {
       }
       return;
     case "session_runner_state":
+      useTerminalLifecycleStore.getState().applyRunnerState(event);
+      return;
     case "session_terminal_state":
-      // Lifecycle state is consumed by terminal/session-specific views. Keep
-      // the event in the shared stream union so those views can subscribe
-      // without making older chat reducers reject the frame.
+      useTerminalLifecycleStore.getState().applyTerminalState(event);
       return;
     case "session_child_session_updated":
       // Child status delta pushed to the parent stream — patch the
