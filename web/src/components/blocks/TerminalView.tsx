@@ -129,6 +129,15 @@ export function TerminalView({
   );
   const lifecycleKnown = useTerminalLifecycleStore((store) => sessionId in store.byConversation);
   const [resumeError, setResumeError] = useState<string | null>(null);
+  // A manual Attach/Retry dismisses exactly the lifecycle value it is
+  // recovering from. If the server later emits a different value it becomes
+  // authoritative again automatically.
+  const [dismissedLifecycleState, setDismissedLifecycleState] =
+    useState<TerminalPanelState | null>(null);
+  const effectiveLifecycleTerminalState =
+    dismissedLifecycleState === lifecycleTerminalState
+      ? "terminal_unknown"
+      : lifecycleTerminalState;
   // True between an unexpected close and the re-dial it scheduled, so
   // the overlay reads "Reconnecting…" instead of the dead-end
   // "Bridge closed" message during automatic recovery.
@@ -199,9 +208,15 @@ export function TerminalView({
     setResumeError(null);
     setReconnectPending(false);
     reconnectAttemptsRef.current = 0;
+    notifyState({ kind: "connecting" });
     disposeActiveSession();
     setConnectAttempt((attempt) => attempt + 1);
-  }, [disposeActiveSession]);
+  }, [disposeActiveSession, notifyState]);
+
+  const recoverLifecycle = useCallback(() => {
+    setDismissedLifecycleState(lifecycleTerminalState);
+    reattach();
+  }, [lifecycleTerminalState, reattach]);
 
   const handleResume = useCallback(async () => {
     if (!onResume) return;
@@ -352,8 +367,19 @@ export function TerminalView({
   }, [state, disposeActiveSession]);
 
   useEffect(() => {
-    sessionRef.current?.setInputEnabled(inputAvailableFor(runnerState, lifecycleTerminalState));
-  }, [runnerState, lifecycleTerminalState]);
+    if (
+      dismissedLifecycleState !== null &&
+      lifecycleTerminalState !== dismissedLifecycleState
+    ) {
+      setDismissedLifecycleState(null);
+    }
+  }, [dismissedLifecycleState, lifecycleTerminalState]);
+
+  useEffect(() => {
+    sessionRef.current?.setInputEnabled(
+      inputAvailableFor(runnerState, effectiveLifecycleTerminalState),
+    );
+  }, [runnerState, effectiveLifecycleTerminalState, state.kind]);
 
   useEffect(() => {
     if (
@@ -363,6 +389,9 @@ export function TerminalView({
     ) {
       lifecycleRecoveryPendingRef.current = true;
       return;
+    }
+    if (state.kind === "runner_offline") {
+      lifecycleRecoveryPendingRef.current = true;
     }
     if (
       lifecycleTerminalState !== "terminal_running" ||
@@ -419,15 +448,15 @@ export function TerminalView({
       {(state.kind !== "connected" ||
         runnerState !== "online" ||
         (lifecycleKnown &&
-          lifecycleTerminalState !== "terminal_unknown" &&
-          lifecycleTerminalState !== "terminal_starting" &&
-          lifecycleTerminalState !== "terminal_running")) && (
+          effectiveLifecycleTerminalState !== "terminal_unknown" &&
+          effectiveLifecycleTerminalState !== "terminal_starting" &&
+          effectiveLifecycleTerminalState !== "terminal_running")) && (
         <StatusOverlay
           state={state}
           runnerState={runnerState}
-          lifecycleTerminalState={lifecycleTerminalState}
+          lifecycleTerminalState={effectiveLifecycleTerminalState}
           reconnectPending={reconnectPending}
-          onReattach={reattach}
+          onReattach={recoverLifecycle}
           onResume={onResume ? handleResume : undefined}
           resumePending={resumePending}
           resumeError={resumeError}
