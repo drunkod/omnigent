@@ -347,6 +347,35 @@ describe("automatic reconnect", () => {
     expect(terminalSessionMock.instances[0].dispose).toHaveBeenCalled();
   });
 
+  it("falls back from control to PTY once and stops on a second unsupported close", async () => {
+    render(
+      <TerminalView
+        sessionId="conv_abc"
+        terminalId="terminal_bash_s1"
+        transport="control"
+      />,
+    );
+    await act(async () => {});
+    expect(terminalSessionMock.instances).toHaveLength(1);
+    expect(terminalSessionMock.instances[0].url).toContain("transport=control");
+
+    act(() => {
+      terminalSessionMock.instances[0].onState({ kind: "retry_with_pty" });
+    });
+    await act(async () => {});
+
+    expect(terminalSessionMock.instances).toHaveLength(2);
+    expect(terminalSessionMock.instances[0].dispose).toHaveBeenCalledTimes(1);
+    expect(terminalSessionMock.instances[1].url).toContain("transport=pty");
+
+    act(() => {
+      terminalSessionMock.instances[1].onState({ kind: "retry_with_pty" });
+    });
+
+    expect(terminalSessionMock.instances).toHaveLength(2);
+    expect(screen.getByText("Bridge closed: PTY transport unavailable")).toBeInTheDocument();
+  });
+
   it("does not re-dial after a deliberate server close (4405 terminal-detached)", async () => {
     await renderAndAttach();
 

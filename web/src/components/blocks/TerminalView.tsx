@@ -360,7 +360,11 @@ export function TerminalView({
   }, [lifecycleTerminalState, runnerState, state.kind, disposeActiveSession]);
 
   useEffect(() => {
-    if (state.kind !== "retry_with_pty" || ptyFallback || transport === "pty") return;
+    if (state.kind !== "retry_with_pty") return;
+    if (ptyFallback || transport === "pty") {
+      setState({ kind: "closed", reason: "PTY transport unavailable", code: 4406 });
+      return;
+    }
     setPtyFallback(true);
     disposeActiveSession();
     setConnectAttempt((attempt) => attempt + 1);
