@@ -4271,6 +4271,12 @@ export function handleSessionEvent(event: StreamEvent): void {
         applyTerminalDeleted(event.sessionId, event.resourceId);
       }
       return;
+    case "session_runner_state":
+    case "session_terminal_state":
+      // Lifecycle state is consumed by terminal/session-specific views. Keep
+      // the event in the shared stream union so those views can subscribe
+      // without making older chat reducers reject the frame.
+      return;
     case "session_child_session_updated":
       // Child status delta pushed to the parent stream — patch the
       // child-sessions cache in place (no refetch). Also covers the

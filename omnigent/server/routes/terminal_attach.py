@@ -79,7 +79,7 @@ from typing import Final
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, WebSocketException
 from starlette import status
 
-from omnigent.errors import OmnigentError
+from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.runtime import (
     get_runner_ws_factory,
     get_terminal_registry,
@@ -91,6 +91,7 @@ from omnigent.stores.permission_store import PermissionStore
 from omnigent.terminals.control_bridge import bridge_tmux_control_to_websocket
 from omnigent.terminals.ws_bridge import (
     WS_CLOSE_INTERNAL_ERROR,
+    WS_CLOSE_TERMINAL_DETACHED,
     WS_CLOSE_TERMINAL_NOT_FOUND,
     bridge_tmux_pty_to_websocket,
 )
@@ -99,6 +100,10 @@ _logger = logging.getLogger(__name__)
 
 _WS_CLOSE_TERMINAL_NOT_FOUND: Final[int] = WS_CLOSE_TERMINAL_NOT_FOUND
 _WS_CLOSE_INTERNAL_ERROR: Final[int] = WS_CLOSE_INTERNAL_ERROR
+ATTACH_CLOSE_RUNNER_OFFLINE: Final[int] = 4503
+ATTACH_CLOSE_TERMINAL_NOT_FOUND: Final[int] = WS_CLOSE_TERMINAL_NOT_FOUND
+ATTACH_CLOSE_TERMINAL_DETACHED: Final[int] = WS_CLOSE_TERMINAL_DETACHED
+ATTACH_CLOSE_TRANSPORT_UNSUPPORTED: Final[int] = 4406
 
 
 def create_terminal_attach_router(
@@ -180,6 +185,18 @@ def create_terminal_attach_router(
             )
             try:
                 runner_cm = ws_factory(runner_path)
+            except OmnigentError as exc:
+                if exc.code == ErrorCode.RUNNER_UNAVAILABLE:
+                    await websocket.close(
+                        code=ATTACH_CLOSE_RUNNER_OFFLINE,
+                        reason="runner offline; reconnect the local runner",
+                    )
+                    return
+                await websocket.close(
+                    code=_WS_CLOSE_INTERNAL_ERROR,
+                    reason=str(exc),
+                )
+                return
             except Exception:  # noqa: BLE001
                 await websocket.close(
                     code=_WS_CLOSE_INTERNAL_ERROR,
@@ -210,6 +227,26 @@ def create_terminal_attach_router(
                     await websocket.close(
                         code=code,
                         reason=closed.reason or "",
+                    )
+            except OmnigentError as exc:
+                if exc.code == ErrorCode.RUNNER_UNAVAILABLE:
+                    with contextlib.suppress(RuntimeError):
+                        await websocket.close(
+                            code=ATTACH_CLOSE_RUNNER_OFFLINE,
+                            reason="runner offline; reconnect the local runner",
+                        )
+                    return
+                if exc.code == ErrorCode.TERMINAL_TRANSPORT_UNSUPPORTED:
+                    with contextlib.suppress(RuntimeError):
+                        await websocket.close(
+                            code=ATTACH_CLOSE_TRANSPORT_UNSUPPORTED,
+                            reason="terminal transport is unsupported",
+                        )
+                    return
+                with contextlib.suppress(RuntimeError):
+                    await websocket.close(
+                        code=_WS_CLOSE_INTERNAL_ERROR,
+                        reason=str(exc),
                     )
             except Exception:  # noqa: BLE001
                 with contextlib.suppress(RuntimeError):

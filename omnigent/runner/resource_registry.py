@@ -274,6 +274,7 @@ class SessionResourceRegistry:
         self._primary_envs: dict[str, OSEnvironment] = {}
         self._terminal_roles: dict[tuple[str, str], str] = {}
         self._terminal_lifecycles: dict[tuple[str, str], TerminalLifecycle] = {}
+        self._terminal_launch_specs: dict[tuple[str, str], dict[str, Any]] = {}
         self._is_alive_cache: TTLCache[str, bool] = TTLCache(
             maxsize=_IS_ALIVE_CACHE_MAX,
             ttl=_IS_ALIVE_CACHE_TTL_S,
@@ -359,6 +360,53 @@ class SessionResourceRegistry:
         :param publisher: Callable receiving a :class:`TerminalExitEvent`.
         """
         self._terminal_exit_publisher = publisher
+
+    def lifecycles_for_session(
+        self,
+        session_id: str,
+    ) -> list[tuple[str, TerminalLifecycle]]:
+        """Return terminal ids and lifecycle roles currently observed."""
+        with self._lock:
+            return [
+                (terminal_id, lifecycle)
+                for (owner, terminal_id), lifecycle in self._terminal_lifecycles.items()
+                if owner == session_id
+            ]
+
+    async def terminal_is_alive(self, session_id: str, terminal_id: str) -> bool:
+        """Return whether a session terminal still has a live tmux process."""
+        return await self.get_terminal_resource(session_id, terminal_id) is not None
+
+    async def relaunch_required_terminal(
+        self,
+        session_id: str,
+        terminal_id: str,
+    ) -> SessionResourceView:
+        """Relaunch a previously observed required terminal from saved metadata."""
+        if self._terminal_registry is None:
+            raise RuntimeError("Terminal registry not configured")
+        with self._lock:
+            lifecycle = self._terminal_lifecycles.get((session_id, terminal_id))
+            launch = self._terminal_launch_specs.get((session_id, terminal_id))
+        if lifecycle is not TerminalLifecycle.REQUIRED or launch is None:
+            raise RuntimeError(f"required terminal {terminal_id!r} is not relaunchable")
+        await self._terminal_registry.close(
+            session_id,
+            launch["terminal_name"],
+            launch["session_key"],
+        )
+        with self._lock:
+            self._terminal_lifecycles.pop((session_id, terminal_id), None)
+        try:
+            return await self.launch_required_terminal(**launch)
+        except Exception:
+            # Keep the terminal visible to the next reconciliation pass.
+            with self._lock:
+                if (session_id, terminal_id) in self._terminal_launch_specs:
+                    self._terminal_lifecycles[(session_id, terminal_id)] = (
+                        TerminalLifecycle.REQUIRED
+                    )
+            raise
 
     def _set_session_status_memo(self, session_id: str, status: str) -> None:
         """Record the session's latest PTY status for exit classification."""
@@ -830,7 +878,7 @@ class SessionResourceRegistry:
             cwd_override=cwd_override,
             sandbox_override=sandbox_override,
         )
-        return await self._observe_terminal_with_lifecycle(
+        view = await self._observe_terminal_with_lifecycle(
             lifecycle,
             session_id=session_id,
             terminal_name=terminal_name,
@@ -838,6 +886,18 @@ class SessionResourceRegistry:
             instance=instance,
             resource_role=resource_role,
         )
+        with self._lock:
+            self._terminal_launch_specs[(session_id, view.id)] = {
+                "session_id": session_id,
+                "terminal_name": terminal_name,
+                "session_key": session_key,
+                "spec": spec,
+                "cwd_override": cwd_override,
+                "sandbox_override": sandbox_override,
+                "parent_os_env": parent_os_env,
+                "resource_role": resource_role,
+            }
+        return view
 
     async def observe_required_terminal(
         self,
@@ -1150,6 +1210,9 @@ class SessionResourceRegistry:
                 lifecycle.value,
             )
             lifecycle = observed
+        if lifecycle is not TerminalLifecycle.REQUIRED:
+            with self._lock:
+                self._terminal_launch_specs.pop((session_id, terminal_id), None)
 
         command, args_count, cwd, last_output = _terminal_exit_diagnostics(instance)
         # Idle = clean shutdown after the turn finished. Anything else (running,
@@ -1166,6 +1229,18 @@ class SessionResourceRegistry:
                     terminal_name,
                     session_key,
                 )
+
+        # Keep the required relationship and launch metadata available for a
+        # reconnect reconciliation. Explicit close/cleanup paths remove it.
+        if lifecycle is TerminalLifecycle.REQUIRED:
+            with self._lock:
+                if (session_id, terminal_id) in self._terminal_launch_specs:
+                    self._terminal_lifecycles[(session_id, terminal_id)] = lifecycle
+                    resource_role = self._terminal_launch_specs[(session_id, terminal_id)].get(
+                        "resource_role"
+                    )
+                    if resource_role is not None:
+                        self._terminal_roles[(session_id, terminal_id)] = resource_role
 
         publisher = self._terminal_exit_publisher
         if publisher is not None:
@@ -1211,6 +1286,7 @@ class SessionResourceRegistry:
                     with self._lock:
                         self._terminal_roles.pop((session_id, terminal_id), None)
                         self._terminal_lifecycles.pop((session_id, terminal_id), None)
+                        self._terminal_launch_specs.pop((session_id, terminal_id), None)
                 return closed
         return False
 
@@ -1265,6 +1341,12 @@ class SessionResourceRegistry:
                 lifecycle = self._terminal_lifecycles.pop((source_session_id, terminal_id), None)
                 if lifecycle is not None:
                     self._terminal_lifecycles[(target_session_id, terminal_id)] = lifecycle
+                launch_spec = self._terminal_launch_specs.pop(
+                    (source_session_id, terminal_id), None
+                )
+                if launch_spec is not None:
+                    launch_spec["session_id"] = target_session_id
+                    self._terminal_launch_specs[(target_session_id, terminal_id)] = launch_spec
             # Move the PTY-status memo with the pane so a post-transfer exit is
             # classified against the right session. Don't clobber a status the
             # target already has from its own terminal.
@@ -1322,6 +1404,11 @@ class SessionResourceRegistry:
             ]
             for key in stale_lifecycle_keys:
                 self._terminal_lifecycles.pop(key, None)
+            stale_launch_spec_keys = [
+                key for key in self._terminal_launch_specs if key[0] == session_id
+            ]
+            for key in stale_launch_spec_keys:
+                self._terminal_launch_specs.pop(key, None)
         if primary is not None:
             try:
                 primary.close()

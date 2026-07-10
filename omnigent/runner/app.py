@@ -44,6 +44,7 @@ from omnigent.entities.session_resources import (
     session_resource_view_to_dict,
     terminal_resource_id,
 )
+from omnigent.entities.terminal_state import TerminalUiState
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.harness_aliases import (
     canonicalize_harness,
@@ -80,8 +81,8 @@ from omnigent.runner.resource_registry import (
     TerminalExitEvent,
     TerminalLifecycle,
 )
-from omnigent.runtime.harnesses.process_manager import HarnessProcessManager, NoLiveHarnessError
 from omnigent.runner.workspace_registry import WorkspaceRegistry
+from omnigent.runtime.harnesses.process_manager import HarnessProcessManager, NoLiveHarnessError
 from omnigent.spec.skill_sources import SkillSourceContext, resolve_harness_skills
 from omnigent.spec.types import AgentSpec, LocalToolInfo, SkillSpec
 from omnigent.terminals.control_bridge import bridge_tmux_control_to_websocket
@@ -8255,6 +8256,47 @@ def create_runner_app(
 
     resource_registry.set_terminal_activity_publisher(_publish_terminal_activity)
 
+    async def reconcile_session_terminals(session_id: str) -> list[dict[str, str]]:
+        """Re-observe live terminals and relaunch dead required terminals."""
+        states: list[dict[str, str]] = []
+        for terminal_id, lifecycle in resource_registry.lifecycles_for_session(session_id):
+            if await resource_registry.terminal_is_alive(session_id, terminal_id):
+                state = TerminalUiState.TERMINAL_RUNNING
+            elif lifecycle is TerminalLifecycle.AUXILIARY:
+                state = TerminalUiState.TERMINAL_EXITED
+            else:
+                _publish_event(
+                    session_id,
+                    {
+                        "type": "session.terminal_state",
+                        "conversation_id": session_id,
+                        "terminal_id": terminal_id,
+                        "state": TerminalUiState.TERMINAL_RELAUNCHING.value,
+                    },
+                )
+                try:
+                    await resource_registry.relaunch_required_terminal(session_id, terminal_id)
+                except Exception:
+                    _logger.exception(
+                        "Failed to relaunch required terminal: session=%s terminal=%s",
+                        session_id,
+                        terminal_id,
+                    )
+                    state = TerminalUiState.TERMINAL_FAILED
+                else:
+                    state = TerminalUiState.TERMINAL_RUNNING
+            event = {
+                "type": "session.terminal_state",
+                "conversation_id": session_id,
+                "terminal_id": terminal_id,
+                "state": state.value,
+            }
+            _publish_event(session_id, event)
+            states.append({"terminal_id": terminal_id, "state": state.value})
+        return states
+
+    app.state.reconcile_session_terminals = reconcile_session_terminals
+
     def _publish_session_status(session_id: str, status: str) -> None:
         """Publish a PTY-activity-derived ``session.status`` edge.
 
@@ -8763,7 +8805,9 @@ def create_runner_app(
         except Exception:  # noqa: BLE001
             return JSONResponse(
                 status_code=400,
-                content={"error": {"code": ErrorCode.INVALID_INPUT, "message": "invalid JSON body"}},
+                content={
+                    "error": {"code": ErrorCode.INVALID_INPUT, "message": "invalid JSON body"}
+                },
             )
         if not isinstance(body, dict):
             return JSONResponse(
@@ -8782,7 +8826,10 @@ def create_runner_app(
             return JSONResponse(
                 status_code=400,
                 content={
-                    "error": {"code": ErrorCode.INVALID_INPUT, "message": "session_id must be a non-empty string"}
+                    "error": {
+                        "code": ErrorCode.INVALID_INPUT,
+                        "message": "session_id must be a non-empty string",
+                    }
                 },
             )
         if not isinstance(workspace_id, str) or not workspace_id:
@@ -8798,7 +8845,12 @@ def create_runner_app(
         if not isinstance(kind, str) or not kind:
             return JSONResponse(
                 status_code=400,
-                content={"error": {"code": ErrorCode.INVALID_INPUT, "message": "kind must be a non-empty string"}},
+                content={
+                    "error": {
+                        "code": ErrorCode.INVALID_INPUT,
+                        "message": "kind must be a non-empty string",
+                    }
+                },
             )
         raw_mode = body.get("policy_mode", PolicyMode.MANUAL.value)
         try:
@@ -8806,7 +8858,9 @@ def create_runner_app(
         except ValueError:
             return JSONResponse(
                 status_code=400,
-                content={"error": {"code": ErrorCode.INVALID_INPUT, "message": "invalid policy_mode"}},
+                content={
+                    "error": {"code": ErrorCode.INVALID_INPUT, "message": "invalid policy_mode"}
+                },
             )
         gateway: LocalActionGateway = app.state.local_action_gateway
         try:
@@ -15728,6 +15782,12 @@ def create_runner_app(
             before=before,
             order=order,
         )
+
+    @app.post("/v1/sessions/{session_id}/resources/terminals/reconcile")
+    async def reconcile_session_terminals_route(session_id: str) -> JSONResponse:
+        """Reconcile terminal liveness after the runner tunnel reconnects."""
+        states = await reconcile_session_terminals(session_id)
+        return JSONResponse(content={"data": states})
 
     @app.post("/v1/sessions/{session_id}/resources/terminals")
     async def create_session_terminal(

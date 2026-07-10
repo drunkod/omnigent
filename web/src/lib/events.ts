@@ -453,6 +453,32 @@ export interface SessionStatusEvent {
   backgroundTaskCount?: number;
 }
 
+/** Shared remote-runner lifecycle vocabulary from ``TerminalUiState``. */
+export type TerminalUiState =
+  | "terminal_unknown"
+  | "terminal_starting"
+  | "terminal_running"
+  | "terminal_detached"
+  | "terminal_exited"
+  | "runner_offline"
+  | "runner_reconnected"
+  | "terminal_relaunching"
+  | "terminal_failed";
+
+export interface SessionRunnerStateEvent {
+  type: "session_runner_state";
+  conversationId: string;
+  runnerId: string;
+  state: Extract<TerminalUiState, "runner_offline" | "runner_reconnected">;
+}
+
+export interface SessionTerminalStateEvent {
+  type: "session_terminal_state";
+  conversationId: string;
+  terminalId: string;
+  state: Exclude<TerminalUiState, "runner_offline" | "runner_reconnected">;
+}
+
 /**
  * `session.usage` — token-usage update from a terminal-backed runtime.
  *
@@ -839,6 +865,8 @@ export type StreamEvent =
   | ElicitationResolved
   | PolicyDenied
   | SessionStatusEvent
+  | SessionRunnerStateEvent
+  | SessionTerminalStateEvent
   | SessionUsageEvent
   | SessionModelEvent
   | SessionReasoningEffortEvent
