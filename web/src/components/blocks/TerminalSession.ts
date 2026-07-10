@@ -15,6 +15,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { type ITheme, Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { codeFontFamilyForEditor, readCodeFont } from "@/lib/codeFontPreferences";
+import { ATTACH_CLOSE, stateFromAttachClose } from "@/lib/remoteRunner";
 
 // Card background colors derived from the app's CSS palette.
 // Light: --card: oklch(1.000 0 0) = pure white.
@@ -90,6 +91,9 @@ export type ConnectionState =
   | { kind: "connecting" }
   | { kind: "connected" }
   | { kind: "closed"; reason: string; code: number }
+  | { kind: "runner_offline" }
+  | { kind: "retry_with_pty" }
+  | { kind: "lifecycle"; state: Exclude<ReturnType<typeof stateFromAttachClose>, null> }
   | { kind: "error" };
 
 /**
@@ -445,6 +449,19 @@ export class TerminalSession {
     this.ws.addEventListener(
       "close",
       (ev) => {
+        const mapped = stateFromAttachClose(ev.code);
+        if (mapped === "runner_offline") {
+          onState({ kind: "runner_offline" });
+          return;
+        }
+        if (ev.code === ATTACH_CLOSE.TRANSPORT_UNSUPPORTED) {
+          onState({ kind: "retry_with_pty" });
+          return;
+        }
+        if (mapped) {
+          onState({ kind: "lifecycle", state: mapped });
+          return;
+        }
         onState({ kind: "closed", reason: ev.reason || `code ${ev.code}`, code: ev.code });
       },
       { signal },

@@ -66,19 +66,21 @@ afterEach(() => {
 });
 
 describe("buildAttachPath", () => {
-  it("addresses the terminal by resource id under /v1/sessions/.../resources/terminals", () => {
+  it("addresses the terminal by resource id and defaults to control transport", () => {
     expect(buildAttachPath("conv_abc", "terminal_bash_s1", false)).toBe(
-      "/v1/sessions/conv_abc/resources/terminals/terminal_bash_s1/attach",
+      "/v1/sessions/conv_abc/resources/terminals/terminal_bash_s1/attach?transport=control",
     );
   });
 
-  it("omits ?read_only when the flag is false (common case)", () => {
-    expect(buildAttachPath("conv_abc", "terminal_bash_s1", false).includes("?")).toBe(false);
+  it("omits read_only when the flag is false (common case)", () => {
+    expect(buildAttachPath("conv_abc", "terminal_bash_s1", false)).toBe(
+      "/v1/sessions/conv_abc/resources/terminals/terminal_bash_s1/attach?transport=control",
+    );
   });
 
   it("appends ?read_only=true when requested", () => {
     expect(buildAttachPath("conv_abc", "terminal_bash_s1", true)).toBe(
-      "/v1/sessions/conv_abc/resources/terminals/terminal_bash_s1/attach?read_only=true",
+      "/v1/sessions/conv_abc/resources/terminals/terminal_bash_s1/attach?transport=control&read_only=true",
     );
   });
 
@@ -94,9 +96,9 @@ describe("buildAttachPath", () => {
     expect(path).toContain("transport=control");
   });
 
-  it("omits ?transport when no override is given", () => {
-    expect(buildAttachPath("conv_abc", "terminal_bash_s1", false).includes("transport")).toBe(
-      false,
+  it("uses PTY when explicitly requested", () => {
+    expect(buildAttachPath("conv_abc", "terminal_bash_s1", false, "pty")).toContain(
+      "transport=pty",
     );
   });
 
@@ -138,13 +140,13 @@ describe("control-mode transport", () => {
     expect(screen.queryByTestId("terminal-selection-hint")).toBeNull();
   });
 
-  it("keeps the hint bar and PTY behavior by default (no transport prop)", async () => {
+  it("uses control behavior by default when no transport prop is supplied", async () => {
     render(<TerminalView sessionId="conv_abc" terminalId="terminal_bash_s1" />);
     await waitFor(() => expect(terminalSessionMock.instances).toHaveLength(1));
     const inst = terminalSessionMock.instances[0];
-    expect(inst.url).not.toContain("transport");
-    expect(inst.nativeSelection).toBe(false);
-    expect(screen.getByTestId("terminal-selection-hint")).toBeInTheDocument();
+    expect(inst.url).toContain("transport=control");
+    expect(inst.nativeSelection).toBe(true);
+    expect(screen.queryByTestId("terminal-selection-hint")).not.toBeInTheDocument();
   });
 });
 

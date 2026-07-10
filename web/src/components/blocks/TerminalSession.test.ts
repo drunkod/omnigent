@@ -333,6 +333,25 @@ describe("TerminalSession", () => {
     session.dispose();
   });
 
+  it.each([
+    [4503, { kind: "runner_offline" }],
+    [4404, { kind: "lifecycle", state: "terminal_exited" }],
+    [4405, { kind: "lifecycle", state: "terminal_detached" }],
+    [4406, { kind: "retry_with_pty" }],
+  ] as const)("maps attach close code %s to a lifecycle state", (code, expected) => {
+    const { states, socket, session } = makeSession();
+    socket.emit("close", { code, reason: "contract close" });
+    expect(states.at(-1)).toEqual(expected);
+    session.dispose();
+  });
+
+  it("keeps generic close codes on the generic closed path", () => {
+    const { states, socket, session } = makeSession();
+    socket.emit("close", { code: 1011, reason: "server error" });
+    expect(states.at(-1)).toEqual({ kind: "closed", reason: "server error", code: 1011 });
+    session.dispose();
+  });
+
   it("does not re-send a resize when the fitted size is unchanged", () => {
     // WHY: the WS-open handler and the ResizeObserver both drive sendResize on
     // mount, and jsdom's fit() yields a stable size, so without deduping the

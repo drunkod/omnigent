@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { resolveWebSocketUrl } from "@/lib/host";
+import { attachQuery } from "@/lib/remoteRunner";
 import { subscribeCodeFont } from "@/lib/codeFontPreferences";
 import {
   readTerminalThemeMode,
@@ -97,9 +98,12 @@ export function TerminalView({
 }: TerminalViewProps) {
   // Control mode: xterm owns the buffer + mouse, so plain drag selects and
   // the normal copy gesture works — no forced-selection modifier, no hint bar.
-  const controlMode = transport === "control";
   const [state, setState] = useState<ConnectionState>({ kind: "connecting" });
   const [connectAttempt, setConnectAttempt] = useState(0);
+  const [ptyFallback, setPtyFallback] = useState(false);
+  // Control mode: xterm owns the buffer + mouse, so plain drag selects and
+  // the normal copy gesture works. A PTY fallback restores tmux behavior.
+  const controlMode = !ptyFallback && transport !== "pty";
   const [resumeError, setResumeError] = useState<string | null>(null);
   // True between an unexpected close and the re-dial it scheduled, so
   // the overlay reads "Reconnecting…" instead of the dead-end
@@ -196,7 +200,7 @@ export function TerminalView({
         if (cancelled) return;
         terminalSession = new TerminalSession(
           node,
-          buildAttachUrl(sessionId, terminalId, readOnly, transport),
+          buildAttachUrl(sessionId, terminalId, readOnly, transport, ptyFallback),
           notifyState,
           isDarkRef.current,
           notifyActivity,
@@ -217,6 +221,7 @@ export function TerminalView({
       terminalId,
       readOnly,
       transport,
+      ptyFallback,
       controlMode,
       notifyState,
       notifyActivity,
@@ -299,6 +304,13 @@ export function TerminalView({
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [state, disposeActiveSession]);
+
+  useEffect(() => {
+    if (state.kind !== "retry_with_pty" || ptyFallback || transport === "pty") return;
+    setPtyFallback(true);
+    disposeActiveSession();
+    setConnectAttempt((attempt) => attempt + 1);
+  }, [state, ptyFallback, transport, disposeActiveSession]);
 
   return (
     <div
@@ -439,6 +451,11 @@ function StatusOverlay({
         </div>
       )}
       {state.kind === "error" && <span>Bridge error</span>}
+      {state.kind === "runner_offline" && <span>Runner offline</span>}
+      {state.kind === "retry_with_pty" && <span>Retrying with PTY…</span>}
+      {state.kind === "lifecycle" && (
+        <span>{state.state === "terminal_detached" ? "Terminal detached" : "Terminal exited"}</span>
+      )}
     </div>
   );
 }
@@ -476,17 +493,19 @@ export function buildAttachPath(
   sessionId: string,
   terminalId: string,
   readOnly: boolean,
-  transport?: string,
+  transport?: "control" | "pty",
+  ptyFallback = false,
 ): string {
   const path =
     `/v1/sessions/${encodeURIComponent(sessionId)}` +
     `/resources/terminals/${encodeURIComponent(terminalId)}/attach`;
-  // Only emit query params when set — the server defaults keep the common
-  // case's URLs short and stable for anything that greps the access log.
-  const params = new URLSearchParams();
-  if (readOnly) params.set("read_only", "true");
-  if (transport) params.set("transport", transport);
-  const qs = params.toString();
+  // Always make the selected transport explicit so the browser and server
+  // agree on the input/selection behavior for this attach.
+  const qs = attachQuery({
+    transports: transport === "pty" || ptyFallback ? ["pty"] : ["control", "pty"],
+    debugOverride: ptyFallback ? "pty" : transport,
+    readOnly,
+  });
   return qs ? `${path}?${qs}` : path;
 }
 
@@ -507,9 +526,12 @@ function buildAttachUrl(
   sessionId: string,
   terminalId: string,
   readOnly: boolean,
-  transport?: string,
+  transport?: "control" | "pty",
+  ptyFallback = false,
 ): string {
   // Delegates origin/prefix resolution to the embed host when present
   // (standalone falls back to the current page's origin).
-  return resolveWebSocketUrl(buildAttachPath(sessionId, terminalId, readOnly, transport));
+  return resolveWebSocketUrl(
+    buildAttachPath(sessionId, terminalId, readOnly, transport, ptyFallback),
+  );
 }
