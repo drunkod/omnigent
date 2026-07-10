@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -138,7 +137,11 @@ def test_write_file_manual_requests_approval_with_diff_and_writes(tmp_path: Path
         )
     )
 
-    assert result == {"path": "demo.txt", "bytes_written": len("after\n".encode()), "created": False}
+    assert result == {
+        "path": "demo.txt",
+        "bytes_written": len(b"after\n"),
+        "created": False,
+    }
     assert (root / "demo.txt").read_text(encoding="utf-8") == "after\n"
     assert [audit["status"] for audit in audits] == ["requested", "approved", "completed"]
     assert "-before" in str(approvals[0]["diff_preview"])
@@ -201,7 +204,6 @@ def test_write_file_fails_if_target_changes_while_approval_pending(tmp_path: Pat
     assert excinfo.value.code == ErrorCode.CONFLICT
     assert (root / "demo.txt").read_text(encoding="utf-8") == "external change\n"
     assert [audit["status"] for audit in audits] == ["requested", "approved", "failed"]
-
 
 
 def test_sensitive_path_blocks_before_resolution(tmp_path: Path) -> None:
@@ -273,7 +275,7 @@ def test_subprocess_env_filters_and_strips_runner_auth_secret() -> None:
 
 
 def test_truncate_output_is_utf8_safe() -> None:
-    text, truncated = truncate_output("snowman ☃".encode("utf-8"))
+    text, truncated = truncate_output("snowman ☃".encode())
 
     assert text == "snowman ☃"
     assert truncated is False

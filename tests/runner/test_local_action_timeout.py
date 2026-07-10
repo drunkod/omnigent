@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -74,7 +75,11 @@ def test_run_shell_timeout_raises_typed_error_and_audits_failure(
         return _FakeTimeoutProc()
 
     monkeypatch.setattr(local_actions_mod, "_SHELL_TIMEOUT_S", 0.001)
-    monkeypatch.setattr(local_actions_mod.asyncio, "create_subprocess_shell", _fake_create_subprocess_shell)
+    fake_asyncio = SimpleNamespace(
+        **{name: getattr(asyncio, name) for name in dir(asyncio) if not name.startswith("__")}
+    )
+    fake_asyncio.create_subprocess_shell = _fake_create_subprocess_shell
+    monkeypatch.setattr(local_actions_mod, "asyncio", fake_asyncio)
     monkeypatch.setattr(local_actions_mod, "_kill_process_group", lambda _pid: None)
 
     with pytest.raises(LocalActionTimeoutError) as excinfo:
