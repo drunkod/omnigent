@@ -219,6 +219,13 @@ export function TerminalView({
           notifyInput,
           controlMode,
         );
+        terminalSession.setInputEnabled(
+          runnerState === "online" &&
+            lifecycleTerminalState !== "terminal_exited" &&
+            lifecycleTerminalState !== "terminal_failed" &&
+            lifecycleTerminalState !== "terminal_detached" &&
+            lifecycleTerminalState !== "terminal_relaunching",
+        );
         sessionRef.current = terminalSession;
       });
       return () => {
@@ -238,6 +245,8 @@ export function TerminalView({
       notifyState,
       notifyActivity,
       notifyInput,
+      runnerState,
+      lifecycleTerminalState,
     ],
   );
 

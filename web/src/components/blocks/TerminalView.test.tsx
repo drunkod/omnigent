@@ -10,6 +10,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConnectionState } from "./TerminalSession";
+import { useTerminalLifecycleStore } from "@/store/terminalLifecycleStore";
 import {
   TerminalView,
   RECONNECT_BACKOFF_MS,
@@ -25,6 +26,7 @@ const terminalSessionMock = vi.hoisted(() => ({
     onState: (state: ConnectionState) => void;
     dispose: ReturnType<typeof vi.fn>;
     setTheme: ReturnType<typeof vi.fn>;
+    setInputEnabled: ReturnType<typeof vi.fn>;
   }>,
 }));
 
@@ -35,6 +37,7 @@ vi.mock("./TerminalSession", async (importOriginal) => ({
   TerminalSession: class {
     dispose = vi.fn();
     setTheme = vi.fn();
+    setInputEnabled = vi.fn();
 
     constructor(
       _container: HTMLDivElement,
@@ -51,6 +54,7 @@ vi.mock("./TerminalSession", async (importOriginal) => ({
         onState,
         dispose: this.dispose,
         setTheme: this.setTheme,
+        setInputEnabled: this.setInputEnabled,
       });
     }
   },
@@ -58,6 +62,7 @@ vi.mock("./TerminalSession", async (importOriginal) => ({
 
 beforeEach(() => {
   terminalSessionMock.instances = [];
+  useTerminalLifecycleStore.setState({ byConversation: {} });
 });
 
 afterEach(() => {
@@ -151,6 +156,38 @@ describe("control-mode transport", () => {
 });
 
 describe("closed bridge overlay", () => {
+  it("keeps the terminal usable and undimmed for a healthy running lifecycle", async () => {
+    useTerminalLifecycleStore.getState().applyTerminalState({
+      type: "session_terminal_state",
+      conversationId: "conv_abc",
+      terminalId: "terminal_bash_s1",
+      state: "terminal_running",
+    });
+    render(<TerminalView sessionId="conv_abc" terminalId="terminal_bash_s1" transport="control" />);
+    await waitFor(() => expect(terminalSessionMock.instances).toHaveLength(1));
+    act(() => terminalSessionMock.instances[0].onState({ kind: "connected" }));
+
+    expect(screen.queryByText("Relaunching terminal…")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("terminal-runner-offline")).not.toBeInTheDocument();
+  });
+
+  it("keeps the terminal mounted and disables input while the runner is offline", async () => {
+    useTerminalLifecycleStore.getState().applyRunnerState({
+      type: "session_runner_state",
+      conversationId: "conv_abc",
+      runnerId: "runner_1",
+      state: "runner_offline",
+    });
+    render(<TerminalView sessionId="conv_abc" terminalId="terminal_bash_s1" transport="control" />);
+    await waitFor(() => expect(terminalSessionMock.instances).toHaveLength(1));
+    await waitFor(() =>
+      expect(terminalSessionMock.instances[0].setInputEnabled).toHaveBeenCalledWith(false),
+    );
+
+    expect(screen.getByTestId("terminal-runner-offline")).toHaveTextContent("Session is preserved");
+    expect(terminalSessionMock.instances).toHaveLength(1);
+  });
+
   it("renders a resume button beside the closed message and invokes the callback", async () => {
     const onResume = vi.fn().mockResolvedValue(undefined);
     render(<TerminalView sessionId="conv_abc" terminalId="terminal_bash_s1" onResume={onResume} />);
