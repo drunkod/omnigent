@@ -88,7 +88,7 @@ describe("TerminalView lifecycle recovery", () => {
     expect(terminalSessionMock.instances[0].dispose).toHaveBeenCalledOnce();
   });
 
-  it("offers a working Attach action for a detached terminal", async () => {
+  it("offers a working Attach action and clears a stale detached overlay", async () => {
     await renderAndAttach("control");
     act(() => {
       useTerminalLifecycleStore.getState().applyTerminalState({
@@ -102,9 +102,12 @@ describe("TerminalView lifecycle recovery", () => {
     fireEvent.click(screen.getByRole("button", { name: "Attach" }));
 
     await waitFor(() => expect(terminalSessionMock.instances).toHaveLength(2));
+    act(() => terminalSessionMock.instances[1].onState({ kind: "connected" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Attach" })).toBeNull());
+    expect(terminalSessionMock.instances[1].setInputEnabled).toHaveBeenLastCalledWith(true);
   });
 
-  it("offers a working Retry action for a failed terminal", async () => {
+  it("offers a working Retry action and clears a stale failed overlay", async () => {
     await renderAndAttach("control");
     act(() => {
       useTerminalLifecycleStore.getState().applyTerminalState({
@@ -118,6 +121,9 @@ describe("TerminalView lifecycle recovery", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
     await waitFor(() => expect(terminalSessionMock.instances).toHaveLength(2));
+    act(() => terminalSessionMock.instances[1].onState({ kind: "connected" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Retry" })).toBeNull());
+    expect(terminalSessionMock.instances[1].setInputEnabled).toHaveBeenLastCalledWith(true);
   });
 
   it("renders one preserved-session message when both SSE and close code report offline", async () => {
