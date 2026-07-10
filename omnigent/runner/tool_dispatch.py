@@ -49,7 +49,7 @@ from omnigent.model_override import (
     normalize_model_for_provider,
     validate_model_override,
 )
-from omnigent.runner.local_actions import LocalActionGateway
+from omnigent.runner.local_actions import LocalActionGateway, LocalActionTimeoutError
 from omnigent.runner.workspace_policy import PolicyMode
 from omnigent.native_coding_agents import public_agent_name
 from omnigent.runtime import pending_elicitations
@@ -4625,6 +4625,7 @@ async def dispatch_tool_locally(
     session_async_tasks: dict[str, tuple[asyncio.Task[str], asyncio.Event]] | None = None,
     publish_event: Callable[[str, dict[str, Any]], None] | None = None,
     filesystem_registry: FilesystemRegistry | None = None,
+    local_action_gateway: LocalActionGateway | None = None,
 ) -> str:
     """Execute a tool locally and PATCH the result to the harness.
 
@@ -4644,6 +4645,9 @@ async def dispatch_tool_locally(
         file modifications. Forwarded to ``execute_tool`` so that
         ``sys_os_write`` and ``sys_os_edit`` calls record changed paths
         for the ``GET …/changes`` endpoint.
+    :param local_action_gateway: Runner-local action gateway. Required for
+        sessions label-bound to a local-runner workspace; ``None`` keeps
+        legacy OSEnvironment dispatch for unbound sessions.
     :param resource_registry: Optional session-resource registry used to
         observe tool-launched terminals.
     :returns: The tool output string.
@@ -4666,6 +4670,7 @@ async def dispatch_tool_locally(
         harness_client=harness_client,
         filesystem_registry=filesystem_registry,
         publish_event=publish_event,
+        local_action_gateway=local_action_gateway,
     )
 
     # A file-mutating tool just ran — nudge the web to refetch the
@@ -5011,7 +5016,7 @@ async def _execute_os_env_tool(
                     }
                 )
         except OmnigentError as exc:
-            if tool_name == SysOsShellTool.name() and exc.code == ErrorCode.INTERNAL_ERROR and str(exc) == "command timed out":
+            if tool_name == SysOsShellTool.name() and isinstance(exc, LocalActionTimeoutError):
                 cwd = args.get("cwd", ".")
                 if not isinstance(cwd, str) or not cwd:
                     cwd = "."

@@ -14679,6 +14679,7 @@ def create_runner_app(
                                                     ),
                                                     publish_event=_publish_event,
                                                     filesystem_registry=filesystem_registry,
+                                                    local_action_gateway=app.state.local_action_gateway,
                                                 )
                                             )
                                         )
