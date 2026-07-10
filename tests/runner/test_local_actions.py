@@ -138,7 +138,7 @@ def test_write_file_manual_requests_approval_with_diff_and_writes(tmp_path: Path
         )
     )
 
-    assert result == {"path": "demo.txt", "bytes_written": len("after\n".encode())}
+    assert result == {"path": "demo.txt", "bytes_written": len("after\n".encode()), "created": False}
     assert (root / "demo.txt").read_text(encoding="utf-8") == "after\n"
     assert [audit["status"] for audit in audits] == ["requested", "approved", "completed"]
     assert "-before" in str(approvals[0]["diff_preview"])

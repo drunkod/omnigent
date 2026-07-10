@@ -52,10 +52,11 @@ def test_risky_shell_patterns_ask_even_in_auto(command: str) -> None:
     assert verdict.decision is Decision.ASK
 
 
-def test_plain_shell_auto_allowed_manual_and_assisted_ask() -> None:
-    assert classify_shell("pytest -q", mode=PolicyMode.AUTO).decision is Decision.ALLOW
-    assert classify_shell("pytest -q", mode=PolicyMode.MANUAL).decision is Decision.ASK
-    assert classify_shell("pytest -q", mode=PolicyMode.ASSISTED).decision is Decision.ASK
+def test_plain_shell_asks_in_every_mode() -> None:
+    # Shell is never auto-approved: the command string can reference
+    # paths outside the workspace regardless of the resolved cwd.
+    for mode in PolicyMode:
+        assert classify_shell("pytest -q", mode=mode).decision is Decision.ASK
 
 
 def test_unparseable_shell_asks() -> None:

@@ -192,8 +192,11 @@ def classify_shell(command: str, *, mode: PolicyMode, cwd: str | None = None) ->
     except ValueError:
         return Verdict(Decision.ASK, tuple(flags) + ("unparseable",), "unparseable command")
 
-    if mode is PolicyMode.AUTO and len(flags) == 1:
-        return Verdict(Decision.ALLOW, tuple(flags), "auto mode: in-workspace shell")
+    # Shell escapes path-level containment: only cwd is resolved through
+    # the workspace registry, while the command itself can reference any
+    # absolute path. Without a sandbox or a path-aware parser, AUTO must
+    # not auto-approve arbitrary commands — every shell action asks.
+    # AUTO only widens gateway file writes (see classify_action).
     return Verdict(Decision.ASK, tuple(flags), f"{mode.value} mode: shell requires approval")
 
 

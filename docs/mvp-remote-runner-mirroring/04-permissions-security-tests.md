@@ -39,7 +39,8 @@ Do not enable by default in MVP.
 
 Rules:
 
-- Allow writes and shell commands only inside workspace.
+- Auto-approve in-workspace file writes.
+- Ask before every shell command until shell execution is sandboxed.
 - Ask for destructive/risky commands.
 - Block workspace escapes, secret access, global installs, history rewrites, and system path modifications by default.
 
