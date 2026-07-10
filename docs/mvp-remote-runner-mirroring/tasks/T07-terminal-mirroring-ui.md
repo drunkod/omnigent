@@ -21,6 +21,6 @@
 - [ ] Lifecycle events update a per-conversation store; cross-conversation frames ignored (step-01).
 - [ ] Attach uses `transport=control` when advertised; `pty` fallback + one 4406 retry (step-02).
 - [ ] 4503/4404/4405 map to offline/exited/detached UI states, not generic failure (step-02).
-- [ ] Offline/reconnect keeps xterm buffer; input gated; re-dial on `runner_reconnected` (step-03).
+- [ ] Offline/reconnect keeps xterm buffer; input gated; refresh-while-offline reattaches after `terminal_running` (step-03).
 - [ ] Runner badge with "session is preserved" recovery copy; never implies loss (step-04).
-- [ ] SSE parser + store + attach-client + component tests, e2e offline/reconnect flow (step-05).
+- [ ] SSE parser + store + attach-client + component tests and documented live offline/reconnect QA; Playwright deferred explicitly (step-05).
