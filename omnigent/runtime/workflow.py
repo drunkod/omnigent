@@ -294,6 +294,44 @@ def _get_runner_client_for_compaction(
     return routed.client if routed else None
 
 
+async def _dispatch_local_action(
+    conversation_id: str,
+    runner_router: Any,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """Route one local action to the session's bound runner.
+
+    :param conversation_id: Conversation/session id, e.g. ``"conv_abc123"``.
+    :param runner_router: Runner router with ``client_for_session_resources``.
+    :param payload: JSON payload for ``POST /v1/runner/local-actions``.
+    :returns: Decoded success body from the runner.
+    :raises OmnigentError: If the runner returns an error response.
+    """
+    routed = runner_router.client_for_session_resources(conversation_id)
+    resp = await routed.client.post("/v1/runner/local-actions", json=payload)
+    if resp.status_code >= 400:
+        detail: dict[str, Any] = {}
+        with_json = resp.headers.get("content-type", "")
+        if "application/json" in with_json.lower():
+            try:
+                body = resp.json()
+            except Exception:  # noqa: BLE001
+                body = {}
+            detail = body.get("error", {}) if isinstance(body, dict) else {}
+        message = (
+            detail.get("message")
+            if isinstance(detail, dict)
+            else None
+        ) or "local action failed"
+        raw_code = detail.get("code") if isinstance(detail, dict) else None
+        code = raw_code if isinstance(raw_code, str) and raw_code else ErrorCode.INTERNAL_ERROR
+        raise OmnigentError(message, code=code)
+    data = resp.json()
+    if not isinstance(data, dict):
+        raise OmnigentError("local action failed", code=ErrorCode.INTERNAL_ERROR)
+    return data
+
+
 def configure_agent_harness_with_ucode(
     env: dict[str, str],
     profile: str | None,

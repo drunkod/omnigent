@@ -306,6 +306,108 @@ async def test_terminal_lifecycle_cannot_change_after_observe(tmp_path: Path) ->
 
 
 @pytest.mark.asyncio
+async def test_failed_required_relaunch_remains_visible_for_retry() -> None:
+    """A failed reconnect relaunch must be retried on the next reconciliation."""
+    terminal_registry = TerminalRegistry()
+    registry = SessionResourceRegistry(terminal_registry=terminal_registry)
+    key = ("conv_retry", "terminal_bash_main")
+    registry._terminal_lifecycles[key] = TerminalLifecycle.REQUIRED
+    registry._terminal_launch_specs[key] = {
+        "session_id": "conv_retry",
+        "terminal_name": "bash",
+        "session_key": "main",
+        "spec": SimpleNamespace(),
+    }
+
+    async def _fail_launch(**_kwargs: object) -> object:
+        raise RuntimeError("workspace unavailable")
+
+    registry.launch_required_terminal = _fail_launch  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match="workspace unavailable"):
+        await registry.relaunch_required_terminal("conv_retry", "terminal_bash_main")
+
+    assert registry.lifecycles_for_session("conv_retry") == [
+        ("terminal_bash_main", TerminalLifecycle.REQUIRED)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_failed_relaunch_does_not_resurrect_after_cleanup() -> None:
+    """Cleanup racing a failed relaunch must not leave a ghost lifecycle."""
+    terminal_registry = TerminalRegistry()
+    registry = SessionResourceRegistry(terminal_registry=terminal_registry)
+    key = ("conv_cleanup", "terminal_bash_main")
+    registry._terminal_lifecycles[key] = TerminalLifecycle.REQUIRED
+    registry._terminal_launch_specs[key] = {
+        "session_id": "conv_cleanup",
+        "terminal_name": "bash",
+        "session_key": "main",
+        "spec": SimpleNamespace(),
+    }
+
+    async def _cleanup_then_fail(**_kwargs: object) -> object:
+        await registry.cleanup_session("conv_cleanup")
+        raise RuntimeError("workspace unavailable")
+
+    registry.launch_required_terminal = _cleanup_then_fail  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match="workspace unavailable"):
+        await registry.relaunch_required_terminal("conv_cleanup", "terminal_bash_main")
+
+    assert registry.lifecycles_for_session("conv_cleanup") == []
+
+
+@pytest.mark.asyncio
+async def test_reconcile_publishes_self_describing_terminal_states() -> None:
+    """Reconcile emits browser-routable relaunch and final state events."""
+    from omnigent.runner import app as runner_app_module
+    from omnigent.runner import create_runner_app
+    from tests.runner.helpers import NullServerClient
+
+    terminal_registry = TerminalRegistry()
+    registry = SessionResourceRegistry(terminal_registry=terminal_registry)
+    key = ("conv_events", "terminal_bash_main")
+    registry._terminal_lifecycles[key] = TerminalLifecycle.REQUIRED
+    registry._terminal_launch_specs[key] = {
+        "session_id": "conv_events",
+        "terminal_name": "bash",
+        "session_key": "main",
+        "spec": SimpleNamespace(),
+    }
+
+    async def _dead_terminal(*_args: object) -> bool:
+        return False
+
+    async def _relaunch(*_args: object, **_kwargs: object) -> object:
+        return SimpleNamespace(id="terminal_bash_main")
+
+    registry.terminal_is_alive = _dead_terminal  # type: ignore[method-assign]
+    registry.relaunch_required_terminal = _relaunch  # type: ignore[method-assign]
+    runner_app_module._session_event_queues_ref.pop("conv_events", None)
+    app = create_runner_app(
+        resource_registry=registry,
+        server_client=NullServerClient(),  # type: ignore[arg-type]
+    )
+
+    try:
+        states = await app.state.reconcile_session_terminals("conv_events")
+        events = []
+        queue = runner_app_module._session_event_queues_ref["conv_events"]
+        while not queue.empty():
+            events.append(queue.get_nowait())
+
+        assert states == [{"terminal_id": "terminal_bash_main", "state": "terminal_running"}]
+        assert [event["state"] for event in events] == [
+            "terminal_relaunching",
+            "terminal_running",
+        ]
+        assert all(event["conversation_id"] == "conv_events" for event in events)
+    finally:
+        runner_app_module._session_event_queues_ref.pop("conv_events", None)
+
+
+@pytest.mark.asyncio
 async def test_auxiliary_terminal_exit_publishes_resource_exit_only(tmp_path: Path) -> None:
     """Auxiliary terminal exit is reported with auxiliary lifecycle metadata."""
     terminal_registry = TerminalRegistry()

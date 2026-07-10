@@ -26,6 +26,7 @@ import logging
 import mimetypes
 import os
 import tempfile
+import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -37,6 +38,7 @@ if TYPE_CHECKING:
 
 import httpx
 
+from omnigent.errors import ErrorCode, OmnigentError
 from omnigent._wrapper_labels import (
     CLAUDE_NATIVE_WRAPPER_VALUE,
     CODEX_NATIVE_WRAPPER_VALUE,
@@ -48,6 +50,8 @@ from omnigent.model_override import (
     normalize_model_for_provider,
     validate_model_override,
 )
+from omnigent.runner.local_actions import LocalActionGateway, LocalActionTimeoutError
+from omnigent.runner.workspace_policy import PolicyMode
 from omnigent.native_coding_agents import public_agent_name
 from omnigent.runtime import pending_elicitations
 from omnigent.session_lifecycle import (
@@ -107,6 +111,10 @@ _SUBAGENT_POLICY_STATUSES = frozenset({"completed", "failed"})
 _SUBAGENT_INBOX_TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
 _SUBAGENT_POLICY_FAILURE_OUTPUT = "[Result suppressed by policy: policy evaluation failed]"
 _SESSION_WRAPPER_LABEL_KEY = "omnigent.wrapper"
+_LOCAL_RUNNER_EXECUTION_MODE = "local_runner"
+_EXECUTION_MODE_LABEL_KEY = "omnigent.execution_mode"
+_WORKSPACE_ID_LABEL_KEY = "omnigent.workspace_id"
+_LOCAL_RUNNER_POLICY_LABEL_KEY = "omnigent.local_runner_policy"
 # Read budget for runner→server message-send POSTs that are gated at the
 # recipient's REQUEST phase, which can PARK behind a human-approval ASK gate
 # (e.g. session_cost_budget) for the deciding policy's ``ask_timeout``. Held at
@@ -156,6 +164,30 @@ class _SubagentInboxEvaluation:
 
     payload: dict[str, Any]
     retry_original: bool = False
+
+
+@dataclass(frozen=True)
+class _LocalRunnerBinding:
+    """Cached local-runner binding verdict for one session."""
+
+    status: str
+    workspace_id: str | None = None
+    mode: PolicyMode = PolicyMode.MANUAL
+
+
+# Bindings are cached briefly so a burst of sys_os_* calls in one turn
+# doesn't refetch session labels, while label edits (e.g. a policy
+# preset change) take effect on the next action after the TTL.
+_LOCAL_RUNNER_BINDING_TTL_S = 5.0
+_LOCAL_RUNNER_BINDINGS: dict[str, tuple[_LocalRunnerBinding, float]] = {}
+
+
+def reset_local_runner_binding_cache(conversation_id: str | None = None) -> None:
+    """Drop cached binding state for one session, or all sessions."""
+    if conversation_id is None:
+        _LOCAL_RUNNER_BINDINGS.clear()
+    else:
+        _LOCAL_RUNNER_BINDINGS.pop(conversation_id, None)
 
 
 # ── Tool sets (Phase 0 reorganization) ─────────────────────
@@ -4307,6 +4339,7 @@ async def execute_tool(
     harness_client: httpx.AsyncClient | None = None,
     publish_event: Callable[[str, dict[str, Any]], None] | None = None,
     filesystem_registry: FilesystemRegistry | None = None,
+    local_action_gateway: LocalActionGateway | None = None,
 ) -> str:
     """
     Execute a tool and return the output string.
@@ -4352,6 +4385,8 @@ async def execute_tool(
                 conversation_id=conversation_id,
                 runner_workspace=runner_workspace,
                 filesystem_registry=filesystem_registry,
+                server_client=server_client,
+                local_action_gateway=local_action_gateway,
             )
         elif tool_name in _REST_TOOLS:
             output = await _execute_rest_tool(
@@ -4603,6 +4638,7 @@ async def dispatch_tool_locally(
     session_async_tasks: dict[str, tuple[asyncio.Task[str], asyncio.Event]] | None = None,
     publish_event: Callable[[str, dict[str, Any]], None] | None = None,
     filesystem_registry: FilesystemRegistry | None = None,
+    local_action_gateway: LocalActionGateway | None = None,
 ) -> str:
     """Execute a tool locally and PATCH the result to the harness.
 
@@ -4622,6 +4658,9 @@ async def dispatch_tool_locally(
         file modifications. Forwarded to ``execute_tool`` so that
         ``sys_os_write`` and ``sys_os_edit`` calls record changed paths
         for the ``GET …/changes`` endpoint.
+    :param local_action_gateway: Runner-local action gateway. Required for
+        sessions label-bound to a local-runner workspace; ``None`` keeps
+        legacy OSEnvironment dispatch for unbound sessions.
     :param resource_registry: Optional session-resource registry used to
         observe tool-launched terminals.
     :returns: The tool output string.
@@ -4644,6 +4683,7 @@ async def dispatch_tool_locally(
         harness_client=harness_client,
         filesystem_registry=filesystem_registry,
         publish_event=publish_event,
+        local_action_gateway=local_action_gateway,
     )
 
     # A file-mutating tool just ran — nudge the web to refetch the
@@ -4839,6 +4879,8 @@ async def _execute_os_env_tool(
     conversation_id: str | None = None,
     runner_workspace: Path | None = None,
     filesystem_registry: FilesystemRegistry | None = None,
+    server_client: httpx.AsyncClient | None = None,
+    local_action_gateway: LocalActionGateway | None = None,
 ) -> str:
     """
     Execute sys_os_* through a runner-local OSEnvironment.
@@ -4859,7 +4901,149 @@ async def _execute_os_env_tool(
         session.
     :returns: Serialized tool result string.
     """
-    from omnigent.inner.os_env import _DEFAULT_READ_LIMIT, create_os_environment
+    from omnigent.inner.os_env import _DEFAULT_READ_LIMIT, _normalize_edits, create_os_environment
+
+    binding = await _local_runner_workspace_binding(server_client, conversation_id)
+    if binding.status == "indeterminate":
+        return json.dumps({"error": "cannot verify session execution mode; retry"})
+    if binding.status == "bound":
+        if local_action_gateway is None or conversation_id is None or binding.workspace_id is None:
+            return json.dumps({"error": "local action gateway unavailable for bound local-runner session"})
+        try:
+            if tool_name == SysOsReadTool.name():
+                offset = args.get("offset", 1)
+                if not isinstance(offset, int) or offset < 1:
+                    return json.dumps({"error": "offset must be >= 1"})
+                limit = args.get("limit", _DEFAULT_READ_LIMIT)
+                if limit is not None and (not isinstance(limit, int) or limit < 1):
+                    return json.dumps({"error": "limit must be >= 1"})
+                gateway_result = await local_action_gateway.read_file(
+                    session_id=conversation_id,
+                    workspace_id=binding.workspace_id,
+                    path=args.get("path", ""),
+                    mode=binding.mode,
+                )
+                text = str(gateway_result.get("content", ""))
+                lines = text.splitlines(keepends=True)
+                start = offset - 1
+                effective_limit = len(lines) if limit is None else limit
+                resolved_limit = min(len(lines), start + effective_limit)
+                return json.dumps(
+                    {
+                        "path": args.get("path", ""),
+                        "content": "".join(lines[start:resolved_limit]),
+                        "encoding": "utf-8",
+                        "offset": offset,
+                        "limit": effective_limit,
+                        "returned_lines": max(0, resolved_limit - start),
+                        "total_lines": len(lines),
+                    }
+                )
+            if tool_name == SysOsWriteTool.name():
+                path = args.get("path", "")
+                gateway_result = await local_action_gateway.write_file(
+                    session_id=conversation_id,
+                    workspace_id=binding.workspace_id,
+                    path=path,
+                    content=args.get("content", ""),
+                    mode=binding.mode,
+                )
+                return json.dumps(
+                    {
+                        "path": path,
+                        "bytes_written": gateway_result.get("bytes_written", 0),
+                        "created": gateway_result.get("created", False),
+                    }
+                )
+            if tool_name == SysOsEditTool.name():
+                path = args.get("path", "")
+                read_result = await local_action_gateway.read_file(
+                    session_id=conversation_id,
+                    workspace_id=binding.workspace_id,
+                    path=path,
+                    mode=binding.mode,
+                )
+                original = str(read_result.get("content", ""))
+                try:
+                    replacements = _normalize_edits(
+                        args.get("oldText") if isinstance(args.get("oldText"), str) else None,
+                        args.get("newText") if isinstance(args.get("newText"), str) else None,
+                        args.get("edits"),
+                    )
+                except ValueError as exc:
+                    return json.dumps({"error": str(exc)})
+                updated = original
+                applied = 0
+                for edit in replacements:
+                    before = edit["oldText"]
+                    after = edit["newText"]
+                    count = updated.count(before)
+                    if count == 0:
+                        return json.dumps({"error": f"Could not find oldText in '{path}': {before[:80]!r}"})
+                    if count > 1:
+                        return json.dumps(
+                            {"error": f"oldText matched {count} locations in '{path}'; provide a more specific edit."}
+                        )
+                    updated = updated.replace(before, after, 1)
+                    applied += 1
+                write_result = await local_action_gateway.write_file(
+                    session_id=conversation_id,
+                    workspace_id=binding.workspace_id,
+                    path=path,
+                    content=updated,
+                    mode=binding.mode,
+                )
+                return json.dumps(
+                    {
+                        "path": path,
+                        "replacements": applied,
+                        "bytes_written": write_result.get("bytes_written", 0),
+                    }
+                )
+            if tool_name == SysOsShellTool.name():
+                cwd = args.get("cwd", ".")
+                if not isinstance(cwd, str) or not cwd:
+                    cwd = "."
+                gateway_result = await local_action_gateway.run_shell(
+                    session_id=conversation_id,
+                    workspace_id=binding.workspace_id,
+                    command=args.get("command", ""),
+                    cwd=cwd,
+                    mode=binding.mode,
+                )
+                exit_code = gateway_result.get("exit_code")
+                error_payload: dict[str, str] = {}
+                if exit_code not in (0, None):
+                    stderr_text = gateway_result.get("stderr")
+                    stdout_text = gateway_result.get("stdout")
+                    message_text = str(stderr_text or stdout_text or "").strip()
+                    error_payload = {"error": f"Command exited with status {exit_code}: {message_text}"}
+                return json.dumps(
+                    {
+                        "stdout": gateway_result.get("stdout", ""),
+                        "stderr": gateway_result.get("stderr", ""),
+                        "exit_code": exit_code,
+                        "timed_out": False,
+                        "cwd": cwd,
+                        **error_payload,
+                    }
+                )
+        except OmnigentError as exc:
+            if tool_name == SysOsShellTool.name() and isinstance(exc, LocalActionTimeoutError):
+                cwd = args.get("cwd", ".")
+                if not isinstance(cwd, str) or not cwd:
+                    cwd = "."
+                return json.dumps(
+                    {
+                        "stdout": "",
+                        "stderr": "",
+                        "exit_code": None,
+                        "timed_out": True,
+                        "cwd": cwd,
+                        "error": str(exc),
+                    }
+                )
+            return json.dumps({"error": str(exc)})
 
     os_env = None
     try:
@@ -4918,6 +5102,57 @@ async def _execute_os_env_tool(
             os_env.close()
 
     return json.dumps(result)
+
+
+async def _local_runner_workspace_binding(
+    server_client: httpx.AsyncClient | None,
+    conversation_id: str | None,
+) -> _LocalRunnerBinding:
+    """Return the local-runner binding state for one session.
+
+    Verdicts are cached for ``_LOCAL_RUNNER_BINDING_TTL_S`` so label
+    changes (execution mode, workspace, policy) apply to future actions
+    without a runner restart. Indeterminate results are never cached.
+    """
+    if server_client is None or conversation_id is None:
+        return _LocalRunnerBinding(status="unbound")
+    cached = _LOCAL_RUNNER_BINDINGS.get(conversation_id)
+    if cached is not None:
+        binding, expires_at = cached
+        if time.monotonic() < expires_at:
+            return binding
+        _LOCAL_RUNNER_BINDINGS.pop(conversation_id, None)
+
+    def _store(binding: _LocalRunnerBinding) -> _LocalRunnerBinding:
+        _LOCAL_RUNNER_BINDINGS[conversation_id] = (
+            binding,
+            time.monotonic() + _LOCAL_RUNNER_BINDING_TTL_S,
+        )
+        return binding
+
+    try:
+        resp = await server_client.get(f"/v1/sessions/{conversation_id}", timeout=10.0)
+    except Exception:
+        return _LocalRunnerBinding(status="indeterminate")
+    if resp.status_code != 200:
+        return _LocalRunnerBinding(status="indeterminate")
+    body = resp.json()
+    if not isinstance(body, dict):
+        return _LocalRunnerBinding(status="indeterminate")
+    labels = body.get("labels")
+    if not isinstance(labels, dict):
+        return _store(_LocalRunnerBinding(status="unbound"))
+    if labels.get(_EXECUTION_MODE_LABEL_KEY) != _LOCAL_RUNNER_EXECUTION_MODE:
+        return _store(_LocalRunnerBinding(status="unbound"))
+    workspace_id = labels.get(_WORKSPACE_ID_LABEL_KEY)
+    if not isinstance(workspace_id, str) or not workspace_id:
+        return _LocalRunnerBinding(status="indeterminate")
+    raw_mode = labels.get(_LOCAL_RUNNER_POLICY_LABEL_KEY, PolicyMode.MANUAL.value)
+    try:
+        mode = raw_mode if isinstance(raw_mode, PolicyMode) else PolicyMode(str(raw_mode))
+    except ValueError:
+        mode = PolicyMode.MANUAL
+    return _store(_LocalRunnerBinding(status="bound", workspace_id=workspace_id, mode=mode))
 
 
 # ── REST-backed tools (Phase 1) ──────────────────────────

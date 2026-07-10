@@ -8,7 +8,7 @@ writes. Spec types (what the parser consumes and emits) live in
 :mod:`omnigent.spec.types`; runtime evaluation types live
 here.
 
-Three types live in this module:
+Four types live in this module:
 
 - :class:`EvaluationContext` — what the caller hands to the
   engine on each enforcement call (phase + content +
@@ -20,6 +20,8 @@ Three types live in this module:
   elicitation. Carries the human-readable message plus the
   policy-context fields the renderer needs (phase,
   policy_name, content_preview).
+- :class:`PolicyMode` — local-runner action mode shared by
+  server policy resolution and runner-side gateway enforcement.
 
 Agent-author Python callables import :class:`EvaluationContext`
 and :class:`PolicyResult` from here (or from the
@@ -29,6 +31,7 @@ and :class:`PolicyResult` from here (or from the
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 from omnigent.spec.types import Phase, PolicyAction, StateUpdate
@@ -59,6 +62,18 @@ if TYPE_CHECKING:
 # (``omnigent.runner.app`` and ``omnigent.runtime.harnesses._scaffold``)
 # can't drift if the set of fail-closed phases changes.
 FAIL_CLOSED_PHASES: tuple[str, ...] = ("PHASE_TOOL_CALL", "PHASE_REQUEST")
+
+
+class PolicyMode(str, Enum):
+    """Local-runner action policy mode shared by server and runner code.
+
+    The string values are serialized in local-action audit records and request
+    payloads, so they are part of the API contract.
+    """
+
+    MANUAL = "manual"
+    ASSISTED = "assisted"
+    AUTO = "auto"
 
 
 @dataclass(frozen=True)
@@ -138,10 +153,10 @@ class EvaluationContext:
         yet."
     :param subtree_usage: Subtree-scoped cumulative LLM cost for
         this conversation and its descendants only (not the whole
-        session tree). Same shape as ``usage``. Injected by the
-        engine ONLY when a ``subagent_cost_budget`` policy is
-        configured — ``None`` otherwise, so sessions without that
-        policy pay no subtree-cost lookup. Surfaced as
+        session). Same shape as ``usage``. Injected by the engine
+        ONLY when a ``subagent_cost_budget`` policy is configured
+        — ``None`` otherwise, so sessions without that policy pay
+        no subtree-cost lookup. Surfaced as
         ``event["context"]["subtree_usage"]`` to the callable.
     :param user_daily_cost: The session owner's per-UTC-day cost
         rollup, shape
@@ -397,5 +412,6 @@ __all__ = [
     "ElicitationRequest",
     "EvaluationContext",
     "PolicyLLMClient",
+    "PolicyMode",
     "PolicyResult",
 ]

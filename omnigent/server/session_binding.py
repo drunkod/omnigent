@@ -18,6 +18,7 @@ LOCAL_RUNNER_EXECUTION_MODE = "local_runner"
 EXECUTION_MODE_LABEL_KEY = "omnigent.execution_mode"
 WORKSPACE_ID_LABEL_KEY = "omnigent.workspace_id"
 WORKSPACE_LABEL_LABEL_KEY = "omnigent.workspace_label"
+LOCAL_RUNNER_POLICY_LABEL_KEY = "omnigent.local_runner_policy"
 
 
 class RunnerHelloLike(Protocol):

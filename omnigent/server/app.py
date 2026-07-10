@@ -1998,6 +1998,23 @@ def create_app(
     )
 
     # ── Tunnel lifecycle callbacks (Step 8.5 crash recovery) ───
+    def _publish_runner_lifecycle_event(
+        session_id: str,
+        event_type: str,
+        payload: dict[str, Any],
+    ) -> None:
+        """Publish a reconnect lifecycle event onto the session stream."""
+        from omnigent.runtime import session_stream
+
+        session_stream.publish(
+            session_id,
+            {
+                "type": event_type,
+                "conversation_id": session_id,
+                **payload,
+            },
+        )
+
     async def _on_runner_disconnect(runner_id: str) -> None:
         """Mark sessions pinned to *this* runner as offline.
 
@@ -2056,6 +2073,11 @@ def create_app(
         for session_id in affected:
             _session_status_cache[session_id] = "failed"
             _publish_status(session_id, "failed")
+            _publish_runner_lifecycle_event(
+                session_id,
+                "session.runner_state",
+                {"runner_id": runner_id, "state": "runner_offline"},
+            )
 
     async def _on_runner_exited(runner_id: str, error: str) -> None:
         """Mark a crashed runner's session(s) failed and push the cause.
@@ -2128,7 +2150,13 @@ def create_app(
             runner_id,
             len(convs),
         )
-        for conv in convs:
+
+        async def _reconnect_session(conv: Any) -> None:
+            _publish_runner_lifecycle_event(
+                conv.id,
+                "session.runner_state",
+                {"runner_id": runner_id, "state": "runner_reconnected"},
+            )
             _logger.info(
                 "_on_runner_connect: matched %s (agent=%s)",
                 conv.id,
@@ -2141,7 +2169,7 @@ def create_app(
                     "Failed to resolve runner client for session %s on reconnect",
                     conv.id,
                 )
-                continue
+                return
             if not conv.agent_id:
                 # The runner's create_session requires agent_id (it 400s
                 # without one), so don't send a request it rejects by
@@ -2187,6 +2215,41 @@ def create_app(
             await _publish_runner_recovered_status(
                 conv.id, conversation_store, require_disconnect_code=True
             )
+            try:
+                reconciliation = await routed.client.post(
+                    f"/v1/sessions/{conv.id}/resources/terminals/reconcile",
+                    timeout=5.0,
+                )
+                body = reconciliation.json()
+                terminal_count = len(body.get("data", [])) if isinstance(body, dict) else 0
+                _logger.info(
+                    "Reconciled %d terminal(s) for session %s on reconnect",
+                    terminal_count,
+                    conv.id,
+                )
+            except Exception:
+                _logger.exception(
+                    "Failed to reconcile terminals for session %s on reconnect",
+                    conv.id,
+                )
+
+        async def _reconnect_session_bounded(conv: Any) -> None:
+            try:
+                await asyncio.wait_for(_reconnect_session(conv), timeout=25.0)
+            except asyncio.TimeoutError:
+                _logger.error(
+                    "Reconnect reconciliation timed out: runner=%s session=%s",
+                    runner_id,
+                    conv.id,
+                )
+            except Exception:
+                _logger.exception(
+                    "Reconnect handling failed: runner=%s session=%s",
+                    runner_id,
+                    conv.id,
+                )
+
+        await asyncio.gather(*(_reconnect_session_bounded(conv) for conv in convs))
 
     def _resolve_managed_runner_owner(runner_id: str) -> str | None:
         """Owner for a server-managed sandbox runner, by its bound session.

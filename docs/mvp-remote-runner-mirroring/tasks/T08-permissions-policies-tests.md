@@ -21,10 +21,11 @@ Ground truth (verified against current code):
 ```python
 """Built-in policy presets for remote-local runner sessions.
 
-The preset resolves to a PolicyMode that the server passes to the
-runner gateway with every local action. The runner re-checks
-classification independently (defense in depth): a compromised or
-stale server cannot grant more than the runner's own blocklist allows.
+Presets are UI/API conveniences only: applying a preset resolves to a raw
+PolicyMode string stored in the session label. The runner reads that raw mode
+with every local action and independently re-checks classification (defense in
+depth): a compromised or stale server cannot grant more than the runner's own
+blocklist allows.
 """
 
 from __future__ import annotations
@@ -36,7 +37,11 @@ from omnigent.policies.types import PolicyMode
 # not in `omnigent.runner.workspace_policy`, so server policy registration does
 # not import runner execution modules.
 
-# Preset id → (PolicyMode, human description). Ids are API contract.
+LOCAL_RUNNER_POLICY_LABEL_KEY = "omnigent.local_runner_policy"
+DEFAULT_LOCAL_RUNNER_MODE = PolicyMode.MANUAL
+
+# Preset id → (PolicyMode, human description). Preset ids are API/UI contract,
+# but are resolved at label-write time; the label stores raw PolicyMode values.
 LOCAL_RUNNER_PRESETS: dict[str, tuple[PolicyMode, str]] = {
     "local_runner_manual": (
         PolicyMode.MANUAL,
@@ -59,24 +64,40 @@ LOCAL_RUNNER_PRESETS: dict[str, tuple[PolicyMode, str]] = {
 DEFAULT_LOCAL_RUNNER_PRESET = "local_runner_manual"
 
 
+def label_value_for_preset(preset_id: str) -> str:
+    """Return the raw label value for a preset selection.
+
+    :param preset_id: User/API preset id such as ``local_runner_assisted``.
+    :returns: Raw ``PolicyMode`` value to store in
+        ``omnigent.local_runner_policy``. Unknown presets fail closed to manual.
+    """
+    mode_desc = LOCAL_RUNNER_PRESETS.get(preset_id)
+    if mode_desc is None:
+        return DEFAULT_LOCAL_RUNNER_MODE.value
+    return mode_desc[0].value
+
+
 def policy_mode_for_session(labels: dict[str, str]) -> PolicyMode:
     """Resolve the effective mode from session labels.
 
-    :param labels: Conversation labels; reads
-        ``omnigent.local_runner_policy`` (preset id).
-    :returns: The preset's mode; unknown/absent ids fall back to MANUAL
+    :param labels: Conversation labels; reads raw
+        ``omnigent.local_runner_policy`` values (``manual`` / ``assisted`` /
+        ``auto``), not preset ids.
+    :returns: The label's mode; unknown/absent values fall back to MANUAL
         (fail closed).
     """
-    preset = labels.get("omnigent.local_runner_policy", DEFAULT_LOCAL_RUNNER_PRESET)
-    mode_desc = LOCAL_RUNNER_PRESETS.get(preset)
-    if mode_desc is None:
-        return PolicyMode.MANUAL
-    return mode_desc[0]
+    raw_mode = labels.get(LOCAL_RUNNER_POLICY_LABEL_KEY, DEFAULT_LOCAL_RUNNER_MODE.value)
+    try:
+        return PolicyMode(raw_mode)
+    except ValueError:
+        return DEFAULT_LOCAL_RUNNER_MODE
 ```
 
 Register the presets wherever builtins are seeded (follow the existing pattern in
-`omnigent/policies/builtins/__init__.py`) so they appear in the policies API/UI, and
-document that changing the preset only affects **future** actions.
+`omnigent/policies/builtins/__init__.py`) so they appear in the policies API/UI.
+When the user selects a preset, resolve it immediately with `label_value_for_preset`
+and store the raw mode value (`manual`, `assisted`, or `auto`) in
+`omnigent.local_runner_policy`; changing the label only affects **future** actions.
 
 ## 2. Owner-only approvals for local actions
 
@@ -284,7 +305,7 @@ UI hides the runner picker when the capability is false.
 
 ## Acceptance checklist
 
-- [ ] Three presets registered; label-driven; unknown preset falls back to MANUAL.
+- [ ] Three presets registered; label write stores raw PolicyMode values; unknown/invalid labels fall back to MANUAL.
 - [ ] Approvals owner-only, enforced server-side at the resolution route.
 - [ ] Attach permission invariants covered by tunnel-path tests.
 - [ ] Audit trail persisted, payload-free; log-capture test proves no secret/path leaks.

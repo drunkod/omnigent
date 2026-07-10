@@ -44,6 +44,7 @@ from omnigent.entities.session_resources import (
     session_resource_view_to_dict,
     terminal_resource_id,
 )
+from omnigent.entities.terminal_state import TerminalUiState
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.harness_aliases import (
     canonicalize_harness,
@@ -57,9 +58,11 @@ from omnigent.llms.summarize import (
     extract_summary_text,
 )
 from omnigent.model_override import validate_model_override
-from omnigent.policies.types import FAIL_CLOSED_PHASES
+from omnigent.policies.types import FAIL_CLOSED_PHASES, PolicyMode
 from omnigent.runner import pending_approvals
 from omnigent.runner.codex.goal import CodexGoalRunner
+from omnigent.runner.identity import get_stable_runner_id
+from omnigent.runner.local_actions import AuditRecord, LocalActionGateway
 from omnigent.runner.proxy_mcp_manager import ProxyMcpManager
 from omnigent.runner.resource_registry import (
     ANTIGRAVITY_NATIVE_TERMINAL_ROLE,
@@ -78,6 +81,7 @@ from omnigent.runner.resource_registry import (
     TerminalExitEvent,
     TerminalLifecycle,
 )
+from omnigent.runner.workspace_registry import WorkspaceRegistry
 from omnigent.runtime.harnesses.process_manager import HarnessProcessManager, NoLiveHarnessError
 from omnigent.spec.skill_sources import SkillSourceContext, resolve_harness_skills
 from omnigent.spec.types import AgentSpec, LocalToolInfo, SkillSpec
@@ -8252,6 +8256,47 @@ def create_runner_app(
 
     resource_registry.set_terminal_activity_publisher(_publish_terminal_activity)
 
+    async def reconcile_session_terminals(session_id: str) -> list[dict[str, str]]:
+        """Re-observe live terminals and relaunch dead required terminals."""
+        states: list[dict[str, str]] = []
+        for terminal_id, lifecycle in resource_registry.lifecycles_for_session(session_id):
+            if await resource_registry.terminal_is_alive(session_id, terminal_id):
+                state = TerminalUiState.TERMINAL_RUNNING
+            elif lifecycle is TerminalLifecycle.AUXILIARY:
+                state = TerminalUiState.TERMINAL_EXITED
+            else:
+                _publish_event(
+                    session_id,
+                    {
+                        "type": "session.terminal_state",
+                        "conversation_id": session_id,
+                        "terminal_id": terminal_id,
+                        "state": TerminalUiState.TERMINAL_RELAUNCHING.value,
+                    },
+                )
+                try:
+                    await resource_registry.relaunch_required_terminal(session_id, terminal_id)
+                except Exception:
+                    _logger.exception(
+                        "Failed to relaunch required terminal: session=%s terminal=%s",
+                        session_id,
+                        terminal_id,
+                    )
+                    state = TerminalUiState.TERMINAL_FAILED
+                else:
+                    state = TerminalUiState.TERMINAL_RUNNING
+            event = {
+                "type": "session.terminal_state",
+                "conversation_id": session_id,
+                "terminal_id": terminal_id,
+                "state": state.value,
+            }
+            _publish_event(session_id, event)
+            states.append({"terminal_id": terminal_id, "state": state.value})
+        return states
+
+    app.state.reconcile_session_terminals = reconcile_session_terminals
+
     def _publish_session_status(session_id: str, status: str) -> None:
         """Publish a PTY-activity-derived ``session.status`` edge.
 
@@ -8420,6 +8465,68 @@ def create_runner_app(
     else:
         filesystem_registry = None
     app.state.filesystem_registry = filesystem_registry
+
+    local_action_workspaces = WorkspaceRegistry.from_env()
+    if runner_workspace is not None:
+        local_action_workspaces.add_path(runner_workspace)
+
+    def _publish_local_action_audit(record: AuditRecord) -> None:
+        _publish_event(record.session_id, {"type": "session.local_action", **record.to_event()})
+
+    async def _request_local_action_approval(
+        record: AuditRecord,
+        **approval_payload: object,
+    ) -> bool:
+        body: dict[str, Any] = {
+            "type": "mcp_elicitation",
+            "data": {
+                "message": f"Approve local action: {record.kind}",
+                "requestedSchema": {
+                    "type": "object",
+                    "properties": {
+                        "approved": {"type": "boolean"},
+                    },
+                },
+            },
+        }
+        data = body["data"]
+        if isinstance(data, dict):
+            data["kind"] = record.kind
+            data["policy_mode"] = record.policy_mode
+            data["cwd"] = record.cwd
+            if record.path_summary:
+                data["path_summary"] = list(record.path_summary)
+            if record.command_summary is not None:
+                data["command_summary"] = record.command_summary
+            if record.risk_flags:
+                data["risk_flags"] = list(record.risk_flags)
+            for key, value in approval_payload.items():
+                data[key] = value
+        resp = await server_client.post(
+            f"/v1/sessions/{record.session_id}/events",
+            json=body,
+            timeout=30.0,
+        )
+        resp.raise_for_status()
+        result = resp.json()
+        elicitation_id = result.get("elicitation_id") if isinstance(result, dict) else None
+        if not isinstance(elicitation_id, str) or not elicitation_id:
+            raise OmnigentError(
+                "approval request failed: server returned no elicitation_id",
+                code=ErrorCode.INTERNAL_ERROR,
+            )
+        return await pending_approvals.wait_for_user_approval(
+            elicitation_id=elicitation_id,
+            conversation_id=record.session_id,
+            publish_event=_publish_event,
+        )
+
+    app.state.local_action_gateway = LocalActionGateway(
+        workspaces=local_action_workspaces,
+        runner_id=get_stable_runner_id(),
+        publish_audit=_publish_local_action_audit,
+        request_approval=_request_local_action_approval,
+    )
 
     # Per-session filesystem registries for sessions whose workspace
     # differs from the runner's global workspace (e.g. git worktree
@@ -8689,6 +8796,115 @@ def create_runner_app(
         :returns: ``{"status": "ok"}``.
         """
         return {"status": "ok"}
+
+    @app.post("/v1/runner/local-actions")
+    async def execute_local_action(request: Request) -> JSONResponse:
+        """Execute one local action through the runner-side gateway."""
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": {"code": ErrorCode.INVALID_INPUT, "message": "invalid JSON body"}
+                },
+            )
+        if not isinstance(body, dict):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": {
+                        "code": ErrorCode.INVALID_INPUT,
+                        "message": "request body must be a JSON object",
+                    }
+                },
+            )
+        session_id = body.get("session_id")
+        workspace_id = body.get("workspace_id")
+        kind = body.get("kind")
+        if not isinstance(session_id, str) or not session_id:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": {
+                        "code": ErrorCode.INVALID_INPUT,
+                        "message": "session_id must be a non-empty string",
+                    }
+                },
+            )
+        if not isinstance(workspace_id, str) or not workspace_id:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": {
+                        "code": ErrorCode.INVALID_INPUT,
+                        "message": "workspace_id must be a non-empty string",
+                    }
+                },
+            )
+        if not isinstance(kind, str) or not kind:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": {
+                        "code": ErrorCode.INVALID_INPUT,
+                        "message": "kind must be a non-empty string",
+                    }
+                },
+            )
+        raw_mode = body.get("policy_mode", PolicyMode.MANUAL.value)
+        try:
+            mode = raw_mode if isinstance(raw_mode, PolicyMode) else PolicyMode(str(raw_mode))
+        except ValueError:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": {"code": ErrorCode.INVALID_INPUT, "message": "invalid policy_mode"}
+                },
+            )
+        gateway: LocalActionGateway = app.state.local_action_gateway
+        try:
+            if kind == "read_file":
+                result = await gateway.read_file(
+                    session_id=session_id,
+                    workspace_id=workspace_id,
+                    path=str(body.get("path") or ""),
+                    mode=mode,
+                )
+            elif kind == "list_dir":
+                result = await gateway.list_dir(
+                    session_id=session_id,
+                    workspace_id=workspace_id,
+                    path=str(body.get("path") or "."),
+                    mode=mode,
+                )
+            elif kind == "write_file":
+                result = await gateway.write_file(
+                    session_id=session_id,
+                    workspace_id=workspace_id,
+                    path=str(body.get("path") or ""),
+                    content=str(body.get("content") or ""),
+                    mode=mode,
+                )
+            elif kind == "run_shell":
+                result = await gateway.run_shell(
+                    session_id=session_id,
+                    workspace_id=workspace_id,
+                    command=str(body.get("command") or ""),
+                    cwd=str(body.get("cwd") or "."),
+                    mode=mode,
+                )
+            else:
+                raise OmnigentError(
+                    f"unknown action kind: {kind!r}",
+                    code=ErrorCode.INVALID_INPUT,
+                )
+        except OmnigentError as exc:
+            return JSONResponse(
+                status_code=exc.http_status,
+                content={"error": {"code": exc.code, "message": str(exc)}},
+            )
+        return JSONResponse(content=result)
 
     @app.post("/v1/sessions")
     async def create_session(request: Request) -> JSONResponse:
@@ -14517,6 +14733,7 @@ def create_runner_app(
                                                     ),
                                                     publish_event=_publish_event,
                                                     filesystem_registry=filesystem_registry,
+                                                    local_action_gateway=app.state.local_action_gateway,
                                                 )
                                             )
                                         )
@@ -15565,6 +15782,12 @@ def create_runner_app(
             before=before,
             order=order,
         )
+
+    @app.post("/v1/sessions/{session_id}/resources/terminals/reconcile")
+    async def reconcile_session_terminals_route(session_id: str) -> JSONResponse:
+        """Reconcile terminal liveness after the runner tunnel reconnects."""
+        states = await reconcile_session_terminals(session_id)
+        return JSONResponse(content={"data": states})
 
     @app.post("/v1/sessions/{session_id}/resources/terminals")
     async def create_session_terminal(
@@ -18191,6 +18414,7 @@ def create_runner_app(
                         harness_client=None,
                         publish_event=_publish_event,
                         filesystem_registry=filesystem_registry,
+                        local_action_gateway=app.state.local_action_gateway,
                     )
                 except Exception as exc:  # noqa: BLE001
                     return JSONResponse(

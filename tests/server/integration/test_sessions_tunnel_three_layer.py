@@ -821,6 +821,7 @@ async def test_repl_adapter_resume_rebinds_via_ws_tunnel(
 @pytest.mark.asyncio
 async def test_on_runner_connect_restarts_relay_via_router(
     tunnel_three_layer_stack: _TunnelStack,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Reconnect hook restarts relays via the router.
 
@@ -901,6 +902,17 @@ async def test_on_runner_connect_restarts_relay_via_router(
     real_resolver = router.client_for_session_resources
     routed_calls: list[str] = []
     routed_clients: dict[str, Any] = {}
+    from omnigent.runtime import session_stream
+
+    lifecycle_events: list[dict[str, Any]] = []
+    real_publish = session_stream.publish
+
+    def _capture_publish(conversation_id: str, event: dict[str, Any]) -> None:
+        if conversation_id == session_id and event.get("type") == "session.runner_state":
+            lifecycle_events.append(event)
+        real_publish(conversation_id, event)
+
+    monkeypatch.setattr(session_stream, "publish", _capture_publish)
 
     class _StubResponse:
         status_code = 200
@@ -977,6 +989,9 @@ async def test_on_runner_connect_restarts_relay_via_router(
 
         try:
             await asyncio.wait_for(_hook_did_its_job(), timeout=5.0)
+            states = [event.get("state") for event in lifecycle_events]
+            assert "runner_offline" in states
+            assert "runner_reconnected" in states
         except asyncio.TimeoutError:
             registry_entry = ap_app.state.tunnel_registry.get(_RUNNER_ID)
             raise AssertionError(

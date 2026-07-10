@@ -53,6 +53,7 @@ import type {
   SessionTodosEvent,
   SessionSandboxStatusEvent,
   SessionTerminalPendingEvent,
+  SessionTerminalStateEvent,
   SessionUsageEvent,
   SlashCommand,
   RoutingDecision,
@@ -436,6 +437,57 @@ export function parseEvent(rawType: string, data: Record<string, unknown>): Stre
       } satisfies SessionStatusEvent;
     }
     return null;
+  }
+  if (eventType === "session.runner_state") {
+    const conversationId = data.conversation_id;
+    const runnerId = data.runner_id;
+    const state = data.state;
+    if (
+      typeof conversationId !== "string" ||
+      !conversationId ||
+      typeof runnerId !== "string" ||
+      !runnerId ||
+      (state !== "runner_offline" && state !== "runner_reconnected")
+    ) {
+      return null;
+    }
+    return {
+      type: "session_runner_state",
+      conversationId,
+      runnerId,
+      state,
+    };
+  }
+  if (eventType === "session.terminal_state") {
+    const conversationId = data.conversation_id;
+    const terminalId = data.terminal_id;
+    const state = data.state;
+    const terminalState = state as SessionTerminalStateEvent["state"];
+    const terminalStates: ReadonlySet<SessionTerminalStateEvent["state"]> = new Set([
+      "terminal_unknown",
+      "terminal_starting",
+      "terminal_running",
+      "terminal_detached",
+      "terminal_exited",
+      "terminal_relaunching",
+      "terminal_failed",
+    ]);
+    if (
+      typeof conversationId !== "string" ||
+      !conversationId ||
+      typeof terminalId !== "string" ||
+      !terminalId ||
+      typeof state !== "string" ||
+      !terminalStates.has(terminalState)
+    ) {
+      return null;
+    }
+    return {
+      type: "session_terminal_state",
+      conversationId,
+      terminalId,
+      state: terminalState,
+    };
   }
   if (eventType === "session.usage") {
     const conversationId = data.conversation_id;

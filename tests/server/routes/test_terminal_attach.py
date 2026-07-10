@@ -27,6 +27,7 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from omnigent.entities import Conversation, SessionPermission
+from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.inner.terminal import TerminalInstance
 from omnigent.runtime import (
     _globals,
@@ -41,7 +42,10 @@ from omnigent.server.auth import (
     RESERVED_USER_PUBLIC,
     UnifiedAuthProvider,
 )
-from omnigent.server.routes.terminal_attach import create_terminal_attach_router
+from omnigent.server.routes.terminal_attach import (
+    ATTACH_CLOSE_RUNNER_OFFLINE,
+    create_terminal_attach_router,
+)
 from omnigent.terminals import TerminalRegistry
 from tests.runner.helpers import make_test_terminal_instance
 
@@ -549,6 +553,22 @@ async def test_attach_terminal_proxies_to_runner_ws_factory(app: FastAPI) -> Non
     assert factory.calls == [
         "/v1/sessions/conv_ws/resources/terminals/terminal_bash_s1/attach?read_only=true"
     ]
+
+
+def test_attach_terminal_runner_unavailable_closes_4503(app: FastAPI) -> None:
+    """An offline runner maps to the reconnectable attach close code."""
+
+    def factory(_path: str) -> object:
+        raise OmnigentError("runner is offline", code=ErrorCode.RUNNER_UNAVAILABLE)
+
+    set_runner_ws_factory(factory)  # type: ignore[arg-type]
+    with pytest.raises(WebSocketDisconnect) as exc_info:
+        with TestClient(app).websocket_connect(
+            "/v1/sessions/conv_ws/resources/terminals/terminal_bash_s1/attach"
+        ) as ws:
+            ws.receive_bytes()
+
+    assert exc_info.value.code == ATTACH_CLOSE_RUNNER_OFFLINE
 
 
 async def test_attach_terminal_proxy_forwards_browser_bytes_to_runner(
