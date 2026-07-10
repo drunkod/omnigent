@@ -14,6 +14,12 @@ import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { resolveWebSocketUrl } from "@/lib/host";
 import { attachQuery } from "@/lib/remoteRunner";
+import {
+  selectRunnerState,
+  selectTerminalState,
+  useTerminalLifecycleStore,
+} from "@/store/terminalLifecycleStore";
+import type { RunnerUiState, TerminalPanelState } from "@/store/terminalLifecycleStore";
 import { subscribeCodeFont } from "@/lib/codeFontPreferences";
 import {
   readTerminalThemeMode,
@@ -104,6 +110,11 @@ export function TerminalView({
   // Control mode: xterm owns the buffer + mouse, so plain drag selects and
   // the normal copy gesture works. A PTY fallback restores tmux behavior.
   const controlMode = !ptyFallback && transport !== "pty";
+  const runnerState = useTerminalLifecycleStore(selectRunnerState(sessionId));
+  const lifecycleTerminalState = useTerminalLifecycleStore(
+    selectTerminalState(sessionId, terminalId),
+  );
+  const lifecycleKnown = useTerminalLifecycleStore((store) => sessionId in store.byConversation);
   const [resumeError, setResumeError] = useState<string | null>(null);
   // True between an unexpected close and the re-dial it scheduled, so
   // the overlay reads "Reconnecting…" instead of the dead-end
@@ -116,6 +127,7 @@ export function TerminalView({
   // Lets the close handler tell "stable connection finally dropped"
   // (reset the budget) from "re-dial died straight away" (burn it).
   const connectedAtRef = useRef<number | null>(null);
+  const wasAttachedRef = useRef(false);
   const { resolvedTheme } = useTheme();
   // Terminal theme is independent of the app theme: "auto" follows the app's
   // resolved appearance, while "light"/"dark" pin the terminal. Reading the
@@ -306,6 +318,34 @@ export function TerminalView({
   }, [state, disposeActiveSession]);
 
   useEffect(() => {
+    if (state.kind === "connected") wasAttachedRef.current = true;
+  }, [state.kind]);
+
+  useEffect(() => {
+    const inputAvailable =
+      runnerState === "online" &&
+      lifecycleTerminalState !== "terminal_exited" &&
+      lifecycleTerminalState !== "terminal_failed" &&
+      lifecycleTerminalState !== "terminal_detached" &&
+      lifecycleTerminalState !== "terminal_relaunching";
+    sessionRef.current?.setInputEnabled(inputAvailable);
+  }, [runnerState, lifecycleTerminalState]);
+
+  useEffect(() => {
+    if (
+      lifecycleTerminalState !== "terminal_running" ||
+      runnerState !== "online" ||
+      !wasAttachedRef.current ||
+      state.kind === "connected" ||
+      state.kind === "connecting"
+    ) {
+      return;
+    }
+    disposeActiveSession();
+    setConnectAttempt((attempt) => attempt + 1);
+  }, [lifecycleTerminalState, runnerState, state.kind, disposeActiveSession]);
+
+  useEffect(() => {
     if (state.kind !== "retry_with_pty" || ptyFallback || transport === "pty") return;
     setPtyFallback(true);
     disposeActiveSession();
@@ -341,9 +381,13 @@ export function TerminalView({
           {selectionHintText(isMacPlatform())}
         </div>
       )}
-      {state.kind !== "connected" && (
+      {(state.kind !== "connected" ||
+        runnerState !== "online" ||
+        (lifecycleKnown && lifecycleTerminalState !== "terminal_unknown")) && (
         <StatusOverlay
           state={state}
+          runnerState={runnerState}
+          lifecycleTerminalState={lifecycleTerminalState}
           reconnectPending={reconnectPending}
           onResume={onResume ? handleResume : undefined}
           resumePending={resumePending}
@@ -400,12 +444,16 @@ export function selectionHintText(isMac: boolean): string {
 
 function StatusOverlay({
   state,
+  runnerState,
+  lifecycleTerminalState,
   reconnectPending,
   onResume,
   resumePending,
   resumeError,
 }: {
   state: ConnectionState;
+  runnerState: RunnerUiState;
+  lifecycleTerminalState: TerminalPanelState;
   /** True while an automatic re-dial is scheduled for a closed bridge. */
   reconnectPending: boolean;
   onResume?: () => void | Promise<void>;
@@ -416,6 +464,26 @@ function StatusOverlay({
   // pollute the scrollback buffer the way ANSI-escape writes would.
   return (
     <div className="absolute inset-0 z-[10000] flex items-center justify-center bg-background/85 text-sm text-foreground backdrop-blur-[1px]">
+      {runnerState === "runner_offline" && (
+        <span data-testid="terminal-runner-offline">
+          Runner offline. Session is preserved; restart the runner to continue.
+        </span>
+      )}
+      {runnerState === "runner_reconnected" && (
+        <span data-testid="terminal-reconciling">Reconnected, checking terminals…</span>
+      )}
+      {runnerState === "online" && lifecycleTerminalState === "terminal_relaunching" && (
+        <span>Relaunching terminal…</span>
+      )}
+      {runnerState === "online" && lifecycleTerminalState === "terminal_detached" && (
+        <span>Terminal detached. Session is still running.</span>
+      )}
+      {runnerState === "online" && lifecycleTerminalState === "terminal_exited" && (
+        <span>Terminal exited.</span>
+      )}
+      {runnerState === "online" && lifecycleTerminalState === "terminal_failed" && (
+        <span>Terminal failed to start.</span>
+      )}
       {state.kind === "connecting" && (
         <span className="flex items-center gap-2">
           <Loader2Icon className="size-4 animate-spin" />

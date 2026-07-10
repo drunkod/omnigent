@@ -67,8 +67,10 @@ export function MainTerminalView({
   // with the initial "" in the validity closure, and its
   // terminals[0] fallback would win).
   const [activeKey, setActiveKey] = useState(initialTerminalKey || "");
-  const { getStatus, setTerminalConnectionState, markTerminalActive } =
-    useTerminalStatuses(terminals);
+  const { getStatus, setTerminalConnectionState, markTerminalActive } = useTerminalStatuses(
+    terminals,
+    conversationId,
+  );
   // No manual keyboard padding here: this view is flow content inside the
   // app-shell, which useIOSViewportLock sizes to the visual viewport, so the
   // terminal already sits above the keyboard. (Fixed overlays like the mobile

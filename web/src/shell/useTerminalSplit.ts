@@ -24,8 +24,10 @@ export function useTerminalSplit(conversationId: string) {
     [allTerminals, terminalFirstCtx?.isTerminalFirst],
   );
   const [activeKey, setActiveKey] = useState<string | null>(null);
-  const { getStatus, setTerminalConnectionState, markTerminalActive } =
-    useTerminalStatuses(terminals);
+  const { getStatus, setTerminalConnectionState, markTerminalActive } = useTerminalStatuses(
+    terminals,
+    conversationId,
+  );
 
   const activeTerminal =
     activeKey !== null ? (terminals.find((t) => terminalTabKey(t) === activeKey) ?? null) : null;

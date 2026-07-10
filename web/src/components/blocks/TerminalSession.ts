@@ -532,6 +532,11 @@ export class TerminalSession {
     this.sendResize();
   }
 
+  /** Gate keyboard input while the runner or terminal is unavailable. */
+  setInputEnabled(enabled: boolean): void {
+    this.term.options.disableStdin = !enabled;
+  }
+
   /**
    * Tear down the bridge. Order matters: abort listeners FIRST so
    * the cleanup's ``ws.close()`` can't fire a stale ``close``

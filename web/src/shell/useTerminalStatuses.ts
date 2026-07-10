@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { type ConnectionState } from "@/components/blocks/TerminalSession";
 import { type TerminalInfo } from "@/hooks/useTerminals";
 import { useTerminalActivityStore } from "@/store/terminalActivity";
+import { useTerminalLifecycleStore } from "@/store/terminalLifecycleStore";
 import { deriveTerminalStatus, type TerminalStatus } from "./terminalStatus";
 
 const ACTIVE_OUTPUT_WINDOW_MS = 1500;
@@ -14,12 +15,15 @@ const ACTIVE_OUTPUT_WINDOW_MS = 1500;
  * those local signals without applying conversation-global approval state to
  * unrelated terminal tabs.
  */
-export function useTerminalStatuses(terminals: TerminalInfo[]) {
+export function useTerminalStatuses(terminals: TerminalInfo[], conversationId?: string) {
   const [activeTerminalIds, setActiveTerminalIds] = useState(() => new Set<string>());
   const [connectionStates, setConnectionStates] = useState(
     () => new Map<string, ConnectionState>(),
   );
   const activityTimersRef = useRef(new Map<string, number>());
+  const lifecycle = useTerminalLifecycleStore((state) =>
+    conversationId ? (state.byConversation[conversationId] ?? null) : null,
+  );
 
   const setTerminalConnectionState = useCallback(
     (terminalId: string, state: ConnectionState | null) => {
@@ -68,8 +72,9 @@ export function useTerminalStatuses(terminals: TerminalInfo[]) {
         terminal,
         connectionStates.get(terminal.id) ?? null,
         activeTerminalIds.has(terminal.id),
+        lifecycle,
       ),
-    [activeTerminalIds, connectionStates],
+    [activeTerminalIds, connectionStates, lifecycle],
   );
 
   const terminalIdsKey = terminals.map((t) => t.id).join("\0");

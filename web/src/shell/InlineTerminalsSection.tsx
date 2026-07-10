@@ -30,7 +30,7 @@ export function InlineTerminalsSection({ conversationId, onExpand }: InlineTermi
     () => inventoryTerminals(allTerminals, terminalFirstCtx?.isTerminalFirst ?? false),
     [allTerminals, terminalFirstCtx?.isTerminalFirst],
   );
-  const { getStatus } = useTerminalStatuses(terminals);
+  const { getStatus } = useTerminalStatuses(terminals, conversationId);
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-card">
