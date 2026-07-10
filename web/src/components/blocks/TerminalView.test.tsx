@@ -66,21 +66,21 @@ afterEach(() => {
 });
 
 describe("buildAttachPath", () => {
-  it("addresses the terminal by resource id and defaults to control transport", () => {
+  it("addresses the terminal by resource id and preserves legacy PTY when unadvertised", () => {
     expect(buildAttachPath("conv_abc", "terminal_bash_s1", false)).toBe(
-      "/v1/sessions/conv_abc/resources/terminals/terminal_bash_s1/attach?transport=control",
+      "/v1/sessions/conv_abc/resources/terminals/terminal_bash_s1/attach?transport=pty",
     );
   });
 
   it("omits read_only when the flag is false (common case)", () => {
     expect(buildAttachPath("conv_abc", "terminal_bash_s1", false)).toBe(
-      "/v1/sessions/conv_abc/resources/terminals/terminal_bash_s1/attach?transport=control",
+      "/v1/sessions/conv_abc/resources/terminals/terminal_bash_s1/attach?transport=pty",
     );
   });
 
   it("appends ?read_only=true when requested", () => {
     expect(buildAttachPath("conv_abc", "terminal_bash_s1", true)).toBe(
-      "/v1/sessions/conv_abc/resources/terminals/terminal_bash_s1/attach?transport=control&read_only=true",
+      "/v1/sessions/conv_abc/resources/terminals/terminal_bash_s1/attach?transport=pty&read_only=true",
     );
   });
 
@@ -140,13 +140,13 @@ describe("control-mode transport", () => {
     expect(screen.queryByTestId("terminal-selection-hint")).toBeNull();
   });
 
-  it("uses control behavior by default when no transport prop is supplied", async () => {
+  it("uses legacy PTY behavior when transport is not advertised", async () => {
     render(<TerminalView sessionId="conv_abc" terminalId="terminal_bash_s1" />);
     await waitFor(() => expect(terminalSessionMock.instances).toHaveLength(1));
     const inst = terminalSessionMock.instances[0];
-    expect(inst.url).toContain("transport=control");
-    expect(inst.nativeSelection).toBe(true);
-    expect(screen.queryByTestId("terminal-selection-hint")).not.toBeInTheDocument();
+    expect(inst.url).toContain("transport=pty");
+    expect(inst.nativeSelection).toBe(false);
+    expect(screen.getByTestId("terminal-selection-hint")).toBeInTheDocument();
   });
 });
 

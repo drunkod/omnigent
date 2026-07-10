@@ -109,7 +109,7 @@ export function TerminalView({
   const [ptyFallback, setPtyFallback] = useState(false);
   // Control mode: xterm owns the buffer + mouse, so plain drag selects and
   // the normal copy gesture works. A PTY fallback restores tmux behavior.
-  const controlMode = !ptyFallback && transport !== "pty";
+  const controlMode = !ptyFallback && transport === "control";
   const runnerState = useTerminalLifecycleStore(selectRunnerState(sessionId));
   const lifecycleTerminalState = useTerminalLifecycleStore(
     selectTerminalState(sessionId, terminalId),
@@ -383,7 +383,10 @@ export function TerminalView({
       )}
       {(state.kind !== "connected" ||
         runnerState !== "online" ||
-        (lifecycleKnown && lifecycleTerminalState !== "terminal_unknown")) && (
+        (lifecycleKnown &&
+          lifecycleTerminalState !== "terminal_unknown" &&
+          lifecycleTerminalState !== "terminal_starting" &&
+          lifecycleTerminalState !== "terminal_running")) && (
         <StatusOverlay
           state={state}
           runnerState={runnerState}
@@ -570,7 +573,7 @@ export function buildAttachPath(
   // Always make the selected transport explicit so the browser and server
   // agree on the input/selection behavior for this attach.
   const qs = attachQuery({
-    transports: transport === "pty" || ptyFallback ? ["pty"] : ["control", "pty"],
+    transports: transport ? [transport] : ["pty"],
     debugOverride: ptyFallback ? "pty" : transport,
     readOnly,
   });

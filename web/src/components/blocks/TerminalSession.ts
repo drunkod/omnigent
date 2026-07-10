@@ -93,7 +93,10 @@ export type ConnectionState =
   | { kind: "closed"; reason: string; code: number }
   | { kind: "runner_offline" }
   | { kind: "retry_with_pty" }
-  | { kind: "lifecycle"; state: Exclude<ReturnType<typeof stateFromAttachClose>, null> }
+  | {
+      kind: "lifecycle";
+      state: Exclude<ReturnType<typeof stateFromAttachClose>, null | "runner_offline">;
+    }
   | { kind: "error" };
 
 /**

@@ -1,5 +1,10 @@
 import type { TerminalUiState } from "@/lib/events";
 
+export type AttachLifecycleState = Extract<
+  TerminalUiState,
+  "runner_offline" | "terminal_exited" | "terminal_detached"
+>;
+
 /** T06 attach close-code contract. */
 export const ATTACH_CLOSE = {
   RUNNER_OFFLINE: 4503,
@@ -8,7 +13,7 @@ export const ATTACH_CLOSE = {
   TRANSPORT_UNSUPPORTED: 4406,
 } as const;
 
-export function stateFromAttachClose(code: number): TerminalUiState | null {
+export function stateFromAttachClose(code: number): AttachLifecycleState | null {
   switch (code) {
     case ATTACH_CLOSE.RUNNER_OFFLINE:
       return "runner_offline";
