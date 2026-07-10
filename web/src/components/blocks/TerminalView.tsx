@@ -91,6 +91,19 @@ interface TerminalViewProps {
   transport?: "control" | "pty";
 }
 
+export function inputAvailableFor(
+  runnerState: RunnerUiState,
+  terminalState: TerminalPanelState,
+): boolean {
+  return (
+    runnerState === "online" &&
+    terminalState !== "terminal_exited" &&
+    terminalState !== "terminal_failed" &&
+    terminalState !== "terminal_detached" &&
+    terminalState !== "terminal_relaunching"
+  );
+}
+
 export function TerminalView({
   sessionId,
   terminalId,
@@ -219,12 +232,12 @@ export function TerminalView({
           notifyInput,
           controlMode,
         );
+        const lifecycle = useTerminalLifecycleStore.getState();
         terminalSession.setInputEnabled(
-          runnerState === "online" &&
-            lifecycleTerminalState !== "terminal_exited" &&
-            lifecycleTerminalState !== "terminal_failed" &&
-            lifecycleTerminalState !== "terminal_detached" &&
-            lifecycleTerminalState !== "terminal_relaunching",
+          inputAvailableFor(
+            selectRunnerState(sessionId)(lifecycle),
+            selectTerminalState(sessionId, terminalId)(lifecycle),
+          ),
         );
         sessionRef.current = terminalSession;
       });
@@ -245,8 +258,6 @@ export function TerminalView({
       notifyState,
       notifyActivity,
       notifyInput,
-      runnerState,
-      lifecycleTerminalState,
     ],
   );
 
@@ -331,13 +342,7 @@ export function TerminalView({
   }, [state.kind]);
 
   useEffect(() => {
-    const inputAvailable =
-      runnerState === "online" &&
-      lifecycleTerminalState !== "terminal_exited" &&
-      lifecycleTerminalState !== "terminal_failed" &&
-      lifecycleTerminalState !== "terminal_detached" &&
-      lifecycleTerminalState !== "terminal_relaunching";
-    sessionRef.current?.setInputEnabled(inputAvailable);
+    sessionRef.current?.setInputEnabled(inputAvailableFor(runnerState, lifecycleTerminalState));
   }, [runnerState, lifecycleTerminalState]);
 
   useEffect(() => {

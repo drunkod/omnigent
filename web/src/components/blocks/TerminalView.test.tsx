@@ -188,6 +188,25 @@ describe("closed bridge overlay", () => {
     expect(terminalSessionMock.instances).toHaveLength(1);
   });
 
+  it("does not recreate the bridge when lifecycle state changes after mount", async () => {
+    render(<TerminalView sessionId="conv_abc" terminalId="terminal_bash_s1" transport="control" />);
+    await waitFor(() => expect(terminalSessionMock.instances).toHaveLength(1));
+    act(() => terminalSessionMock.instances[0].onState({ kind: "connected" }));
+
+    act(() => {
+      useTerminalLifecycleStore.getState().applyRunnerState({
+        type: "session_runner_state",
+        conversationId: "conv_abc",
+        runnerId: "runner_1",
+        state: "runner_offline",
+      });
+    });
+
+    expect(terminalSessionMock.instances).toHaveLength(1);
+    expect(screen.getByTestId("terminal-runner-offline")).toHaveTextContent("Session is preserved");
+    expect(screen.queryByText("Connecting…")).not.toBeInTheDocument();
+  });
+
   it("renders a resume button beside the closed message and invokes the callback", async () => {
     const onResume = vi.fn().mockResolvedValue(undefined);
     render(<TerminalView sessionId="conv_abc" terminalId="terminal_bash_s1" onResume={onResume} />);
