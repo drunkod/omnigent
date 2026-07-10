@@ -296,6 +296,21 @@ class LocalActionGateway:
         record.command_summary = f"write {path} ({len(content.encode())} bytes)"
         await self._gate(record, verdict, diff_preview=diff_preview[:64_000])
         async with self._write_lock(workspace_id):
+            # The approved diff was computed from `before`; if the file
+            # changed while approval was pending the preview is stale —
+            # fail closed rather than apply a diff the user never saw.
+            current_exists = resolved.is_file()
+            current = ""
+            if current_exists:
+                current = await asyncio.to_thread(resolved.read_text, "utf-8", "replace")
+            if current != before or current_exists != existed:
+                record.status = "failed"
+                record.finished_at = time.time()
+                self._publish_audit(record)
+                raise OmnigentError(
+                    f"file changed while approval was pending: {path}",
+                    code=ErrorCode.CONFLICT,
+                )
             record.started_at = time.time()
             resolved.parent.mkdir(parents=True, exist_ok=True)
             await asyncio.to_thread(resolved.write_text, content, "utf-8")

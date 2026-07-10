@@ -164,6 +164,46 @@ def test_write_file_denial_does_not_write(tmp_path: Path) -> None:
     assert [audit["status"] for audit in audits] == ["requested", "denied"]
 
 
+def test_write_file_fails_if_target_changes_while_approval_pending(tmp_path: Path) -> None:
+    root = tmp_path / "workspace"
+    root.mkdir()
+    (root / "demo.txt").write_text("before\n", encoding="utf-8")
+    registry = WorkspaceRegistry.from_paths([root])
+    workspace_id = str(registry.advertise(home=tmp_path)[0]["workspace_id"])
+    audits: list[dict[str, object]] = []
+
+    def publish(record) -> None:
+        audits.append(dict(record.to_event()))
+
+    async def request_approval(record, **payload: object) -> bool:
+        del record, payload
+        (root / "demo.txt").write_text("external change\n", encoding="utf-8")
+        return True
+
+    gateway = LocalActionGateway(
+        workspaces=registry,
+        runner_id="runner_test1",
+        publish_audit=publish,
+        request_approval=request_approval,
+    )
+
+    with pytest.raises(OmnigentError) as excinfo:
+        asyncio.run(
+            gateway.write_file(
+                session_id="conv_test1",
+                workspace_id=workspace_id,
+                path="demo.txt",
+                content="after\n",
+                mode=PolicyMode.MANUAL,
+            )
+        )
+
+    assert excinfo.value.code == ErrorCode.CONFLICT
+    assert (root / "demo.txt").read_text(encoding="utf-8") == "external change\n"
+    assert [audit["status"] for audit in audits] == ["requested", "approved", "failed"]
+
+
+
 def test_sensitive_path_blocks_before_resolution(tmp_path: Path) -> None:
     gateway, workspace_id, _root, audits, _ = _make_gateway(tmp_path)
 
