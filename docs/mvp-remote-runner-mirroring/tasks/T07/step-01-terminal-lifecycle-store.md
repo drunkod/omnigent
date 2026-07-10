@@ -175,8 +175,12 @@ case "session_terminal_state":
 The store keys everything by `event.conversationId`, so a late frame from an
 old stream cannot mutate the *active* terminal UI — components must select
 with the conversation id they render, same as other chat-store session events.
-Call `clearConversation` from the same teardown path that closes the session
-event stream.
+
+Call `clearConversation` **only when the conversation is unbound permanently**
+(`switchTo` / unmount / teardown) — **not** on an ordinary pump `"dropped"`
+reconnect. The stream loop intentionally re-subscribes on `"dropped"` and
+keeps the same `AbortController` across reconnect attempts, so a transient
+SSE gap must not wipe lifecycle state or make the binding look dead.
 
 ## Acceptance
 

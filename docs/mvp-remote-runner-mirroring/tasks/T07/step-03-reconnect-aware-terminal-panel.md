@@ -98,7 +98,7 @@ overlay — never unmount/remount on `runner_offline`:
 ```
 
 While offline, also gate input: `term.options.disableStdin = true` (restore on
-`open`). Control-mode re-attach re-seeds from `capture-pane` server-side, so
+`connected`). Control-mode re-attach re-seeds from `capture-pane` server-side, so
 history repaints without clearing the buffer.
 
 ### 3. Auto-reattach policy
@@ -120,14 +120,14 @@ Implementation sketch — a `wasAttachedRef` per panel:
 ```typescript
 const wasAttachedRef = useRef(false);
 useEffect(() => {
-  if (bridgeState.kind === "open") wasAttachedRef.current = true;
+  if (bridgeState.kind === "connected") wasAttachedRef.current = true;
   if (bridgeState.kind === "runner_offline") { /* keep flag: we were attached */ }
 }, [bridgeState]);
 
 // Reattach exactly once when the terminal comes back and we were attached before.
 useEffect(() => {
   if (terminalState === "terminal_running" && wasAttachedRef.current
-      && bridgeState.kind !== "open" && bridgeState.kind !== "connecting") {
+      && bridgeState.kind !== "connected" && bridgeState.kind !== "connecting") {
     reattach();
   }
 }, [terminalState]);

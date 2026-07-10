@@ -15,7 +15,7 @@ contract directly, and pick the right transport by default.
 ```typescript
 type ConnectionState =
   | { kind: "connecting" }
-  | { kind: "open" }
+  | { kind: "connected" }
   | { kind: "closed"; reason: string; code: number }
   | { kind: "error" };
 ```

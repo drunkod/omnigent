@@ -62,7 +62,7 @@ attachQuery: control default, pty fallback, debug override, read_only
 
 ```text
 existing buffer remains visible while offline
-input disabled while offline, re-enabled on open
+input disabled while offline, re-enabled on connected
 reattach attempted after terminal_running (only if previously open)
 exited panel shows exited UI, never an infinite spinner
 detached panel shows attach action, not failure styling

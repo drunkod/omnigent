@@ -26,14 +26,14 @@ the agent name (reused by the sidebar row):
 
 ```tsx
 import { useTerminalLifecycleStore, selectRunnerState } from "@/store/terminalLifecycleStore";
-import { useRunnerOnline } from "@/hooks/RunnerHealthProvider"; // existing context
+import { useSessionRunnerOnline } from "@/hooks/RunnerHealthProvider"; // existing context
 
 export function RunnerStatusBadge({ conversationId, executionMode }: {
   conversationId: string;
   executionMode: "local_runner" | "managed" | null;   // session label omnigent.execution_mode (T04)
 }) {
   const lifecycle = useTerminalLifecycleStore(selectRunnerState(conversationId));
-  const pollOnline = useRunnerOnline(conversationId);  // health-poll fallback
+  const pollOnline = useSessionRunnerOnline(conversationId);  // health-poll fallback
 
   if (executionMode !== "local_runner") return null;
 
