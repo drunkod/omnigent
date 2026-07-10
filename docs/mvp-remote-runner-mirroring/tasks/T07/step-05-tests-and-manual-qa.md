@@ -51,8 +51,9 @@ clearConversation        -> state dropped; selectors return defaults
 ```text
 stateFromAttachClose: 4503, 4404, 4405, 4406, 1006->null, 1011->null
 attachQuery: advertised control, legacy/missing PTY fallback, debug override, read_only
-4406 close -> exactly one automatic pty redial
-4503 close -> zero redials (waits for lifecycle event)
+4406 close -> exactly one automatic pty redial from advertised control
+legacy/unadvertised PTY + 4406 -> no redundant PTY-to-PTY redial
+4503 close -> zero transport-loop redials (waits for lifecycle recovery)
 1006 close -> existing transport-retry path unchanged
 ```
 
@@ -63,17 +64,25 @@ attachQuery: advertised control, legacy/missing PTY fallback, debug override, re
 ```text
 existing buffer remains visible while offline
 input disabled while offline, re-enabled on connected
-reattach attempted after terminal_running (only if previously open)
+reattach after terminal_running when previously open
+refresh while offline -> runner_reconnected -> terminal_running also reattaches
+detached panel shows a working Attach action, not failure styling
+failed panel shows a working Retry action
+overlay priority renders exactly one recovery message
 exited panel shows exited UI, never an infinite spinner
-detached panel shows attach action, not failure styling
 ```
 
 (Snippets in [step-03](step-03-reconnect-aware-terminal-panel.md).)
 
-## 5. Playwright e2e — `tests/e2e_ui/sessions/test_remote_local_runner.py`
+## 5. Deferred Playwright e2e
 
-Plan 03 testing targets: terminal attach through runner tunnel, browser
-refresh reconnect, runner offline banner, terminal reconnect after refresh.
+The originally planned file,
+`tests/e2e_ui/sessions/test_remote_local_runner.py`, is **not part of T07**.
+The runner/host process orchestration needed for a stable CI fixture is deferred
+to a follow-up test-infrastructure slice. Do not claim automated e2e coverage in
+the PR.
+
+The eventual Playwright scenario remains:
 
 ```text
 create local-runner session       -> header shows "Local runner" badge
@@ -81,29 +90,34 @@ kill fake runner tunnel           -> offline banner appears; terminal overlay
                                      says session is preserved; buffer visible
 reconnect runner                  -> banner clears; terminal repaints
                                      (assert prompt text still present in pane)
+browser refresh while offline     -> lifecycle recovery reattaches after running
 browser refresh mid-session       -> terminal reattaches to alive tmux terminal
 ```
 
-Visual regression snapshots: terminal panel (normal + offline overlay),
-runner badge (online/offline/reconnecting).
+Visual regression snapshots for the terminal panel and runner badge are also
+deferred with that fixture.
 
-## 6. Manual QA script (from the plan)
+## 6. Manual QA script and recorded evidence
 
 ```text
 1. Start remote server.
 2. Connect local runner (omnigent host --server <url>).
 3. Create Codex-native local-runner session.
-4. Confirm terminal opens in the workspace.
+4. Confirm terminal opens in the workspace and print visible marker output.
 5. Disconnect runner (kill process / drop network).
-6. See offline UI: banner + overlay, buffer intact, input disabled.
-7. Reconnect runner.
-8. Confirm session continues or terminal relaunch is offered;
-   relaunching -> running transition visible.
+6. Confirm exactly one preserved-session overlay, buffer intact, input disabled.
+7. Reconnect the host/runner; send a message when the architecture requires
+   demand-driven runner relaunch.
+8. Confirm runner relaunch/reconciliation and terminal reattach.
+9. Refresh and confirm history remains available.
 ```
 
-The live runner disconnect/reconnect walkthrough requires a running remote
-server and connected local runner; automated component/parser/store coverage
-does not replace this manual gate.
+The T07 live walkthrough completed the disconnect leg: the buffer remained
+visible, input was gated, and exactly one preserved-session message rendered.
+After the host reconnected, sending a message launched the demand-driven runner;
+refresh then showed the continued conversation. The PR Coverage section must
+state that Playwright is deferred and include this manual walkthrough as the
+evidence for the lifecycle gate.
 
 ## Done-when boundary (repeat of README)
 
@@ -114,5 +128,5 @@ Advertised control transport is honored; legacy/missing transport metadata and
 runtime `4406` fallback remain PTY-reachable.
 Runner offline/reconnect does not look like a crash.
 Terminal close codes become user-actionable UI states.
-Core parser/store/component tests exist.
+Core parser/store/component tests exist; live lifecycle QA is documented.
 ```
