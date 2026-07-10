@@ -10,7 +10,7 @@
 | Step | Slice |
 | --- | --- |
 | [step-01](T07/step-01-terminal-lifecycle-store.md) | Terminal lifecycle store + event plumbing (`session.runner_state` / `session.terminal_state`) |
-| [step-02](T07/step-02-attach-close-code-mapping.md) | Attach close-code mapping (4503/4404/4405/4406), control default + PTY fallback |
+| [step-02](T07/step-02-attach-close-code-mapping.md) | Attach close-code mapping (4503/4404/4405/4406), advertised-transport selection + PTY fallback |
 | [step-03](T07/step-03-reconnect-aware-terminal-panel.md) | Reconnect-aware terminal panel: buffer stability, auto-reattach, per-state overlays |
 | [step-04](T07/step-04-runner-status-banner.md) | Minimal runner/session status banner |
 | [step-05](T07/step-05-tests-and-manual-qa.md) | Test matrix + manual QA gate |

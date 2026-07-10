@@ -18,7 +18,7 @@ instead of looking like a generic WebSocket failure.
 | Step | Slice (≈ one commit each) | Files |
 | --- | --- | --- |
 | [step-01](step-01-terminal-lifecycle-store.md) | Terminal lifecycle store + event plumbing | `terminalLifecycleStore.ts`, `chatStore.ts`, sse/store tests |
-| [step-02](step-02-attach-close-code-mapping.md) | Attach close-code → UI state mapping, transport default + PTY fallback | `TerminalSession.ts`, `remoteRunner.ts`, tests |
+| [step-02](step-02-attach-close-code-mapping.md) | Attach close-code → UI state mapping, advertised-transport selection + PTY fallback | `TerminalSession.ts`, `remoteRunner.ts`, tests |
 | [step-03](step-03-reconnect-aware-terminal-panel.md) | Reconnect-aware terminal panel (buffer stability, auto-reattach) | `MainTerminalView.tsx`, `TerminalsPanel.tsx`, `useTerminalStatuses.ts` |
 | [step-04](step-04-runner-status-banner.md) | Minimal runner/session status banner | `ChatHeader.tsx` / sidebar |
 | [step-05](step-05-tests-and-manual-qa.md) | Required tests + manual QA gate | test files across the above |
@@ -45,7 +45,8 @@ instead of looking like a generic WebSocket failure.
 ```text
 Backend lifecycle events from T06 produce visible, correct terminal UI states.
 The terminal panel attaches through the existing resource WS route.
-Control transport is the default; PTY fallback is reachable.
+Advertised control transport is honored; legacy/missing metadata and the
+runtime 4406 fallback remain PTY-reachable.
 Runner offline/reconnect does not look like a crash.
 Terminal close codes become user-actionable UI states.
 Core parser/store/component tests exist.
