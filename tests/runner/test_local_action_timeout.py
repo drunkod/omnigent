@@ -14,9 +14,16 @@ from omnigent.errors import ErrorCode
 from omnigent.policies.types import PolicyMode
 from omnigent.runner import local_actions as local_actions_mod
 from omnigent.runner.local_actions import LocalActionGateway, LocalActionTimeoutError
-from omnigent.runner.tool_dispatch import execute_tool
+from omnigent.runner.tool_dispatch import execute_tool, reset_local_runner_binding_cache
 from omnigent.runner.workspace_registry import WorkspaceRegistry
 from omnigent.tools.builtins.os_env import SysOsShellTool
+
+
+@pytest.fixture(autouse=True)
+def _reset_binding_cache() -> None:
+    reset_local_runner_binding_cache()
+    yield
+    reset_local_runner_binding_cache()
 
 
 class _FakeTimeoutProc:
@@ -108,10 +115,7 @@ class _TimeoutGateway:
 
 
 def test_dispatch_formats_local_action_timeout_as_shell_timeout() -> None:
-    from omnigent.runner.tool_dispatch import _LOCAL_RUNNER_BINDINGS
-
     conversation_id = "conv_timeout_dispatch"
-    _LOCAL_RUNNER_BINDINGS.pop(conversation_id, None)
 
     output = asyncio.run(
         execute_tool(

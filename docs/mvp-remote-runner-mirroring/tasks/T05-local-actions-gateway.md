@@ -603,9 +603,9 @@ def test_ask_gated_even_in_auto(cmd):
     assert classify_shell(cmd, mode=PolicyMode.AUTO).decision is Decision.ASK
 
 
-def test_plain_shell_asks_in_every_mode [L603-605]
-    assert classify_shell("pytest -q", mode=PolicyMode.AUTO).decision is Decision.ALLOW
-    assert classify_shell("pytest -q", mode=PolicyMode.MANUAL).decision is Decision.ASK
+def test_plain_shell_asks_in_every_mode():
+    for mode in PolicyMode:
+        assert classify_shell("pytest -q", mode=mode).decision is Decision.ASK
 
 
 def test_reads_always_allowed_writes_gated():

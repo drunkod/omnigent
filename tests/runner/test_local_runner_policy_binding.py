@@ -7,9 +7,16 @@ import pytest
 
 from omnigent.policies.types import PolicyMode
 from omnigent.runner.tool_dispatch import (
-    _LOCAL_RUNNER_BINDINGS,
     _local_runner_workspace_binding,
+    reset_local_runner_binding_cache,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_binding_cache() -> None:
+    reset_local_runner_binding_cache()
+    yield
+    reset_local_runner_binding_cache()
 
 
 class _SessionClient:
@@ -35,7 +42,6 @@ async def test_local_runner_binding_reads_raw_policy_mode_label_values(
     expected: PolicyMode,
 ) -> None:
     conversation_id = f"conv_raw_policy_{raw_mode}"
-    _LOCAL_RUNNER_BINDINGS.pop(conversation_id, None)
 
     binding = await _local_runner_workspace_binding(
         _SessionClient(
@@ -56,7 +62,6 @@ async def test_local_runner_binding_reads_raw_policy_mode_label_values(
 @pytest.mark.asyncio
 async def test_local_runner_binding_invalid_policy_mode_falls_back_to_manual() -> None:
     conversation_id = "conv_raw_policy_invalid"
-    _LOCAL_RUNNER_BINDINGS.pop(conversation_id, None)
 
     binding = await _local_runner_workspace_binding(
         _SessionClient(
