@@ -410,13 +410,10 @@ describe("useTerminals — SSE-primary list, poll corrects on edges", () => {
     expect(result.current.terminals).toEqual([TERMINAL]);
   });
 
-  it("clears terminals on a confirmed stop (true → false edge)", async () => {
-    // The poll's subtractive correction: a running runner's terminal is shown,
-    // then the poll confirms the runner went offline. Its PTYs are gone but a
-    // stop emits no `session.resource.deleted`, so the SSE list would keep
-    // showing dead terminals — the hook must drop them. This is what greys the
-    // pill after a Stop. Gated on the was-online edge so it never fires during
-    // the cold-boot `undefined → false` window (covered by the test above).
+  it("keeps terminals mounted across a confirmed stop (true → false edge)", async () => {
+    // TerminalView owns the offline overlay and xterm buffer. Clearing the
+    // query here would unmount it before lifecycle state can render, so the
+    // last-known terminal list must survive until the runner reconnects.
     fetchMock.mockResolvedValue(oneTerminal());
     runnerOnlineMock.mockReturnValue(true);
 
@@ -427,14 +424,14 @@ describe("useTerminals — SSE-primary list, poll corrects on edges", () => {
     // Online: the seeded terminal is shown.
     expect(result.current.terminals).toEqual([TERMINAL]);
 
-    // Runner stops: the true → false edge clears the now-dead terminal.
+    // Runner stops: the true → false edge preserves the cached terminal.
     runnerOnlineMock.mockReturnValue(false);
     await act(async () => {
       rerender();
       await vi.runAllTimersAsync();
     });
     await act(async () => void rerender());
-    expect(result.current.terminals).toEqual([]);
+    expect(result.current.terminals).toEqual([TERMINAL]);
   });
 
   it("re-reads the endpoint on the → online edge to recover a missed created event", async () => {

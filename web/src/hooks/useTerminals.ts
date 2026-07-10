@@ -437,19 +437,15 @@ export function useTerminals(
   //   - `→ true` (came online): re-read the authoritative endpoint to pick up
   //     a `session.resource.created` the SSE may have dropped. The queryFn
   //     unions, so a live SSE entry is never lost — this is purely additive.
-  //   - `true → false` (confirmed stop): the runner's PTYs are gone, but a
-  //     stop emits no `session.resource.deleted`, so the SSE list would keep
-  //     showing dead terminals. Clear them. Gated on the *was-online* edge so
-  //     it fires for a real stop, not for the cold-boot `undefined → false`
-  //     window (where the runner is on its way up and a terminal may already
-  //     have arrived via SSE).
+  //   - `true → false` (confirmed stop): keep the last-known list mounted.
+  //     TerminalView owns the lifecycle overlay and xterm buffer preservation;
+  //     clearing this cache here would unmount it before the offline state can
+  //     render. The next `→ true` correction refreshes the authoritative list.
   const wasRunnerOnline = useRef<boolean | undefined>(undefined);
   useEffect(() => {
     if (conversationId !== null) {
       if (runnerOnline === true && wasRunnerOnline.current !== true) {
         void queryClient.invalidateQueries({ queryKey: terminalsQueryKey(conversationId) });
-      } else if (runnerOnline === false && wasRunnerOnline.current === true) {
-        queryClient.setQueryData<TerminalInfo[]>(terminalsQueryKey(conversationId), []);
       }
     }
     wasRunnerOnline.current = runnerOnline;
