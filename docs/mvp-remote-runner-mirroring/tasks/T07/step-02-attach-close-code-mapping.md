@@ -1,7 +1,7 @@
 # Step 02 — Attach close-code mapping + transport selection
 
 **Commit 2 of T07.** Make the browser interpret T06's attach close-code
-contract directly, and pick the right transport by default.
+contract directly, and honor the terminal's advertised transport.
 
 ## Current state
 
@@ -52,9 +52,12 @@ export function stateFromAttachClose(code: number): TerminalUiState | null {
   }
 }
 
-/** Build the attach query string. Control is the preferred default. */
+/**
+ * Build the attach query string from the terminal's advertised transports.
+ * Missing advertisement means a legacy PTY terminal, not control support.
+ */
 export function attachQuery(opts: {
-  transports: string[];                 // runner-advertised (T01 capabilities)
+  transports: string[];                 // terminal-advertised transports
   debugOverride?: "control" | "pty";    // dev-settings escape hatch
   readOnly: boolean;
 }): string {
@@ -69,13 +72,16 @@ export function attachQuery(opts: {
 Attach URL stays the **only** web terminal attach path:
 
 ```text
-Default:   /v1/sessions/{session_id}/resources/terminals/{terminal_id}/attach?transport=control
+Advertised control: /v1/sessions/{session_id}/resources/terminals/{terminal_id}/attach?transport=control
+Legacy/missing:     /v1/sessions/{session_id}/resources/terminals/{terminal_id}/attach?transport=pty
 Debug:     ...?transport=pty
 Observer:  ...&read_only=true
 ```
 
-Control is the default because it lets the browser own grid, scrollback,
-selection/copy, and byte-level pane output; PTY stays as fallback.
+When `metadata.terminal_transport` advertises `control`, the browser owns
+grid, scrollback, selection/copy, and byte-level pane output. Missing or
+`pty` metadata preserves the legacy PTY behavior; `4406` remains the runtime
+fallback from control to PTY.
 
 ### 2. Wire into the existing close handler
 

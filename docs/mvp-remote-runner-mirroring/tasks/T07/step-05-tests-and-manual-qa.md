@@ -50,7 +50,7 @@ clearConversation        -> state dropped; selectors return defaults
 
 ```text
 stateFromAttachClose: 4503, 4404, 4405, 4406, 1006->null, 1011->null
-attachQuery: control default, pty fallback, debug override, read_only
+attachQuery: advertised control, legacy/missing PTY fallback, debug override, read_only
 4406 close -> exactly one automatic pty redial
 4503 close -> zero redials (waits for lifecycle event)
 1006 close -> existing transport-retry path unchanged
@@ -101,12 +101,17 @@ runner badge (online/offline/reconnecting).
    relaunching -> running transition visible.
 ```
 
+The live runner disconnect/reconnect walkthrough requires a running remote
+server and connected local runner; automated component/parser/store coverage
+does not replace this manual gate.
+
 ## Done-when boundary (repeat of README)
 
 ```text
 Backend lifecycle events from T06 produce visible, correct terminal UI states.
 The terminal panel attaches through the existing resource WS route.
-Control transport is the default; PTY fallback is reachable.
+Advertised control transport is honored; legacy/missing transport metadata and
+runtime `4406` fallback remain PTY-reachable.
 Runner offline/reconnect does not look like a crash.
 Terminal close codes become user-actionable UI states.
 Core parser/store/component tests exist.
