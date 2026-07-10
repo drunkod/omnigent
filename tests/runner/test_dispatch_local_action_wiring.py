@@ -9,10 +9,7 @@ import httpx
 import pytest
 
 from omnigent.policies.types import PolicyMode
-from omnigent.runner.tool_dispatch import (
-    _LOCAL_RUNNER_BINDINGS,
-    dispatch_tool_locally,
-)
+from omnigent.runner.tool_dispatch import dispatch_tool_locally, reset_local_runner_binding_cache
 from omnigent.tools.builtins.os_env import SysOsShellTool
 
 
@@ -50,10 +47,16 @@ class _EchoGateway:
         return {"exit_code": 0, "stdout": "ok", "stderr": "", "truncated": False, "duration_s": 0.0}
 
 
+@pytest.fixture(autouse=True)
+def _reset_binding_cache() -> None:
+    reset_local_runner_binding_cache()
+    yield
+    reset_local_runner_binding_cache()
+
+
 @pytest.mark.asyncio
 async def test_dispatch_tool_locally_forwards_gateway_for_bound_session() -> None:
     conversation_id = "conv_dispatch_gateway_wiring"
-    _LOCAL_RUNNER_BINDINGS.pop(conversation_id, None)
     harness = _RecordingHarnessClient()
     gateway = _EchoGateway()
 

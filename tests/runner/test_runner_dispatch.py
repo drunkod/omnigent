@@ -48,6 +48,7 @@ import pytest
 from fastapi import FastAPI
 
 from omnigent.runner import create_runner_app
+from omnigent.runner.tool_dispatch import reset_local_runner_binding_cache
 from omnigent.runner.workspace_policy import PolicyMode
 from omnigent.runner.app import (
     _build_spawn_env_from_spec,
@@ -83,6 +84,13 @@ def _assume_harness_clis_installed(monkeypatch: pytest.MonkeyPatch) -> None:
         "omnigent.onboarding.harness_install.missing_harness_cli",
         lambda harness: None,
     )
+
+
+@pytest.fixture(autouse=True)
+def _reset_binding_cache() -> None:
+    reset_local_runner_binding_cache()
+    yield
+    reset_local_runner_binding_cache()
 
 
 @asynccontextmanager
@@ -1981,10 +1989,7 @@ async def test_runner_os_env_tools_default_to_conversation_workspace(monkeypatch
 
 @pytest.mark.asyncio
 async def test_execute_tool_routes_local_runner_os_write_through_gateway() -> None:
-    from omnigent.runner import tool_dispatch
     from omnigent.runner.tool_dispatch import execute_tool
-
-    tool_dispatch._LOCAL_RUNNER_BINDINGS.clear()  # noqa: SLF001 - test isolation
 
     class _Gateway:
         def __init__(self) -> None:
@@ -2043,10 +2048,7 @@ async def test_execute_tool_routes_local_runner_os_write_through_gateway() -> No
 
 @pytest.mark.asyncio
 async def test_execute_tool_local_runner_binding_indeterminate_fails_closed() -> None:
-    from omnigent.runner import tool_dispatch
     from omnigent.runner.tool_dispatch import execute_tool
-
-    tool_dispatch._LOCAL_RUNNER_BINDINGS.clear()  # noqa: SLF001 - test isolation
 
     class _Gateway:
         async def write_file(self, **kwargs: Any) -> dict[str, Any]:
@@ -2069,10 +2071,8 @@ async def test_execute_tool_local_runner_binding_indeterminate_fails_closed() ->
 
 @pytest.mark.asyncio
 async def test_execute_tool_routes_local_runner_shell_with_cached_policy_mode_and_cwd() -> None:
-    from omnigent.runner import tool_dispatch
     from omnigent.runner.tool_dispatch import execute_tool
 
-    tool_dispatch._LOCAL_RUNNER_BINDINGS.clear()  # noqa: SLF001 - test isolation
     server_calls = 0
 
     class _Gateway:

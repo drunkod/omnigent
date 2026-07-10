@@ -26,6 +26,7 @@ import logging
 import mimetypes
 import os
 import tempfile
+import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -174,7 +175,19 @@ class _LocalRunnerBinding:
     mode: PolicyMode = PolicyMode.MANUAL
 
 
-_LOCAL_RUNNER_BINDINGS: dict[str, _LocalRunnerBinding] = {}
+# Bindings are cached briefly so a burst of sys_os_* calls in one turn
+# doesn't refetch session labels, while label edits (e.g. a policy
+# preset change) take effect on the next action after the TTL.
+_LOCAL_RUNNER_BINDING_TTL_S = 5.0
+_LOCAL_RUNNER_BINDINGS: dict[str, tuple[_LocalRunnerBinding, float]] = {}
+
+
+def reset_local_runner_binding_cache(conversation_id: str | None = None) -> None:
+    """Drop cached binding state for one session, or all sessions."""
+    if conversation_id is None:
+        _LOCAL_RUNNER_BINDINGS.clear()
+    else:
+        _LOCAL_RUNNER_BINDINGS.pop(conversation_id, None)
 
 
 # ── Tool sets (Phase 0 reorganization) ─────────────────────
@@ -5095,12 +5108,28 @@ async def _local_runner_workspace_binding(
     server_client: httpx.AsyncClient | None,
     conversation_id: str | None,
 ) -> _LocalRunnerBinding:
-    """Return the cached local-runner binding state for one session."""
+    """Return the local-runner binding state for one session.
+
+    Verdicts are cached for ``_LOCAL_RUNNER_BINDING_TTL_S`` so label
+    changes (execution mode, workspace, policy) apply to future actions
+    without a runner restart. Indeterminate results are never cached.
+    """
     if server_client is None or conversation_id is None:
         return _LocalRunnerBinding(status="unbound")
     cached = _LOCAL_RUNNER_BINDINGS.get(conversation_id)
     if cached is not None:
-        return cached
+        binding, expires_at = cached
+        if time.monotonic() < expires_at:
+            return binding
+        _LOCAL_RUNNER_BINDINGS.pop(conversation_id, None)
+
+    def _store(binding: _LocalRunnerBinding) -> _LocalRunnerBinding:
+        _LOCAL_RUNNER_BINDINGS[conversation_id] = (
+            binding,
+            time.monotonic() + _LOCAL_RUNNER_BINDING_TTL_S,
+        )
+        return binding
+
     try:
         resp = await server_client.get(f"/v1/sessions/{conversation_id}", timeout=10.0)
     except Exception:
@@ -5112,13 +5141,9 @@ async def _local_runner_workspace_binding(
         return _LocalRunnerBinding(status="indeterminate")
     labels = body.get("labels")
     if not isinstance(labels, dict):
-        binding = _LocalRunnerBinding(status="unbound")
-        _LOCAL_RUNNER_BINDINGS[conversation_id] = binding
-        return binding
+        return _store(_LocalRunnerBinding(status="unbound"))
     if labels.get(_EXECUTION_MODE_LABEL_KEY) != _LOCAL_RUNNER_EXECUTION_MODE:
-        binding = _LocalRunnerBinding(status="unbound")
-        _LOCAL_RUNNER_BINDINGS[conversation_id] = binding
-        return binding
+        return _store(_LocalRunnerBinding(status="unbound"))
     workspace_id = labels.get(_WORKSPACE_ID_LABEL_KEY)
     if not isinstance(workspace_id, str) or not workspace_id:
         return _LocalRunnerBinding(status="indeterminate")
@@ -5127,9 +5152,7 @@ async def _local_runner_workspace_binding(
         mode = raw_mode if isinstance(raw_mode, PolicyMode) else PolicyMode(str(raw_mode))
     except ValueError:
         mode = PolicyMode.MANUAL
-    binding = _LocalRunnerBinding(status="bound", workspace_id=workspace_id, mode=mode)
-    _LOCAL_RUNNER_BINDINGS[conversation_id] = binding
-    return binding
+    return _store(_LocalRunnerBinding(status="bound", workspace_id=workspace_id, mode=mode))
 
 
 # ── REST-backed tools (Phase 1) ──────────────────────────
