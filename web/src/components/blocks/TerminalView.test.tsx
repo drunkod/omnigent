@@ -348,11 +348,13 @@ describe("automatic reconnect", () => {
   });
 
   it("falls back from control to PTY once and stops on a second unsupported close", async () => {
+    const onStateChange = vi.fn();
     render(
       <TerminalView
         sessionId="conv_abc"
         terminalId="terminal_bash_s1"
         transport="control"
+        onStateChange={onStateChange}
       />,
     );
     await act(async () => {});
@@ -373,6 +375,11 @@ describe("automatic reconnect", () => {
     });
 
     expect(terminalSessionMock.instances).toHaveLength(2);
+    expect(onStateChange).toHaveBeenLastCalledWith({
+      kind: "closed",
+      reason: "PTY transport unavailable",
+      code: 4406,
+    });
     expect(screen.getByText("Bridge closed: PTY transport unavailable")).toBeInTheDocument();
   });
 
