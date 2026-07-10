@@ -283,6 +283,28 @@ def test_session_status_waiting_round_trips_through_union() -> None:
     assert parsed.status == "waiting"
 
 
+def test_runner_lifecycle_events_round_trip_through_union() -> None:
+    offline = _ADAPTER.validate_python(
+        {
+            "type": "session.runner_state",
+            "conversation_id": "conv_abc",
+            "runner_id": "runner_local",
+            "state": "runner_offline",
+        }
+    )
+    terminal = _ADAPTER.validate_python(
+        {
+            "type": "session.terminal_state",
+            "conversation_id": "conv_abc",
+            "terminal_id": "terminal_bash_s1",
+            "state": "terminal_running",
+        }
+    )
+
+    assert offline.type == "session.runner_state"
+    assert terminal.type == "session.terminal_state"
+
+
 def test_session_skills_event_round_trips_through_union() -> None:
     """``session.skills`` is a bare nudge that routes via the discriminator.
 

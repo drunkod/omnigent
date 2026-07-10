@@ -2411,6 +2411,32 @@ class SessionStatusEvent(_SSEEventBase):
     background_task_count: int | None = None
 
 
+class SessionRunnerStateEvent(_SSEEventBase):
+    """Runner connectivity lifecycle edge for a bound session."""
+
+    type: Literal["session.runner_state"]
+    conversation_id: str
+    runner_id: str
+    state: Literal["runner_offline", "runner_reconnected"]
+
+
+class SessionTerminalStateEvent(_SSEEventBase):
+    """Terminal lifecycle state emitted during runner reconciliation."""
+
+    type: Literal["session.terminal_state"]
+    conversation_id: str
+    terminal_id: str
+    state: Literal[
+        "terminal_unknown",
+        "terminal_starting",
+        "terminal_running",
+        "terminal_detached",
+        "terminal_exited",
+        "terminal_relaunching",
+        "terminal_failed",
+    ]
+
+
 class SessionUsageEvent(_SSEEventBase):
     """
     Token-usage update from a terminal-backed integration.
@@ -3840,6 +3866,8 @@ class TurnCancelledEvent(_SSEEventBase):
 ServerStreamEvent = Annotated[
     # ── Transient (SSE-only) — session.* lifecycle ─────────────
     SessionStatusEvent
+    | SessionRunnerStateEvent
+    | SessionTerminalStateEvent
     | SessionUsageEvent
     | SessionModelEvent
     | SessionReasoningEffortEvent
