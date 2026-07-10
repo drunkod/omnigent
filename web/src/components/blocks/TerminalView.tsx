@@ -505,13 +505,13 @@ function StatusOverlay({
       {runnerState === "online" && lifecycleTerminalState === "terminal_failed" && (
         <span>Terminal failed to start.</span>
       )}
-      {state.kind === "connecting" && (
+      {runnerState === "online" && state.kind === "connecting" && (
         <span className="flex items-center gap-2">
           <Loader2Icon className="size-4 animate-spin" />
           Connecting…
         </span>
       )}
-      {state.kind === "closed" && reconnectPending && (
+      {runnerState === "online" && state.kind === "closed" && reconnectPending && (
         // An automatic re-dial is scheduled — show recovery, not the
         // dead-end message, so a transient drop never reads as fatal.
         <span data-testid="terminal-reconnecting" className="flex items-center gap-2">
@@ -519,7 +519,7 @@ function StatusOverlay({
           Reconnecting…
         </span>
       )}
-      {state.kind === "closed" && !reconnectPending && (
+      {runnerState === "online" && state.kind === "closed" && !reconnectPending && (
         <div className="flex flex-wrap items-center justify-center gap-2 px-3">
           <span>Bridge closed: {state.reason}</span>
           {onResume && (

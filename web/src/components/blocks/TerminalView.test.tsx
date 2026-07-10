@@ -200,11 +200,17 @@ describe("closed bridge overlay", () => {
         runnerId: "runner_1",
         state: "runner_offline",
       });
+      terminalSessionMock.instances[0].onState({
+        kind: "closed",
+        reason: "code 1000",
+        code: 1000,
+      });
     });
 
     expect(terminalSessionMock.instances).toHaveLength(1);
     expect(screen.getByTestId("terminal-runner-offline")).toHaveTextContent("Session is preserved");
     expect(screen.queryByText("Connecting…")).not.toBeInTheDocument();
+    expect(screen.queryByText("Bridge closed: code 1000")).not.toBeInTheDocument();
   });
 
   it("renders a resume button beside the closed message and invokes the callback", async () => {
