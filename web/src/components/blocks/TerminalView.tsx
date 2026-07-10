@@ -9,7 +9,7 @@
 // guard against a missing `ref.current`.
 
 import { Loader2Icon } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { resolveWebSocketUrl } from "@/lib/host";
@@ -140,7 +140,14 @@ export function TerminalView({
   // Lets the close handler tell "stable connection finally dropped"
   // (reset the budget) from "re-dial died straight away" (burn it).
   const connectedAtRef = useRef<number | null>(null);
-  const wasAttachedRef = useRef(false);
+  // Arms one lifecycle-driven reattach after an offline/relaunching phase.
+  // Unlike the old wasAttached flag, this is also true for a fresh page load
+  // that starts while the runner is offline, so refresh-while-offline recovers.
+  const lifecycleRecoveryPendingRef = useRef(
+    runnerState !== "online" ||
+      lifecycleTerminalState === "terminal_starting" ||
+      lifecycleTerminalState === "terminal_relaunching",
+  );
   const { resolvedTheme } = useTheme();
   // Terminal theme is independent of the app theme: "auto" follows the app's
   // resolved appearance, while "light"/"dark" pin the terminal. Reading the
@@ -188,17 +195,24 @@ export function TerminalView({
     sessionRef.current = null;
   }, []);
 
+  const reattach = useCallback(() => {
+    setResumeError(null);
+    setReconnectPending(false);
+    reconnectAttemptsRef.current = 0;
+    disposeActiveSession();
+    setConnectAttempt((attempt) => attempt + 1);
+  }, [disposeActiveSession]);
+
   const handleResume = useCallback(async () => {
     if (!onResume) return;
     setResumeError(null);
     try {
       await onResume();
-      disposeActiveSession();
-      setConnectAttempt((attempt) => attempt + 1);
+      reattach();
     } catch (error) {
       setResumeError(resumeErrorText(error));
     }
-  }, [onResume, disposeActiveSession]);
+  }, [onResume, reattach]);
 
   const attachSession = useCallback(
     (node: HTMLDivElement | null) => {
@@ -338,30 +352,33 @@ export function TerminalView({
   }, [state, disposeActiveSession]);
 
   useEffect(() => {
-    if (state.kind === "connected") wasAttachedRef.current = true;
-  }, [state.kind]);
-
-  useEffect(() => {
     sessionRef.current?.setInputEnabled(inputAvailableFor(runnerState, lifecycleTerminalState));
   }, [runnerState, lifecycleTerminalState]);
 
   useEffect(() => {
     if (
-      lifecycleTerminalState !== "terminal_running" ||
       runnerState !== "online" ||
-      !wasAttachedRef.current ||
+      lifecycleTerminalState === "terminal_starting" ||
+      lifecycleTerminalState === "terminal_relaunching"
+    ) {
+      lifecycleRecoveryPendingRef.current = true;
+      return;
+    }
+    if (
+      lifecycleTerminalState !== "terminal_running" ||
+      !lifecycleRecoveryPendingRef.current ||
       state.kind === "connected" ||
       state.kind === "connecting"
     ) {
       return;
     }
-    disposeActiveSession();
-    setConnectAttempt((attempt) => attempt + 1);
-  }, [lifecycleTerminalState, runnerState, state.kind, disposeActiveSession]);
+    lifecycleRecoveryPendingRef.current = false;
+    reattach();
+  }, [lifecycleTerminalState, runnerState, state.kind, reattach]);
 
   useEffect(() => {
     if (state.kind !== "retry_with_pty") return;
-    if (ptyFallback || transport === "pty") {
+    if (ptyFallback || transport !== "control") {
       notifyState({ kind: "closed", reason: "PTY transport unavailable", code: 4406 });
       return;
     }
@@ -410,6 +427,7 @@ export function TerminalView({
           runnerState={runnerState}
           lifecycleTerminalState={lifecycleTerminalState}
           reconnectPending={reconnectPending}
+          onReattach={reattach}
           onResume={onResume ? handleResume : undefined}
           resumePending={resumePending}
           resumeError={resumeError}
@@ -468,6 +486,7 @@ function StatusOverlay({
   runnerState,
   lifecycleTerminalState,
   reconnectPending,
+  onReattach,
   onResume,
   resumePending,
   resumeError,
@@ -477,74 +496,110 @@ function StatusOverlay({
   lifecycleTerminalState: TerminalPanelState;
   /** True while an automatic re-dial is scheduled for a closed bridge. */
   reconnectPending: boolean;
+  onReattach: () => void;
   onResume?: () => void | Promise<void>;
   resumePending: boolean;
   resumeError: string | null;
 }) {
+  // Compute exactly one overlay branch. Runner state owns the surface,
+  // followed by terminal lifecycle, followed by the lower-level bridge.
+  // This prevents the same outage arriving over SSE and WS close codes from
+  // stacking duplicate or contradictory messages.
+  let content: ReactNode = null;
+
+  if (runnerState === "runner_offline") {
+    content = (
+      <span data-testid="terminal-runner-offline">
+        Runner offline. Session is preserved; restart the runner to continue.
+      </span>
+    );
+  } else if (runnerState === "runner_reconnected") {
+    content = <span data-testid="terminal-reconciling">Reconnected, checking terminals…</span>;
+  } else if (lifecycleTerminalState === "terminal_relaunching") {
+    content = <span>Relaunching terminal…</span>;
+  } else if (lifecycleTerminalState === "terminal_detached") {
+    content = (
+      <div className="flex flex-wrap items-center justify-center gap-2 px-3">
+        <span>Terminal detached. Session is still running.</span>
+        <Button type="button" size="xs" variant="secondary" onClick={onReattach}>
+          Attach
+        </Button>
+      </div>
+    );
+  } else if (lifecycleTerminalState === "terminal_exited") {
+    content = <span>Terminal exited.</span>;
+  } else if (lifecycleTerminalState === "terminal_failed") {
+    content = (
+      <div className="flex flex-wrap items-center justify-center gap-2 px-3">
+        <span>Terminal failed to start.</span>
+        <Button type="button" size="xs" variant="secondary" onClick={onReattach}>
+          Retry
+        </Button>
+      </div>
+    );
+  } else if (state.kind === "connecting") {
+    content = (
+      <span className="flex items-center gap-2">
+        <Loader2Icon className="size-4 animate-spin" />
+        Connecting…
+      </span>
+    );
+  } else if (state.kind === "closed" && reconnectPending) {
+    content = (
+      <span data-testid="terminal-reconnecting" className="flex items-center gap-2">
+        <Loader2Icon className="size-4 animate-spin" />
+        Reconnecting…
+      </span>
+    );
+  } else if (state.kind === "closed") {
+    content = (
+      <div className="flex flex-wrap items-center justify-center gap-2 px-3">
+        <span>Bridge closed: {state.reason}</span>
+        {onResume && (
+          <Button
+            type="button"
+            size="xs"
+            variant="secondary"
+            onClick={onResume}
+            disabled={resumePending}
+            className="border-zinc-500/50 bg-zinc-100 text-zinc-950 hover:bg-white"
+          >
+            {resumePending ? "Resuming…" : "Resume session"}
+          </Button>
+        )}
+        {resumeError && (
+          <span className="basis-full text-center text-xs text-destructive">{resumeError}</span>
+        )}
+      </div>
+    );
+  } else if (state.kind === "error") {
+    content = <span>Bridge error</span>;
+  } else if (state.kind === "runner_offline") {
+    content = (
+      <span data-testid="terminal-runner-offline">
+        Runner offline. Session is preserved; restart the runner to continue.
+      </span>
+    );
+  } else if (state.kind === "retry_with_pty") {
+    content = <span>Retrying with PTY…</span>;
+  } else if (state.kind === "lifecycle" && state.state === "terminal_detached") {
+    content = (
+      <div className="flex flex-wrap items-center justify-center gap-2 px-3">
+        <span>Terminal detached. Session is still running.</span>
+        <Button type="button" size="xs" variant="secondary" onClick={onReattach}>
+          Attach
+        </Button>
+      </div>
+    );
+  } else if (state.kind === "lifecycle") {
+    content = <span>Terminal exited.</span>;
+  }
+
   // Render outside the xterm container so close/error messages don't
   // pollute the scrollback buffer the way ANSI-escape writes would.
   return (
     <div className="absolute inset-0 z-[10000] flex items-center justify-center bg-background/85 text-sm text-foreground backdrop-blur-[1px]">
-      {runnerState === "runner_offline" && (
-        <span data-testid="terminal-runner-offline">
-          Runner offline. Session is preserved; restart the runner to continue.
-        </span>
-      )}
-      {runnerState === "runner_reconnected" && (
-        <span data-testid="terminal-reconciling">Reconnected, checking terminals…</span>
-      )}
-      {runnerState === "online" && lifecycleTerminalState === "terminal_relaunching" && (
-        <span>Relaunching terminal…</span>
-      )}
-      {runnerState === "online" && lifecycleTerminalState === "terminal_detached" && (
-        <span>Terminal detached. Session is still running.</span>
-      )}
-      {runnerState === "online" && lifecycleTerminalState === "terminal_exited" && (
-        <span>Terminal exited.</span>
-      )}
-      {runnerState === "online" && lifecycleTerminalState === "terminal_failed" && (
-        <span>Terminal failed to start.</span>
-      )}
-      {runnerState === "online" && state.kind === "connecting" && (
-        <span className="flex items-center gap-2">
-          <Loader2Icon className="size-4 animate-spin" />
-          Connecting…
-        </span>
-      )}
-      {runnerState === "online" && state.kind === "closed" && reconnectPending && (
-        // An automatic re-dial is scheduled — show recovery, not the
-        // dead-end message, so a transient drop never reads as fatal.
-        <span data-testid="terminal-reconnecting" className="flex items-center gap-2">
-          <Loader2Icon className="size-4 animate-spin" />
-          Reconnecting…
-        </span>
-      )}
-      {runnerState === "online" && state.kind === "closed" && !reconnectPending && (
-        <div className="flex flex-wrap items-center justify-center gap-2 px-3">
-          <span>Bridge closed: {state.reason}</span>
-          {onResume && (
-            <Button
-              type="button"
-              size="xs"
-              variant="secondary"
-              onClick={onResume}
-              disabled={resumePending}
-              className="border-zinc-500/50 bg-zinc-100 text-zinc-950 hover:bg-white"
-            >
-              {resumePending ? "Resuming…" : "Resume session"}
-            </Button>
-          )}
-          {resumeError && (
-            <span className="basis-full text-center text-xs text-destructive">{resumeError}</span>
-          )}
-        </div>
-      )}
-      {state.kind === "error" && <span>Bridge error</span>}
-      {state.kind === "runner_offline" && <span>Runner offline</span>}
-      {state.kind === "retry_with_pty" && <span>Retrying with PTY…</span>}
-      {state.kind === "lifecycle" && (
-        <span>{state.state === "terminal_detached" ? "Terminal detached" : "Terminal exited"}</span>
-      )}
+      {content}
     </div>
   );
 }
