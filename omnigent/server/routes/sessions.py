@@ -10050,6 +10050,10 @@ async def _relay_runner_stream(
                                 elicitation_id,
                             )
                         continue
+                    if evt_type == "session.local_action":
+                        from omnigent.server.audit_sanitizer import sanitize_audit_event
+
+                        event = sanitize_audit_event(event)
                     session_stream.publish(session_id, event)
 
     except (httpx.HTTPError, ConnectionError):

@@ -649,7 +649,6 @@ class ConversationObject(BaseModel):
     created_at: int
     updated_at: int
     labels: dict[str, str] = Field(default_factory=dict)
-    local_runner_policy: str | None = None
 
 
 class ConversationDeleted(BaseModel):
@@ -1310,6 +1309,7 @@ class SessionCreateRequest(BaseModel):
     initial_items: list[SessionEventInput] = Field(default_factory=list)
     title: str | None = None
     labels: dict[str, str] = Field(default_factory=dict)
+    local_runner_policy: str | None = None
     parent_session_id: str | None = None
     sub_agent_name: str | None = None
     host_type: Literal["external", "managed"] = "external"
