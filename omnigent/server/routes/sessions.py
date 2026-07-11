@@ -14054,6 +14054,15 @@ def create_sessions_router(
             # message survives in each entry's `msg`.
             raise HTTPException(status_code=422, detail=exc.errors(include_context=False)) from exc
 
+        if body.local_runner_policy is not None:
+            from omnigent.server.auth import remote_local_runner_enabled
+
+            if not remote_local_runner_enabled():
+                raise OmnigentError(
+                    "remote local runner support is not enabled on this server",
+                    code=ErrorCode.INVALID_INPUT,
+                )
+
         resp = await _create_session_from_existing_agent(
             conversation_store,
             agent_store,
