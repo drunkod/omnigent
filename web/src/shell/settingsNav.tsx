@@ -16,6 +16,7 @@ import {
   PanelRightOpenIcon,
   ShieldCheckIcon,
   TerminalIcon,
+  ServerIcon,
   UserCogIcon,
   UsersIcon,
 } from "lucide-react";
@@ -35,7 +36,8 @@ export type SettingsSectionId =
   | "members"
   | "policies"
   | "archived"
-  | "cli";
+  | "cli"
+  | "runners";
 
 const SECTION_IDS: readonly SettingsSectionId[] = [
   "appearance",
@@ -46,6 +48,7 @@ const SECTION_IDS: readonly SettingsSectionId[] = [
   "policies",
   "archived",
   "cli",
+  "runners",
 ];
 
 interface SettingsNavItem {
@@ -95,6 +98,10 @@ export function settingsNavGroups(
     });
   }
   groups.push({ title: "General", items: general });
+  groups.push({
+    title: "Infrastructure",
+    items: [{ id: "runners", label: "Runners", icon: ServerIcon }],
+  });
   // Admin: server-wide management, admin-only. Nested here as sub-categories
   // (rather than links out of the Account section) so entering them stays
   // inside /settings — the sidebar keeps the settings nav instead of snapping
