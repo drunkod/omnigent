@@ -9615,6 +9615,25 @@ async def _flush_relay_text(
     session_stream.publish(session_id, done_event.model_dump())
 
 
+def _persist_local_action_item(
+    conversation_store: ConversationStore,
+    session_id: str,
+    event: dict[str, Any],
+) -> None:
+    """Persist one sanitized terminal local-action outcome per action id."""
+    if event.get("status") not in {"completed", "failed", "denied", "blocked", "approved"}:
+        return
+    action_id = event.get("action_id")
+    if not isinstance(action_id, str) or not action_id:
+        return
+    item = NewConversationItem(
+        type="local_action",
+        response_id=action_id,
+        data=parse_item_data("local_action", event),
+    )
+    conversation_store.upsert_local_action(session_id, item)
+
+
 async def _relay_runner_stream(
     session_id: str,
     runner_client: httpx.AsyncClient,
@@ -10058,6 +10077,19 @@ async def _relay_runner_stream(
                         from omnigent.server.audit_sanitizer import sanitize_audit_event
 
                         event = sanitize_audit_event(event)
+                        if event.get("status") in {
+                            "completed",
+                            "failed",
+                            "denied",
+                            "blocked",
+                            "approved",
+                        } and conversation_store is not None:
+                            await asyncio.to_thread(
+                                _persist_local_action_item,
+                                conversation_store,
+                                session_id,
+                                event,
+                            )
                     session_stream.publish(session_id, event)
 
     except (httpx.HTTPError, ConnectionError):
