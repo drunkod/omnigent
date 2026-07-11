@@ -36,6 +36,10 @@ Ground truth already in place (do NOT re-implement):
    flag + P11 counters.
 5. `step-05-security-test-suite.md` —
    `tests/server/integration/test_remote_local_runner_permissions.py`.
+6. `step-06-audit-persistence.md` — durable `session.local_action`
+   conversation items (P8's last open box).
+7. `step-07-telemetry-wiring.md` — permission counters via OTel
+   (P11 subset).
 
 ## Done when
 
