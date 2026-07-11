@@ -71,6 +71,10 @@ Do not implement these in the MVP branch unless a later planning review explicit
   states, tunnel frame protocol.
 - `07-ui-ux-codebase-files.md` — mermaid mapping of every MVP UX surface (picker, badge,
   terminal panel, approval cards) to its frontend/server/runner implementation files.
+- `08-ui-terminal-runtime-diagrams.md` — mermaid diagrams of the terminal UI runtime:
+  attach transport selection, lifecycle store, overlay precedence.
+- `09-remaining-work-tracks.md` — post-T07 remaining work as three parallel tracks
+  (permissions, runner UX, lifecycle polish) with dependency ordering and solo order.
 
 ## Detailed task specs with example code
 

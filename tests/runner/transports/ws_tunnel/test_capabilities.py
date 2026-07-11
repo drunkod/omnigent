@@ -135,11 +135,14 @@ def test_detect_terminal_transports_honors_feature_flags() -> None:
         tmux_available=True,
         feature_flags={"terminal-control"},
     ) == ["control"]
-    assert detect_terminal_transports(
-        system="linux",
-        tmux_available=True,
-        feature_flags=set(),
-    ) == []
+    assert (
+        detect_terminal_transports(
+            system="linux",
+            tmux_available=True,
+            feature_flags=set(),
+        )
+        == []
+    )
 
 
 class _WorkspaceRegistry:
@@ -175,6 +178,7 @@ def test_build_hello_populates_capability_fields() -> None:
     assert hello.workspace_roots[0]["workspace_id"] == "ws_123"
     assert hello.terminal_transports == ["pty", "control"]
     assert hello.tool_capabilities == DEFAULT_TOOL_CAPABILITIES
+    assert "apply_patch" not in hello.tool_capabilities
 
 
 def test_build_hello_rejects_invalid_mode() -> None:

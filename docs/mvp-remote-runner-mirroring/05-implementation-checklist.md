@@ -48,11 +48,11 @@ The missing work is primarily productization and hardening:
 
 ## P2 — Runner capability protocol
 
-- [ ] Extend `HelloFrame` with optional capability fields.
-- [ ] Update frame encode/decode tests.
-- [ ] Update tunnel registry to retain capability metadata.
-- [ ] Update runner tunnel route to expose capability errors.
-- [ ] Add compatibility tests for old/new runner/server combinations.
+- [x] Extend `HelloFrame` with optional capability fields.
+- [x] Update frame encode/decode tests.
+- [x] Update tunnel registry to retain capability metadata.
+- [x] Update runner tunnel route to expose capability errors.
+- [x] Add compatibility tests for old/new runner/server combinations.
 
 Target files:
 
@@ -63,11 +63,11 @@ Target files:
 
 ## P3 — Local runner CLI and pairing
 
-- [ ] Decide whether to extend existing host/connect command or add `omni runner connect`.
-- [ ] Store runner id and pairing auth in existing `~/.omnigent` state pattern.
-- [ ] Add `omni runner status`.
-- [ ] Add `omni runner disconnect` or equivalent stop flow.
-- [ ] Show tmux, shell, git, Node, harness CLI readiness.
+- [x] Decide whether to extend existing host/connect command or add `omni runner connect`.
+- [x] Store runner id and pairing auth in existing `~/.omnigent` state pattern.
+- [x] Add `omni runner status`.
+- [x] Add `omni runner disconnect` or equivalent stop flow.
+- [x] Show tmux, shell, git, Node, harness CLI readiness.
 
 Target files:
 
@@ -79,11 +79,11 @@ Target files:
 
 ## P4 — Workspace registry
 
-- [ ] Add runner-side approved workspace model.
-- [ ] Add workspace list/validate endpoints.
-- [ ] Canonicalize and enforce workspace paths.
-- [ ] Add symlink escape tests.
-- [ ] Return project metadata: git root/status, available shells, harness readiness.
+- [x] Add runner-side approved workspace model.
+- [x] Add workspace list/validate endpoints.
+- [x] Canonicalize and enforce workspace paths.
+- [x] Add symlink escape tests.
+- [x] Return project metadata: git root/status, available shells, harness readiness.
 
 Target files:
 
@@ -94,12 +94,12 @@ Target files:
 
 ## P5 — Session binding
 
-- [ ] Add `execution_mode` concept if not already present.
-- [ ] Persist selected `runner_id` and `workspace_id` or equivalent labels.
-- [ ] Validate caller owns runner/workspace.
-- [ ] Validate selected harness is supported by runner.
-- [ ] Ensure session snapshot exposes binding to UI.
-- [ ] Define fork/resume semantics.
+- [x] Add `execution_mode` concept if not already present.
+- [x] Persist selected `runner_id` and `workspace_id` or equivalent labels.
+- [x] Validate caller owns runner/workspace.
+- [x] Validate selected harness is supported by runner.
+- [x] Ensure session snapshot exposes binding to UI.
+- [x] Define fork/resume semantics.
 
 Target files:
 
@@ -111,12 +111,12 @@ Target files:
 
 ## P6 — Native terminal launch in selected workspace
 
-- [ ] Make selected session workspace win over default temp workspace.
-- [ ] Launch Codex-native in selected workspace.
-- [ ] Launch one additional native terminal in selected workspace.
-- [ ] Publish terminal resource event.
-- [ ] Confirm terminal attach works through runner tunnel.
-- [ ] Add fallback/unsupported status for other harnesses.
+- [x] Make selected session workspace win over default temp workspace.
+- [x] Launch Codex-native in selected workspace.
+- [x] Launch one additional native terminal in selected workspace.
+- [x] Publish terminal resource event.
+- [x] Confirm terminal attach works through runner tunnel.
+- [x] Add fallback/unsupported status for other harnesses.
 
 Target files:
 
@@ -127,13 +127,14 @@ Target files:
 
 ## P7 — Local actions gateway
 
-- [ ] Inventory all existing file/shell tools and their execution location.
-- [ ] Add runner-local action gateway.
-- [ ] Implement read/list/search.
-- [ ] Implement write/apply-patch with diff preview.
-- [ ] Implement shell command execution with cwd/env enforcement.
-- [ ] Implement git status/diff helpers.
-- [ ] Stream/truncate outputs safely.
+- [x] Inventory all existing file/shell tools and their execution location.
+- [x] Add runner-local action gateway.
+- [x] Implement read/list/search.
+- [x] Implement `write_file` with diff preview.
+- [ ] Implement `apply_patch` with diff preview.
+- [x] Implement shell command execution with cwd/env enforcement.
+- [x] Implement git status/diff helpers.
+- [x] Stream/truncate outputs safely.
 
 Target files:
 
@@ -162,13 +163,13 @@ Target files:
 
 ## P9 — UI flow
 
-- [ ] Add runner status panel.
+- [x] Add runner status panel.
 - [ ] Add workspace picker in new session flow.
 - [ ] Add local/cloud execution mode indicator.
-- [ ] Add terminal transport/reconnect status.
+- [x] Add terminal transport/reconnect status.
 - [ ] Add approval card for local shell/write action.
 - [ ] Add diff preview before write/apply-patch.
-- [ ] Add offline/reconnect recovery copy.
+- [x] Add offline/reconnect recovery copy.
 
 Target files:
 
@@ -178,15 +179,16 @@ Target files:
 
 ## P10 — Terminal parity and reconnect tests
 
-- [ ] Test control-mode attach.
-- [ ] Test PTY attach fallback.
+- [x] Test control-mode attach.
+- [x] Test PTY attach fallback.
 - [ ] Test resize.
 - [ ] Test paste.
 - [ ] Test Ctrl-C and ESC sequences.
 - [ ] Test read-only attach.
 - [ ] Test non-owner denial for interactive attach.
-- [ ] Test runner disconnect/reconnect.
-- [ ] Test terminal exited vs runner offline state.
+- [x] Test read-only attach.
+- [x] Test runner disconnect/reconnect.
+- [x] Test terminal exited vs runner offline state.
 
 Target files:
 
