@@ -85,6 +85,7 @@ def merge_local_runner_labels(
     runner_id: str | None,
     workspace_id: str | None,
     workspace_label: str | None,
+    policy_mode: str | None = None,
 ) -> dict[str, str]:
     """Merge local-runner binding labels into caller labels.
 
@@ -107,7 +108,31 @@ def merge_local_runner_labels(
         merged[WORKSPACE_ID_LABEL_KEY] = workspace_id
         if workspace_label is not None:
             merged[WORKSPACE_LABEL_LABEL_KEY] = workspace_label
+    if policy_mode is not None:
+        merged[LOCAL_RUNNER_POLICY_LABEL_KEY] = resolve_policy_mode_value(policy_mode)
     return merged
+
+
+def resolve_policy_mode_value(raw: str | None) -> str:
+    """Normalize a preset id or raw mode, failing closed on unknown input."""
+
+    from omnigent.policies.builtins.local_runner import (
+        DEFAULT_LOCAL_RUNNER_MODE,
+        LOCAL_RUNNER_PRESETS,
+    )
+
+    if raw is None:
+        return DEFAULT_LOCAL_RUNNER_MODE.value
+    if raw in LOCAL_RUNNER_PRESETS:
+        return LOCAL_RUNNER_PRESETS[raw][0].value
+    from omnigent.policies.types import PolicyMode
+
+    try:
+        return PolicyMode(raw).value
+    except ValueError:
+        raise OmnigentError(
+            f"unknown local runner policy {raw!r}", code=ErrorCode.INVALID_INPUT
+        ) from None
 
 
 def validate_workspace_requires_runner(*, runner_id: str | None, workspace_id: str | None) -> None:

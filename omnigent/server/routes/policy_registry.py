@@ -13,6 +13,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 
 from omnigent.policies.registry import get_registry
+from omnigent.policies.builtins.local_runner import preset_catalog
 from omnigent.server.auth import AuthProvider
 from omnigent.server.routes._auth_helpers import require_user
 
@@ -56,6 +57,7 @@ def create_policy_registry_router(
         return {
             "object": "list",
             "data": [asdict(e) for e in public_entries],
+            "local_runner_presets": preset_catalog(),
         }
 
     return router
