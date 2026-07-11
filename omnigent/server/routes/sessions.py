@@ -4023,15 +4023,17 @@ async def _resolve_elicitation(
     # matches, no resolved event published) rather than 500-ing the
     # client — the runner forward still fires so the runner can reject.
     elicitation_id = data.get("elicitation_id", "")
-    if (
-        isinstance(elicitation_id, str)
-        and _local_action_elicitations.get(elicitation_id) == session_id
-        and (
-            permission_store is None
-            or user_id is None
-            or user_id != _get_session_owner_id(session_id, permission_store)
-        )
-    ):
+    local_action_session = (
+        _local_action_elicitations.get(elicitation_id)
+        if isinstance(elicitation_id, str)
+        else None
+    )
+    owner_id = (
+        _get_session_owner_id(session_id, permission_store)
+        if permission_store is not None
+        else None
+    )
+    if local_action_session == session_id and owner_id is not None and user_id != owner_id:
         raise OmnigentError(
             "only the session owner may approve local machine actions",
             code=ErrorCode.FORBIDDEN,
@@ -4087,7 +4089,8 @@ async def _resolve_elicitation(
     try:
         await _forward_approval_to_runner(session_id, data, runner_router)
     finally:
-        _local_action_elicitations.pop(elicitation_id, None)
+        if _local_action_elicitations.get(elicitation_id) == session_id:
+            _local_action_elicitations.pop(elicitation_id, None)
 
 
 # Fire-and-forget tasks that ask the bound runner to pop a native-terminal

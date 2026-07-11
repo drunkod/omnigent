@@ -15,7 +15,7 @@ class _Grant:
 
 
 class _PermissionStore:
-    def __init__(self, owner: str) -> None:
+    def __init__(self, owner: str | None) -> None:
         self.owner = owner
 
     def list_for_session(self, _session_id: str) -> list[_Grant]:
@@ -50,3 +50,42 @@ async def test_local_action_collaborator_is_denied_and_id_remains_parked() -> No
         )
     assert elicitation_id in _local_action_elicitations
     _local_action_elicitations.pop(elicitation_id, None)
+
+
+@pytest.mark.asyncio
+async def test_wrong_session_cannot_consume_local_action_tag() -> None:
+    elicitation_id = "elicit_cross_session"
+    _local_action_elicitations[elicitation_id] = "conv_a"
+
+    await _resolve_elicitation(
+        "conv_b",
+        {"elicitation_id": elicitation_id, "action": "accept"},
+        None,
+        user_id="bob",
+        permission_store=_PermissionStore("bob"),
+    )
+    assert _local_action_elicitations[elicitation_id] == "conv_a"
+
+    with pytest.raises(OmnigentError, match="only the session owner"):
+        await _resolve_elicitation(
+            "conv_a",
+            {"elicitation_id": elicitation_id, "action": "accept"},
+            None,
+            user_id="bob",
+            permission_store=_PermissionStore("alice"),
+        )
+    _local_action_elicitations.pop(elicitation_id, None)
+
+
+@pytest.mark.asyncio
+async def test_auth_disabled_ownerless_session_can_approve() -> None:
+    elicitation_id = "elicit_auth_off"
+    _local_action_elicitations[elicitation_id] = "conv_local"
+    await _resolve_elicitation(
+        "conv_local",
+        {"elicitation_id": elicitation_id, "action": "accept"},
+        None,
+        user_id=None,
+        permission_store=_PermissionStore(None),
+    )
+    assert elicitation_id not in _local_action_elicitations
