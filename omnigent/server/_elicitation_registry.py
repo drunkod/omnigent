@@ -118,8 +118,8 @@ __all__ = [
     "_ParkedHarnessElicitation",
     "_PreResolvedHarnessElicitation",
     "_harness_elicitation_owners",
-    "_local_action_elicitations",
     "_harness_elicitation_registry",
     "_harness_parked_elicitations",
     "_harness_pre_resolved_elicitations",
+    "_local_action_elicitations",
 ]

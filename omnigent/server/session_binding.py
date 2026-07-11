@@ -13,12 +13,12 @@ from typing import Any, Protocol
 
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.harness_aliases import canonicalize_harness
+from omnigent.policies.types import LOCAL_RUNNER_POLICY_LABEL_KEY
 
 LOCAL_RUNNER_EXECUTION_MODE = "local_runner"
 EXECUTION_MODE_LABEL_KEY = "omnigent.execution_mode"
 WORKSPACE_ID_LABEL_KEY = "omnigent.workspace_id"
 WORKSPACE_LABEL_LABEL_KEY = "omnigent.workspace_label"
-from omnigent.policies.types import LOCAL_RUNNER_POLICY_LABEL_KEY
 
 
 class RunnerHelloLike(Protocol):
@@ -173,11 +173,14 @@ def validate_local_runner_binding(
     if runner_id is None:
         return None
     if registry is None:
-        raise OmnigentError("runner tunnel registry is not configured", code=ErrorCode.INTERNAL_ERROR)
+        raise OmnigentError(
+            "runner tunnel registry is not configured", code=ErrorCode.INTERNAL_ERROR
+        )
     session = registry.get(runner_id)
     if session is None:
         raise OmnigentError(
-            f"runner {runner_id!r} is offline; start it with `omnigent host --server <url>` and retry",
+            f"runner {runner_id!r} is offline; start it with `omnigent host --server <url>` "
+            "and retry",
             code=ErrorCode.RUNNER_UNAVAILABLE,
         )
     if user_id is not None and session.owner is not None and session.owner != user_id:

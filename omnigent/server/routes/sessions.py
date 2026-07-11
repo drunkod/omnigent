@@ -142,9 +142,9 @@ from omnigent.server import presence
 from omnigent.server._elicitation_registry import (
     _harness_elicitation_owners,
     _harness_elicitation_registry,
-    _local_action_elicitations,
     _harness_parked_elicitations,
     _harness_pre_resolved_elicitations,
+    _local_action_elicitations,
     _ParkedHarnessElicitation,
     _PreResolvedHarnessElicitation,
 )
@@ -4024,9 +4024,7 @@ async def _resolve_elicitation(
     # client — the runner forward still fires so the runner can reject.
     elicitation_id = data.get("elicitation_id", "")
     local_action_session = (
-        _local_action_elicitations.get(elicitation_id)
-        if isinstance(elicitation_id, str)
-        else None
+        _local_action_elicitations.get(elicitation_id) if isinstance(elicitation_id, str) else None
     )
     if local_action_session == session_id:
         # Local-action tags are the only path that needs an owner lookup.
@@ -12280,6 +12278,7 @@ async def _create_session_from_existing_agent(
             ):
                 runner_owner = runner_router.runner_owner(inherited_runner_id)
                 if runner_owner is not None and runner_owner != user_id:
+                    # Validate ownership before policy labels are applied below.
                     inherited_runner_id = None
 
     # Workspace validation: if the caller is binding to a host,
@@ -12300,7 +12299,11 @@ async def _create_session_from_existing_agent(
             request=request,
         )
 
-    if body.local_runner_policy is not None and body.host_id is None and inherited_runner_id is None:
+    if (
+        body.local_runner_policy is not None
+        and body.host_id is None
+        and inherited_runner_id is None
+    ):
         raise OmnigentError(
             "local runner policy requires a host or inherited runner",
             code=ErrorCode.INVALID_INPUT,

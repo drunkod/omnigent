@@ -32,7 +32,9 @@ class _RecordingHarnessClient:
     def __init__(self) -> None:
         self.posts: list[tuple[str, dict[str, Any]]] = []
 
-    async def post(self, path: str, json: dict[str, Any], timeout: float | None = None) -> httpx.Response:
+    async def post(
+        self, path: str, json: dict[str, Any], timeout: float | None = None
+    ) -> httpx.Response:
         del timeout
         self.posts.append((path, json))
         return httpx.Response(200)
@@ -44,7 +46,13 @@ class _EchoGateway:
 
     async def run_shell(self, **kwargs: Any) -> dict[str, object]:
         self.calls.append(kwargs)
-        return {"exit_code": 0, "stdout": "ok", "stderr": "", "truncated": False, "duration_s": 0.0}
+        return {
+            "exit_code": 0,
+            "stdout": "ok",
+            "stderr": "",
+            "truncated": False,
+            "duration_s": 0.0,
+        }
 
 
 @pytest.fixture(autouse=True)

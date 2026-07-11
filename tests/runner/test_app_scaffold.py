@@ -116,13 +116,15 @@ def test_create_runner_app_local_action_gateway_seeds_env_workspaces(
 
     app = create_runner_app(server_client=NullServerClient())  # type: ignore[arg-type]
     gateway = app.state.local_action_gateway
-    advertised = gateway._workspaces.advertise(home=tmp_path)  # noqa: SLF001 - targeted registry assertion
+    advertised = gateway._workspaces.advertise(home=tmp_path)
 
     assert any(item["path_label"] == "~/env-workspace" for item in advertised)
 
 
 @pytest.mark.asyncio
-async def test_local_actions_route_dispatches_to_gateway(runner_app: FastAPI, runner_client: httpx.AsyncClient) -> None:
+async def test_local_actions_route_dispatches_to_gateway(
+    runner_app: FastAPI, runner_client: httpx.AsyncClient
+) -> None:
     class _Gateway:
         calls: list[dict[str, Any]]
 

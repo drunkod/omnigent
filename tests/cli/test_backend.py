@@ -232,7 +232,6 @@ def test_ensure_host_daemon_local_injects_workspace_env_and_persists_record(
     assert payload["runner_mode"] == "local"
 
 
-
 def test_build_host_daemon_env_local_preserves_server_credentials(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

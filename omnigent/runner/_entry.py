@@ -613,9 +613,7 @@ def _runner_mode_from_env() -> str:
         raise RuntimeError(f"{_RUNNER_MODE_ENV_VAR} must not be empty")
     if mode not in ALLOWED_HELLO_MODES:
         allowed = ", ".join(sorted(ALLOWED_HELLO_MODES))
-        raise RuntimeError(
-            f"{_RUNNER_MODE_ENV_VAR} must be one of: {allowed}"
-        )
+        raise RuntimeError(f"{_RUNNER_MODE_ENV_VAR} must be one of: {allowed}")
     return mode
 
 

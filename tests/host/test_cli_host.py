@@ -15,7 +15,13 @@ import psutil
 import pytest
 from click.testing import CliRunner
 
-from omnigent.cli import _HostDaemonRecord, _daemon_status_payload, _ensure_host_daemon, _host_daemon_alive, cli
+from omnigent.cli import (
+    _daemon_status_payload,
+    _ensure_host_daemon,
+    _host_daemon_alive,
+    _HostDaemonRecord,
+    cli,
+)
 from omnigent.host.local_server import LocalServerStartup
 from omnigent.host.workspace_pairing import RUNNER_WORKSPACES_ENV_VAR
 
@@ -254,7 +260,6 @@ def test_host_workspace_option_sets_runner_workspace_env(
     assert RUNNER_WORKSPACES_ENV_VAR not in os.environ
 
 
-
 def test_host_status_subcommand_still_dispatches(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -346,7 +351,6 @@ def test_daemon_status_payload_includes_workspaces_and_readiness(
     ]
 
 
-
 def test_host_rejects_unknown_plain_token_as_subcommand(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -430,7 +434,9 @@ def test_host_add_workspace_updates_record(
     )
     monkeypatch.setattr("omnigent.cli._selected_single_daemon_record", lambda ctx, server: record)
     writes: list[_HostDaemonRecord] = []
-    monkeypatch.setattr("omnigent.cli._write_daemon_record", lambda updated: writes.append(updated))
+    monkeypatch.setattr(
+        "omnigent.cli._write_daemon_record", lambda updated: writes.append(updated)
+    )
     monkeypatch.setattr("omnigent.cli._pid_alive", lambda pid: False)
 
     runner = CliRunner()
@@ -467,7 +473,9 @@ def test_host_remove_workspace_updates_record(
     )
     monkeypatch.setattr("omnigent.cli._selected_single_daemon_record", lambda ctx, server: record)
     writes: list[_HostDaemonRecord] = []
-    monkeypatch.setattr("omnigent.cli._write_daemon_record", lambda updated: writes.append(updated))
+    monkeypatch.setattr(
+        "omnigent.cli._write_daemon_record", lambda updated: writes.append(updated)
+    )
     monkeypatch.setattr("omnigent.cli._pid_alive", lambda pid: False)
 
     runner = CliRunner()
@@ -478,7 +486,6 @@ def test_host_remove_workspace_updates_record(
     assert writes[0].workspaces == []
     assert writes[0].runner_mode == "local"
     assert "will apply when the daemon next starts" in result.output
-
 
 
 def test_host_daemon_alive_returns_false_when_no_pid_file(

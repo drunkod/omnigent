@@ -24,7 +24,12 @@ def test_catalog_exposes_label_key_and_modes() -> None:
 
 @pytest.mark.parametrize(
     ("raw", "expected"),
-    [(None, "manual"), ("manual", "manual"), ("assisted", "assisted"), ("local_runner_auto", "auto")],
+    [
+        (None, "manual"),
+        ("manual", "manual"),
+        ("assisted", "assisted"),
+        ("local_runner_auto", "auto"),
+    ],
 )
 def test_resolve_policy_mode_value(raw: str | None, expected: str) -> None:
     assert resolve_policy_mode_value(raw) == expected

@@ -297,9 +297,7 @@ async def serve_tunnel(
     """
     if runner_mode not in ALLOWED_HELLO_MODES:
         allowed = ", ".join(sorted(ALLOWED_HELLO_MODES))
-        raise RuntimeError(
-            f"unsupported runner mode {runner_mode!r}; expected one of: {allowed}"
-        )
+        raise RuntimeError(f"unsupported runner mode {runner_mode!r}; expected one of: {allowed}")
     delay_s = _INITIAL_RECONNECT_DELAY_S
     tunnel_url = _tunnel_url(server_url, runner_id)
     _connected_before = False

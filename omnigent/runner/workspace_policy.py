@@ -99,11 +99,17 @@ _SENSITIVE_PATH_PATTERNS: tuple[tuple[str, ...], ...] = (
 _ASK_ALWAYS_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "package_install",
-        re.compile(r"\b(pip|pip3|npm|pnpm|yarn|uv|cargo|gem|brew|apt(?:-get)?)\s+(install|add)\b", re.IGNORECASE),
+        re.compile(
+            r"\b(pip|pip3|npm|pnpm|yarn|uv|cargo|gem|brew|apt(?:-get)?)\s+(install|add)\b",
+            re.IGNORECASE,
+        ),
     ),
     (
         "git_destructive",
-        re.compile(r"\bgit\s+(reset\s+--hard|rebase|push\s+--force|clean\s+-[a-zA-Z]*f[a-zA-Z]*)", re.IGNORECASE),
+        re.compile(
+            r"\bgit\s+(reset\s+--hard|rebase|push\s+--force|clean\s+-[a-zA-Z]*f[a-zA-Z]*)",
+            re.IGNORECASE,
+        ),
     ),
     ("file_removal", re.compile(r"\b(rm|unlink|rmdir)\b", re.IGNORECASE)),
 )
@@ -190,7 +196,7 @@ def classify_shell(command: str, *, mode: PolicyMode, cwd: str | None = None) ->
     try:
         shlex.split(stripped)
     except ValueError:
-        return Verdict(Decision.ASK, tuple(flags) + ("unparseable",), "unparseable command")
+        return Verdict(Decision.ASK, (*tuple(flags), "unparseable"), "unparseable command")
 
     # Shell escapes path-level containment: only cwd is resolved through
     # the workspace registry, while the command itself can reference any
@@ -221,7 +227,9 @@ def classify_action(
     if kind in _WRITE_KINDS:
         if mode is PolicyMode.AUTO:
             return Verdict(Decision.ALLOW, ("writes_files",), "auto mode: in-workspace write")
-        return Verdict(Decision.ASK, ("writes_files",), f"{mode.value} mode: write requires approval")
+        return Verdict(
+            Decision.ASK, ("writes_files",), f"{mode.value} mode: write requires approval"
+        )
     if kind == "run_shell":
         return classify_shell(command or "", mode=mode, cwd=cwd)
     return Verdict(Decision.BLOCK, ("unknown_kind",), f"unknown action kind: {kind!r}")

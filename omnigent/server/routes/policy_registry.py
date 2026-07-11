@@ -12,8 +12,8 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 
-from omnigent.policies.registry import get_registry
 from omnigent.policies.builtins.local_runner import preset_catalog
+from omnigent.policies.registry import get_registry
 from omnigent.server.auth import AuthProvider
 from omnigent.server.routes._auth_helpers import require_user
 
