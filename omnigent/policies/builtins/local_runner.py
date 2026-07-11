@@ -6,8 +6,7 @@ runner still classifies every action independently and remains authoritative.
 
 from __future__ import annotations
 
-from omnigent.policies.types import PolicyMode
-from omnigent.server.session_binding import LOCAL_RUNNER_POLICY_LABEL_KEY
+from omnigent.policies.types import LOCAL_RUNNER_POLICY_LABEL_KEY, PolicyMode
 
 DEFAULT_LOCAL_RUNNER_MODE = PolicyMode.MANUAL
 
