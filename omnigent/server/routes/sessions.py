@@ -12297,6 +12297,12 @@ async def _create_session_from_existing_agent(
             request=request,
         )
 
+    if body.local_runner_policy is not None and body.host_id is None and inherited_runner_id is None:
+        raise OmnigentError(
+            "local runner policy requires a host or inherited runner",
+            code=ErrorCode.INVALID_INPUT,
+        )
+
     # Git worktree options (optional). Two modes on body.git:
     #  - create (default): make a worktree; it becomes the stored
     #    workspace and its branch is recorded.
@@ -12450,7 +12456,7 @@ async def _create_session_from_existing_agent(
     # transcript forwarder.
     native_agent = native_coding_agent_for_agent_name(agent.name)
     initial_labels = dict(body.labels) if body.labels else {}
-    if body.local_runner_policy is not None and (body.host_id or inherited_runner_id):
+    if body.local_runner_policy is not None:
         from omnigent.server.session_binding import resolve_policy_mode_value
 
         initial_labels["omnigent.local_runner_policy"] = resolve_policy_mode_value(
