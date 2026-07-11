@@ -144,6 +144,7 @@ from omnigent.server._elicitation_registry import (
     _harness_elicitation_registry,
     _harness_parked_elicitations,
     _harness_pre_resolved_elicitations,
+    _local_action_elicitations,
     _ParkedHarnessElicitation,
     _PreResolvedHarnessElicitation,
 )
@@ -1579,6 +1580,7 @@ async def _publish_and_wait_for_harness_elicitation(
         if _harness_elicitation_registry.get(elicitation_id) is future:
             _harness_elicitation_registry.pop(elicitation_id, None)
             _harness_elicitation_owners.pop(elicitation_id, None)
+            _local_action_elicitations.pop(elicitation_id, None)
         if _harness_parked_elicitations.get(elicitation_id) is parked:
             _harness_parked_elicitations.pop(elicitation_id, None)
         if published_request and not settled:
@@ -3967,6 +3969,8 @@ async def _resolve_elicitation(
     data: dict[str, Any],
     runner_router: RunnerRouter | None,
     conversation_store: ConversationStore | None = None,
+    user_id: str | None = None,
+    permission_store: PermissionStore | None = None,
 ) -> None:
     """
     Resolve one outstanding elicitation from an approval payload.
@@ -4019,6 +4023,22 @@ async def _resolve_elicitation(
     # matches, no resolved event published) rather than 500-ing the
     # client — the runner forward still fires so the runner can reject.
     elicitation_id = data.get("elicitation_id", "")
+    local_action_session = (
+        _local_action_elicitations.get(elicitation_id) if isinstance(elicitation_id, str) else None
+    )
+    if local_action_session == session_id:
+        # Local-action tags are the only path that needs an owner lookup.
+        # A permission store is expected whenever auth-backed ownership exists.
+        owner_id = (
+            _get_session_owner_id(session_id, permission_store)
+            if permission_store is not None
+            else None
+        )
+        if owner_id is not None and user_id != owner_id:
+            raise OmnigentError(
+                "only the session owner may approve local machine actions",
+                code=ErrorCode.FORBIDDEN,
+            )
     harness_future = _harness_elicitation_registry.get(elicitation_id)
     if harness_future is not None and not harness_future.done():
         # Only the session that owns this elicitation
@@ -4067,7 +4087,11 @@ async def _resolve_elicitation(
             )
     # Runner-side elicitations (policy approvals, scaffold dispatch)
     # resolve when the canonical approval event reaches the runner.
-    await _forward_approval_to_runner(session_id, data, runner_router)
+    try:
+        await _forward_approval_to_runner(session_id, data, runner_router)
+    finally:
+        if _local_action_elicitations.get(elicitation_id) == session_id:
+            _local_action_elicitations.pop(elicitation_id, None)
 
 
 # Fire-and-forget tasks that ask the bound runner to pop a native-terminal
@@ -10030,6 +10054,10 @@ async def _relay_runner_stream(
                                 elicitation_id,
                             )
                         continue
+                    if evt_type == "session.local_action":
+                        from omnigent.server.audit_sanitizer import sanitize_audit_event
+
+                        event = sanitize_audit_event(event)
                     session_stream.publish(session_id, event)
 
     except (httpx.HTTPError, ConnectionError):
@@ -12250,6 +12278,7 @@ async def _create_session_from_existing_agent(
             ):
                 runner_owner = runner_router.runner_owner(inherited_runner_id)
                 if runner_owner is not None and runner_owner != user_id:
+                    # Validate ownership before policy labels are applied below.
                     inherited_runner_id = None
 
     # Workspace validation: if the caller is binding to a host,
@@ -12268,6 +12297,16 @@ async def _create_session_from_existing_agent(
             agent=agent,
             agent_cache=agent_cache,
             request=request,
+        )
+
+    if (
+        body.local_runner_policy is not None
+        and body.host_id is None
+        and inherited_runner_id is None
+    ):
+        raise OmnigentError(
+            "local runner policy requires a host or inherited runner",
+            code=ErrorCode.INVALID_INPUT,
         )
 
     # Git worktree options (optional). Two modes on body.git:
@@ -12422,8 +12461,15 @@ async def _create_session_from_existing_agent(
     # the native path and avoid double-persistence with the
     # transcript forwarder.
     native_agent = native_coding_agent_for_agent_name(agent.name)
+    initial_labels = dict(body.labels) if body.labels else {}
+    if body.local_runner_policy is not None:
+        from omnigent.server.session_binding import resolve_policy_mode_value
+
+        initial_labels["omnigent.local_runner_policy"] = resolve_policy_mode_value(
+            body.local_runner_policy
+        )
     if native_agent is not None:
-        _native_labels = dict(body.labels) if body.labels else {}
+        _native_labels = initial_labels
         _native_labels.update(native_agent.presentation_labels)
         await asyncio.to_thread(conversation_store.set_labels, conv.id, _native_labels)
         conv = await asyncio.to_thread(conversation_store.get_conversation, conv.id)
@@ -12435,12 +12481,12 @@ async def _create_session_from_existing_agent(
         # A native-harness sub-agent (claude-native / codex-native) must
         # render terminal-first with the Chat/Terminal pill, same as a
         # top-level wrapper session. Merge over any caller-supplied labels.
-        _merged = dict(body.labels) if body.labels else {}
+        _merged = initial_labels
         _merged.update(_sa_labels)
         await asyncio.to_thread(conversation_store.set_labels, conv.id, _merged)
         conv = await asyncio.to_thread(conversation_store.get_conversation, conv.id)
-    elif body.labels:
-        await asyncio.to_thread(conversation_store.set_labels, conv.id, body.labels)
+    elif initial_labels:
+        await asyncio.to_thread(conversation_store.set_labels, conv.id, initial_labels)
     if body.initial_items:
         runner_client = await _get_runner_client(conv.id, runner_router)
         if runner_client is None:
@@ -14022,6 +14068,15 @@ def create_sessions_router(
             # on this route 500'd as internal_error. The human-readable
             # message survives in each entry's `msg`.
             raise HTTPException(status_code=422, detail=exc.errors(include_context=False)) from exc
+
+        if body.local_runner_policy is not None:
+            from omnigent.server.auth import remote_local_runner_enabled
+
+            if not remote_local_runner_enabled():
+                raise OmnigentError(
+                    "remote local runner support is not enabled on this server",
+                    code=ErrorCode.INVALID_INPUT,
+                )
 
         resp = await _create_session_from_existing_agent(
             conversation_store,
@@ -18574,7 +18629,14 @@ def create_sessions_router(
                     code=ErrorCode.NOT_FOUND,
                 )
         _resolve_data = {"elicitation_id": elicitation_id, **body.model_dump(exclude_none=True)}
-        await _resolve_elicitation(session_id, _resolve_data, runner_router, conversation_store)
+        await _resolve_elicitation(
+            session_id,
+            _resolve_data,
+            runner_router,
+            conversation_store,
+            user_id,
+            permission_store,
+        )
         # Apply any policy writes deferred by the relay tool-call ASK gate
         # (e.g. a cost-budget checkpoint) now that the verdict is in.
         await _apply_pending_policy_ask_writes(
@@ -19025,7 +19087,14 @@ def create_sessions_router(
             # to the runner for runner-side (policy) elicitations.
             # The dedicated URL endpoint (``.../elicitations/{eid}/
             # resolve``) routes through the same helper.
-            await _resolve_elicitation(session_id, body.data, runner_router, conversation_store)
+            await _resolve_elicitation(
+                session_id,
+                body.data,
+                runner_router,
+                conversation_store,
+                user_id,
+                permission_store,
+            )
             # Apply any policy writes deferred by the relay tool-call ASK gate
             # (e.g. a cost-budget checkpoint) now that the verdict is in.
             await _apply_pending_policy_ask_writes(
@@ -19044,6 +19113,10 @@ def create_sessions_router(
             # → runner's ``pending_approvals`` resolves.
             elicit_data = body.data or {}
             elicit_id = f"elicit_{secrets.token_hex(16)}"
+            if isinstance(elicit_data.get("kind"), str) and isinstance(
+                elicit_data.get("policy_mode"), str
+            ):
+                _local_action_elicitations[elicit_id] = session_id
             elicit_params = ElicitationRequestParams(
                 mode="form",
                 message=elicit_data.get("message", ""),

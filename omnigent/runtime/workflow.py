@@ -315,13 +315,11 @@ async def _dispatch_local_action(
         if "application/json" in with_json.lower():
             try:
                 body = resp.json()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 body = {}
             detail = body.get("error", {}) if isinstance(body, dict) else {}
         message = (
-            detail.get("message")
-            if isinstance(detail, dict)
-            else None
+            detail.get("message") if isinstance(detail, dict) else None
         ) or "local action failed"
         raw_code = detail.get("code") if isinstance(detail, dict) else None
         code = raw_code if isinstance(raw_code, str) and raw_code else ErrorCode.INTERNAL_ERROR

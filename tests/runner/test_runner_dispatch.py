@@ -48,13 +48,13 @@ import pytest
 from fastapi import FastAPI
 
 from omnigent.runner import create_runner_app
-from omnigent.runner.tool_dispatch import reset_local_runner_binding_cache
-from omnigent.runner.workspace_policy import PolicyMode
 from omnigent.runner.app import (
     _build_spawn_env_from_spec,
     _forward_harness_response,
     _resolve_harness_config,
 )
+from omnigent.runner.tool_dispatch import reset_local_runner_binding_cache
+from omnigent.runner.workspace_policy import PolicyMode
 from omnigent.runtime.harnesses import _HARNESS_MODULES
 from omnigent.runtime.harnesses.process_manager import HarnessProcessManager
 from omnigent.session_lifecycle import CLOSED_LABEL_KEY, CLOSED_LABEL_VALUE
@@ -2031,7 +2031,7 @@ async def test_execute_tool_routes_local_runner_os_write_through_gateway() -> No
 
     assert json.loads(output) == {
         "path": "note.txt",
-        "bytes_written": len("hello".encode("utf-8")),
+        "bytes_written": len(b"hello"),
         "created": True,
     }
     assert gateway.calls == [
@@ -2055,7 +2055,9 @@ async def test_execute_tool_local_runner_binding_indeterminate_fails_closed() ->
             raise AssertionError("gateway should not be called when binding is indeterminate")
 
     async with httpx.AsyncClient(
-        transport=httpx.MockTransport(lambda request: httpx.Response(503, json={}, request=request)),
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(503, json={}, request=request)
+        ),
         base_url="http://server",
     ) as server_client:
         output = await execute_tool(

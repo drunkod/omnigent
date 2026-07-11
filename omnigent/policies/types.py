@@ -76,6 +76,9 @@ class PolicyMode(str, Enum):
     AUTO = "auto"
 
 
+LOCAL_RUNNER_POLICY_LABEL_KEY = "omnigent.local_runner_policy"
+
+
 @dataclass(frozen=True)
 class EvaluationContext:
     """

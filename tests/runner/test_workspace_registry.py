@@ -215,7 +215,9 @@ def test_registry_rejects_symlink_escape(tmp_path: Path) -> None:
         registry.resolve_in_workspace(workspace_id, "linked/secret.txt")
 
 
-def test_registry_from_env_returns_empty_without_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_registry_from_env_returns_empty_without_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from omnigent.runner.identity import RUNNER_WORKSPACE_ENV_VAR
 
     monkeypatch.delenv(RUNNER_WORKSPACE_ENV_VAR, raising=False)

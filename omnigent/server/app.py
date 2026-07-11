@@ -1781,7 +1781,7 @@ def create_app(
         new-session sandbox option with, and the installed
         ``server_version`` (already public via ``/api/version``).
         """
-        from omnigent.server.auth import UnifiedAuthProvider
+        from omnigent.server.auth import UnifiedAuthProvider, remote_local_runner_enabled
 
         accounts_enabled = (
             isinstance(auth_provider, UnifiedAuthProvider) and auth_provider._source == "accounts"
@@ -1846,6 +1846,7 @@ def create_app(
             "sandbox_provider": sandbox_provider,
             "server_version": _server_version(),
             "smart_routing_enabled": smart_routing_enabled,
+            "remote_local_runner": remote_local_runner_enabled(),
         }
 
     @app.get("/v1/me", response_model=None)  # Union return type (dict | JSONResponse)

@@ -9,9 +9,9 @@ import pytest
 
 from omnigent.host.workspace_pairing import (
     DEFAULT_WORKSPACE_CAPABILITIES,
-    HostWorkspaceError,
     RUNNER_MODE_LOCAL,
     RUNNER_WORKSPACES_ENV_VAR,
+    HostWorkspaceError,
     add_record_workspace,
     canonicalize_root,
     canonicalize_roots,
@@ -44,7 +44,10 @@ def test_canonicalize_roots_deduplicates_preserving_order(tmp_path: Path) -> Non
     first.mkdir()
     second.mkdir()
 
-    assert canonicalize_roots([first, second, first]) == [str(first.resolve()), str(second.resolve())]
+    assert canonicalize_roots([first, second, first]) == [
+        str(first.resolve()),
+        str(second.resolve()),
+    ]
 
 
 def test_workspace_env_uses_pathsep(tmp_path: Path) -> None:
@@ -176,7 +179,6 @@ def test_add_record_workspace_allows_missing_sibling(tmp_path: Path) -> None:
     assert canonical == str(fresh.resolve())
     assert record["workspaces"] == [str(alive.resolve()), doomed_path, str(fresh.resolve())]
     assert record["runner_mode"] == RUNNER_MODE_LOCAL
-
 
 
 def test_remove_record_workspace_removes_canonical_root(tmp_path: Path) -> None:

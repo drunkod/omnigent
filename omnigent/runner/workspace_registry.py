@@ -12,7 +12,6 @@ import os
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 DEFAULT_WORKSPACE_CAPABILITIES = ("read", "write", "shell", "git", "terminal")
 WORKSPACE_ID_PREFIX = "ws_"
@@ -55,7 +54,7 @@ class WorkspaceRoot:
         display_name: str | None = None,
         capabilities: Iterable[str] = DEFAULT_WORKSPACE_CAPABILITIES,
         require_existing: bool = True,
-    ) -> "WorkspaceRoot":
+    ) -> WorkspaceRoot:
         """Create a workspace record from a user-provided path.
 
         :param root: Workspace directory path from CLI/env/config.
@@ -80,7 +79,9 @@ class WorkspaceRoot:
             raise WorkspaceRegistryError(f"workspace root must be an absolute path: {root!r}")
         canonical = raw.resolve(strict=False)
         if require_existing and not canonical.is_dir():
-            raise WorkspaceRegistryError(f"workspace root must be an existing directory: {canonical}")
+            raise WorkspaceRegistryError(
+                f"workspace root must be an existing directory: {canonical}"
+            )
         resolved_id = workspace_id or workspace_id_for_root(canonical)
         if not _valid_workspace_id(resolved_id):
             raise WorkspaceRegistryError(f"invalid workspace id: {resolved_id!r}")
@@ -163,7 +164,7 @@ class WorkspaceRegistry:
         *,
         capabilities: Iterable[str] = DEFAULT_WORKSPACE_CAPABILITIES,
         require_existing: bool = True,
-    ) -> "WorkspaceRegistry":
+    ) -> WorkspaceRegistry:
         """Build a registry from path values.
 
         :param roots: Workspace root paths.
@@ -183,7 +184,7 @@ class WorkspaceRegistry:
         env: Mapping[str, str] | None = None,
         *,
         require_existing: bool = True,
-    ) -> "WorkspaceRegistry":
+    ) -> WorkspaceRegistry:
         """Build a registry from runner process environment wiring.
 
         :param env: Environment mapping. Defaults to :data:`os.environ`.
@@ -227,7 +228,8 @@ class WorkspaceRegistry:
         if existing_for_id is not None:
             if existing_for_id.root != root.root:
                 raise WorkspaceRegistryError(
-                    f"workspace id {root.workspace_id!r} already registered for {existing_for_id.root}"
+                    "workspace id "
+                    f"{root.workspace_id!r} already registered for {existing_for_id.root}"
                 )
             return existing_for_id
         existing_id_for_root = self._id_by_root.get(root.root)
@@ -299,7 +301,9 @@ class WorkspaceRegistry:
 
         return [
             root.advertise(home=home)
-            for root in sorted(self._by_id.values(), key=lambda item: (item.display_name, item.workspace_id))
+            for root in sorted(
+                self._by_id.values(), key=lambda item: (item.display_name, item.workspace_id)
+            )
         ]
 
     def resolve_in_workspace(

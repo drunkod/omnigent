@@ -25,7 +25,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-
 FRAME_PROTOCOL_VERSION = 1
 ALLOWED_HELLO_MODES = frozenset({"local", "managed", "in_process"})
 

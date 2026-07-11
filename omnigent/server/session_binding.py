@@ -13,12 +13,12 @@ from typing import Any, Protocol
 
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.harness_aliases import canonicalize_harness
+from omnigent.policies.types import LOCAL_RUNNER_POLICY_LABEL_KEY
 
 LOCAL_RUNNER_EXECUTION_MODE = "local_runner"
 EXECUTION_MODE_LABEL_KEY = "omnigent.execution_mode"
 WORKSPACE_ID_LABEL_KEY = "omnigent.workspace_id"
 WORKSPACE_LABEL_LABEL_KEY = "omnigent.workspace_label"
-LOCAL_RUNNER_POLICY_LABEL_KEY = "omnigent.local_runner_policy"
 
 
 class RunnerHelloLike(Protocol):
@@ -85,6 +85,7 @@ def merge_local_runner_labels(
     runner_id: str | None,
     workspace_id: str | None,
     workspace_label: str | None,
+    policy_mode: str | None = None,
 ) -> dict[str, str]:
     """Merge local-runner binding labels into caller labels.
 
@@ -107,7 +108,31 @@ def merge_local_runner_labels(
         merged[WORKSPACE_ID_LABEL_KEY] = workspace_id
         if workspace_label is not None:
             merged[WORKSPACE_LABEL_LABEL_KEY] = workspace_label
+    if policy_mode is not None:
+        merged[LOCAL_RUNNER_POLICY_LABEL_KEY] = resolve_policy_mode_value(policy_mode)
     return merged
+
+
+def resolve_policy_mode_value(raw: str | None) -> str:
+    """Normalize a preset id or raw mode, failing closed on unknown input."""
+
+    from omnigent.policies.builtins.local_runner import (
+        DEFAULT_LOCAL_RUNNER_MODE,
+        LOCAL_RUNNER_PRESETS,
+    )
+
+    if raw is None:
+        return DEFAULT_LOCAL_RUNNER_MODE.value
+    if raw in LOCAL_RUNNER_PRESETS:
+        return LOCAL_RUNNER_PRESETS[raw][0].value
+    from omnigent.policies.types import PolicyMode
+
+    try:
+        return PolicyMode(raw).value
+    except ValueError:
+        raise OmnigentError(
+            f"unknown local runner policy {raw!r}", code=ErrorCode.INVALID_INPUT
+        ) from None
 
 
 def validate_workspace_requires_runner(*, runner_id: str | None, workspace_id: str | None) -> None:
@@ -148,11 +173,14 @@ def validate_local_runner_binding(
     if runner_id is None:
         return None
     if registry is None:
-        raise OmnigentError("runner tunnel registry is not configured", code=ErrorCode.INTERNAL_ERROR)
+        raise OmnigentError(
+            "runner tunnel registry is not configured", code=ErrorCode.INTERNAL_ERROR
+        )
     session = registry.get(runner_id)
     if session is None:
         raise OmnigentError(
-            f"runner {runner_id!r} is offline; start it with `omnigent host --server <url>` and retry",
+            f"runner {runner_id!r} is offline; start it with `omnigent host --server <url>` "
+            "and retry",
             code=ErrorCode.RUNNER_UNAVAILABLE,
         )
     if user_id is not None and session.owner is not None and session.owner != user_id:

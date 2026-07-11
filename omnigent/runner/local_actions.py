@@ -18,11 +18,16 @@ import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.runner.identity import strip_runner_auth_secrets
-from omnigent.runner.workspace_policy import Decision, PolicyMode, Verdict, classify_action, classify_path
+from omnigent.runner.workspace_policy import (
+    Decision,
+    PolicyMode,
+    Verdict,
+    classify_action,
+    classify_path,
+)
 from omnigent.runner.workspace_registry import (
     UnknownWorkspaceError,
     WorkspaceEscapeError,
@@ -214,7 +219,9 @@ class LocalActionGateway:
     ) -> dict[str, object]:
         """Read a UTF-8 text file from a workspace after classification."""
 
-        record = self._new_record(session_id=session_id, workspace_id=workspace_id, kind="read_file", mode=mode)
+        record = self._new_record(
+            session_id=session_id, workspace_id=workspace_id, kind="read_file", mode=mode
+        )
         record.path_summary = [path]
         await self._gate(record, classify_path("read_file", path, mode=mode))
         resolved = self._resolve_or_audit(record, path)
@@ -245,7 +252,9 @@ class LocalActionGateway:
     ) -> dict[str, object]:
         """List one workspace directory after classification."""
 
-        record = self._new_record(session_id=session_id, workspace_id=workspace_id, kind="list_dir", mode=mode)
+        record = self._new_record(
+            session_id=session_id, workspace_id=workspace_id, kind="list_dir", mode=mode
+        )
         record.path_summary = [path]
         await self._gate(record, classify_path("list_dir", path, mode=mode))
         resolved = self._resolve_or_audit(record, path)
@@ -274,7 +283,9 @@ class LocalActionGateway:
     ) -> dict[str, object]:
         """Write a UTF-8 text file after diff-backed approval when required."""
 
-        record = self._new_record(session_id=session_id, workspace_id=workspace_id, kind="write_file", mode=mode)
+        record = self._new_record(
+            session_id=session_id, workspace_id=workspace_id, kind="write_file", mode=mode
+        )
         record.path_summary = [path]
         verdict = classify_path("write_file", path, mode=mode)
         if verdict.decision is Decision.BLOCK:
@@ -330,7 +341,9 @@ class LocalActionGateway:
     ) -> dict[str, object]:
         """Run a shell command from a workspace-relative cwd."""
 
-        record = self._new_record(session_id=session_id, workspace_id=workspace_id, kind="run_shell", mode=mode)
+        record = self._new_record(
+            session_id=session_id, workspace_id=workspace_id, kind="run_shell", mode=mode
+        )
         record.command_summary = command[:400]
         record.cwd = cwd
         await self._gate(record, classify_action("run_shell", mode=mode, command=command, cwd=cwd))

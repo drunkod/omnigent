@@ -2147,7 +2147,9 @@ def _foreground_daemon_record(
     :returns: Daemon registry record for ``os.getpid()``.
     """
     mode = "local" if target == _LOCAL_DAEMON_MARKER else "server"
-    canonical_workspaces = stored_record_workspaces(workspaces, include_missing=True) if workspaces else []
+    canonical_workspaces = (
+        stored_record_workspaces(workspaces, include_missing=True) if workspaces else []
+    )
     return _HostDaemonRecord(
         pid=os.getpid(),
         target=target,
@@ -7925,7 +7927,6 @@ def host_remove_workspace(ctx: click.Context, workspace: str, server: str | None
     updated = _record_with_workspace_payload(record, payload)
     outcome = _apply_workspace_record_update(record, updated)
     click.echo(f"Removed workspace {canonical} from {record.target}; {outcome}.")
-
 
 
 def _stop_session_on_server(

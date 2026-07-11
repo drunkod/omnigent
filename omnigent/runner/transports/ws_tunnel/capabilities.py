@@ -25,7 +25,6 @@ DEFAULT_TOOL_CAPABILITIES = [
     "write_file",
     "list_dir",
     "search_files",
-    "apply_patch",
     "run_shell",
     "git_status",
     "git_diff",

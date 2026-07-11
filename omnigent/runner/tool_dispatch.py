@@ -38,11 +38,11 @@ if TYPE_CHECKING:
 
 import httpx
 
-from omnigent.errors import ErrorCode, OmnigentError
 from omnigent._wrapper_labels import (
     CLAUDE_NATIVE_WRAPPER_VALUE,
     CODEX_NATIVE_WRAPPER_VALUE,
 )
+from omnigent.errors import OmnigentError
 from omnigent.harness_aliases import canonicalize_harness
 from omnigent.model_override import (
     harness_supports_model_override,
@@ -50,9 +50,9 @@ from omnigent.model_override import (
     normalize_model_for_provider,
     validate_model_override,
 )
+from omnigent.native_coding_agents import public_agent_name
 from omnigent.runner.local_actions import LocalActionGateway, LocalActionTimeoutError
 from omnigent.runner.workspace_policy import PolicyMode
-from omnigent.native_coding_agents import public_agent_name
 from omnigent.runtime import pending_elicitations
 from omnigent.session_lifecycle import (
     CLOSED_LABEL_KEY,
@@ -4908,7 +4908,9 @@ async def _execute_os_env_tool(
         return json.dumps({"error": "cannot verify session execution mode; retry"})
     if binding.status == "bound":
         if local_action_gateway is None or conversation_id is None or binding.workspace_id is None:
-            return json.dumps({"error": "local action gateway unavailable for bound local-runner session"})
+            return json.dumps(
+                {"error": "local action gateway unavailable for bound local-runner session"}
+            )
         try:
             if tool_name == SysOsReadTool.name():
                 offset = args.get("offset", 1)
@@ -4979,10 +4981,17 @@ async def _execute_os_env_tool(
                     after = edit["newText"]
                     count = updated.count(before)
                     if count == 0:
-                        return json.dumps({"error": f"Could not find oldText in '{path}': {before[:80]!r}"})
+                        return json.dumps(
+                            {"error": f"Could not find oldText in '{path}': {before[:80]!r}"}
+                        )
                     if count > 1:
                         return json.dumps(
-                            {"error": f"oldText matched {count} locations in '{path}'; provide a more specific edit."}
+                            {
+                                "error": (
+                                    f"oldText matched {count} locations in '{path}'; "
+                                    "provide a more specific edit."
+                                )
+                            }
                         )
                     updated = updated.replace(before, after, 1)
                     applied += 1
@@ -5017,7 +5026,9 @@ async def _execute_os_env_tool(
                     stderr_text = gateway_result.get("stderr")
                     stdout_text = gateway_result.get("stdout")
                     message_text = str(stderr_text or stdout_text or "").strip()
-                    error_payload = {"error": f"Command exited with status {exit_code}: {message_text}"}
+                    error_payload = {
+                        "error": f"Command exited with status {exit_code}: {message_text}"
+                    }
                 return json.dumps(
                     {
                         "stdout": gateway_result.get("stdout", ""),
@@ -5132,7 +5143,7 @@ async def _local_runner_workspace_binding(
 
     try:
         resp = await server_client.get(f"/v1/sessions/{conversation_id}", timeout=10.0)
-    except Exception:
+    except Exception:  # noqa: BLE001 - server reachability is indeterminate
         return _LocalRunnerBinding(status="indeterminate")
     if resp.status_code != 200:
         return _LocalRunnerBinding(status="indeterminate")
