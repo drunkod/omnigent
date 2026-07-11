@@ -4039,6 +4039,9 @@ async def _resolve_elicitation(
                 "only the session owner may approve local machine actions",
                 code=ErrorCode.FORBIDDEN,
             )
+        from omnigent.server.permission_metrics import record_approval_decision
+
+        record_approval_decision(data.get("action") == "accept")
     harness_future = _harness_elicitation_registry.get(elicitation_id)
     if harness_future is not None and not harness_future.done():
         # Only the session that owns this elicitation
@@ -10075,8 +10078,14 @@ async def _relay_runner_stream(
                         continue
                     if evt_type == "session.local_action":
                         from omnigent.server.audit_sanitizer import sanitize_audit_event
+                        from omnigent.server.permission_metrics import record_local_action
 
                         event = sanitize_audit_event(event)
+                        record_local_action(
+                            kind=str(event.get("kind", "unknown")),
+                            status=str(event.get("status", "unknown")),
+                            policy_mode=str(event.get("policy_mode", "unknown")),
+                        )
                         if event.get("status") in {
                             "completed",
                             "failed",
