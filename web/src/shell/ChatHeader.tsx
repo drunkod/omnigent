@@ -165,6 +165,8 @@ export function ChatHeader({
   parentSessionId,
   conversationId,
   executionMode,
+  workspaceLabel,
+  policyMode,
   boundAgent,
   canShare,
   shareDisabled = false,
