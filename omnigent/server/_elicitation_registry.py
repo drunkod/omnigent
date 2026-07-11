@@ -20,6 +20,10 @@ _harness_elicitation_registry: dict[str, asyncio.Future[ElicitationResult]] = {}
 # before resolving the Future.
 _harness_elicitation_owners: dict[str, str] = {}
 
+# Local-action approvals are stricter than ordinary harness elicitations:
+# only the session owner may resolve them.
+_local_action_elicitations: dict[str, str] = {}
+
 
 @dataclass
 class _ParkedHarnessElicitation:
@@ -105,6 +109,7 @@ def reset_for_tests() -> None:
     """
     _harness_elicitation_registry.clear()
     _harness_elicitation_owners.clear()
+    _local_action_elicitations.clear()
     _harness_parked_elicitations.clear()
     _harness_pre_resolved_elicitations.clear()
 
@@ -113,6 +118,7 @@ __all__ = [
     "_ParkedHarnessElicitation",
     "_PreResolvedHarnessElicitation",
     "_harness_elicitation_owners",
+    "_local_action_elicitations",
     "_harness_elicitation_registry",
     "_harness_parked_elicitations",
     "_harness_pre_resolved_elicitations",

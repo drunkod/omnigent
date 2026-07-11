@@ -142,6 +142,7 @@ from omnigent.server import presence
 from omnigent.server._elicitation_registry import (
     _harness_elicitation_owners,
     _harness_elicitation_registry,
+    _local_action_elicitations,
     _harness_parked_elicitations,
     _harness_pre_resolved_elicitations,
     _ParkedHarnessElicitation,
@@ -1579,6 +1580,7 @@ async def _publish_and_wait_for_harness_elicitation(
         if _harness_elicitation_registry.get(elicitation_id) is future:
             _harness_elicitation_registry.pop(elicitation_id, None)
             _harness_elicitation_owners.pop(elicitation_id, None)
+            _local_action_elicitations.pop(elicitation_id, None)
         if _harness_parked_elicitations.get(elicitation_id) is parked:
             _harness_parked_elicitations.pop(elicitation_id, None)
         if published_request and not settled:
@@ -3967,6 +3969,7 @@ async def _resolve_elicitation(
     data: dict[str, Any],
     runner_router: RunnerRouter | None,
     conversation_store: ConversationStore | None = None,
+    user_id: str | None = None,
 ) -> None:
     """
     Resolve one outstanding elicitation from an approval payload.
@@ -4019,6 +4022,15 @@ async def _resolve_elicitation(
     # matches, no resolved event published) rather than 500-ing the
     # client — the runner forward still fires so the runner can reject.
     elicitation_id = data.get("elicitation_id", "")
+    if (
+        isinstance(elicitation_id, str)
+        and _local_action_elicitations.get(elicitation_id) == session_id
+        and user_id != _get_session_owner_id(session_id, permission_store)
+    ):
+        raise OmnigentError(
+            "only the session owner may approve local machine actions",
+            code=ErrorCode.FORBIDDEN,
+        )
     harness_future = _harness_elicitation_registry.get(elicitation_id)
     if harness_future is not None and not harness_future.done():
         # Only the session that owns this elicitation
@@ -18574,7 +18586,9 @@ def create_sessions_router(
                     code=ErrorCode.NOT_FOUND,
                 )
         _resolve_data = {"elicitation_id": elicitation_id, **body.model_dump(exclude_none=True)}
-        await _resolve_elicitation(session_id, _resolve_data, runner_router, conversation_store)
+        await _resolve_elicitation(
+            session_id, _resolve_data, runner_router, conversation_store, user_id
+        )
         # Apply any policy writes deferred by the relay tool-call ASK gate
         # (e.g. a cost-budget checkpoint) now that the verdict is in.
         await _apply_pending_policy_ask_writes(
@@ -19025,7 +19039,9 @@ def create_sessions_router(
             # to the runner for runner-side (policy) elicitations.
             # The dedicated URL endpoint (``.../elicitations/{eid}/
             # resolve``) routes through the same helper.
-            await _resolve_elicitation(session_id, body.data, runner_router, conversation_store)
+            await _resolve_elicitation(
+                session_id, body.data, runner_router, conversation_store, user_id
+            )
             # Apply any policy writes deferred by the relay tool-call ASK gate
             # (e.g. a cost-budget checkpoint) now that the verdict is in.
             await _apply_pending_policy_ask_writes(
@@ -19044,6 +19060,10 @@ def create_sessions_router(
             # → runner's ``pending_approvals`` resolves.
             elicit_data = body.data or {}
             elicit_id = f"elicit_{secrets.token_hex(16)}"
+            if isinstance(elicit_data.get("kind"), str) and isinstance(
+                elicit_data.get("policy_mode"), str
+            ):
+                _local_action_elicitations[elicit_id] = session_id
             elicit_params = ElicitationRequestParams(
                 mode="form",
                 message=elicit_data.get("message", ""),
