@@ -89,3 +89,30 @@ async def test_auth_disabled_ownerless_session_can_approve() -> None:
         permission_store=_PermissionStore(None),
     )
     assert elicitation_id not in _local_action_elicitations
+
+
+@pytest.mark.asyncio
+async def test_local_action_denial_forwards_decline_to_runner(monkeypatch) -> None:
+    elicitation_id = "elicit_local_denied"
+    forwarded: list[dict[str, object]] = []
+    _local_action_elicitations[elicitation_id] = "conv_test"
+
+    async def capture_forward(_session_id, data, _runner_router) -> None:
+        forwarded.append(data)
+
+    monkeypatch.setattr(
+        "omnigent.server.routes.sessions._forward_approval_to_runner",
+        capture_forward,
+    )
+    try:
+        await _resolve_elicitation(
+            "conv_test",
+            {"elicitation_id": elicitation_id, "action": "decline"},
+            None,
+            user_id="alice",
+            permission_store=_PermissionStore("alice"),
+        )
+    finally:
+        _local_action_elicitations.pop(elicitation_id, None)
+
+    assert forwarded == [{"elicitation_id": elicitation_id, "action": "decline"}]

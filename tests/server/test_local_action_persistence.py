@@ -32,7 +32,10 @@ def test_terminal_local_action_is_sanitized_and_persisted(db_uri: str) -> None:
     items = store.list_items(conversation.id, type="local_action")
     assert len(items.data) == 1
     assert items.data[0].data.status == "completed"
-    assert "diff_preview" not in items.data[0].data.model_dump()
+    persisted = items.data[0].data.model_dump()
+    assert "diff_preview" not in persisted
+    assert "command" not in persisted
+    assert "content" not in persisted
 
 
 def test_same_action_id_updates_the_existing_audit_item(db_uri: str) -> None:
