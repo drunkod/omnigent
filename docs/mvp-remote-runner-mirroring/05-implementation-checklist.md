@@ -192,9 +192,8 @@ Target files:
 - [ ] Test resize.
 - [ ] Test paste.
 - [ ] Test Ctrl-C and ESC sequences.
-- [ ] Test read-only attach.
-- [ ] Test non-owner denial for interactive attach.
 - [x] Test read-only attach.
+- [x] Test non-owner denial for interactive attach.
 - [x] Test runner disconnect/reconnect.
 - [x] Test terminal exited vs runner offline state.
 

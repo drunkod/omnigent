@@ -4,6 +4,19 @@ Goal: `tests/server/integration/test_remote_local_runner_permissions.py`
 covering the owner/collaborator boundary, denial propagation, binding
 ownership, and audit hygiene. Lands last; every case maps to a step above.
 
+## Current evidence
+
+The acceptance cases are covered across the existing focused suites:
+
+- Owner-only approval and cross-session tag survival: `tests/server/integration/test_sessions_elicitation_resolve_url.py`.
+- Denial forwarding and audit payload redaction: `tests/server/test_local_action_approval_gate.py` and `tests/server/test_local_action_persistence.py`.
+- Foreign-runner binding rejection: `tests/server/test_remote_local_runner_flag.py`.
+- Collaborator read-only attach and interactive-attach denial: `tests/server/routes/test_terminal_attach.py`.
+- Runner-side secret stripping: `tests/runner/test_identity.py` and `tests/runner/test_local_actions.py`.
+
+The consolidated integration fixture suite described below remains deferred;
+the focused tests exercise the same authorization and persistence contracts.
+
 Build the fixtures on the existing integration harness (the same app
 factory + authed-client pattern the other `tests/server/integration/*`
 files use — mirror `test_runner_ownership.py`, which already fakes an
