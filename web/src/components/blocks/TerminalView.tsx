@@ -132,8 +132,9 @@ export function TerminalView({
   // A manual Attach/Retry dismisses exactly the lifecycle value it is
   // recovering from. If the server later emits a different value it becomes
   // authoritative again automatically.
-  const [dismissedLifecycleState, setDismissedLifecycleState] =
-    useState<TerminalPanelState | null>(null);
+  const [dismissedLifecycleState, setDismissedLifecycleState] = useState<TerminalPanelState | null>(
+    null,
+  );
   const effectiveLifecycleTerminalState =
     dismissedLifecycleState === lifecycleTerminalState
       ? "terminal_unknown"
@@ -367,17 +368,29 @@ export function TerminalView({
   }, [state, disposeActiveSession]);
 
   useEffect(() => {
-    if (
-      dismissedLifecycleState !== null &&
-      lifecycleTerminalState !== dismissedLifecycleState
-    ) {
+    if (dismissedLifecycleState !== null && lifecycleTerminalState !== dismissedLifecycleState) {
       setDismissedLifecycleState(null);
     }
   }, [dismissedLifecycleState, lifecycleTerminalState]);
 
+  // A manual recovery suppresses the current SSE value only for that
+  // attempt. Any bridge resolution makes a later identical SSE value
+  // authoritative again, including after a failed reattach.
+  useEffect(() => {
+    if (
+      dismissedLifecycleState !== null &&
+      (state.kind === "connected" || state.kind === "closed" || state.kind === "lifecycle")
+    ) {
+      setDismissedLifecycleState(null);
+    }
+  }, [dismissedLifecycleState, state.kind]);
+
   useEffect(() => {
     sessionRef.current?.setInputEnabled(
-      inputAvailableFor(runnerState, effectiveLifecycleTerminalState),
+      inputAvailableFor(
+        runnerState,
+        state.kind === "connected" ? "terminal_running" : effectiveLifecycleTerminalState,
+      ),
     );
   }, [runnerState, effectiveLifecycleTerminalState, state.kind]);
 
@@ -544,9 +557,9 @@ function StatusOverlay({
     );
   } else if (runnerState === "runner_reconnected") {
     content = <span data-testid="terminal-reconciling">Reconnected, checking terminals…</span>;
-  } else if (lifecycleTerminalState === "terminal_relaunching") {
+  } else if (state.kind !== "connected" && lifecycleTerminalState === "terminal_relaunching") {
     content = <span>Relaunching terminal…</span>;
-  } else if (lifecycleTerminalState === "terminal_detached") {
+  } else if (state.kind !== "connected" && lifecycleTerminalState === "terminal_detached") {
     content = (
       <div className="flex flex-wrap items-center justify-center gap-2 px-3">
         <span>Terminal detached. Session is still running.</span>
@@ -555,9 +568,9 @@ function StatusOverlay({
         </Button>
       </div>
     );
-  } else if (lifecycleTerminalState === "terminal_exited") {
+  } else if (state.kind !== "connected" && lifecycleTerminalState === "terminal_exited") {
     content = <span>Terminal exited.</span>;
-  } else if (lifecycleTerminalState === "terminal_failed") {
+  } else if (state.kind !== "connected" && lifecycleTerminalState === "terminal_failed") {
     content = (
       <div className="flex flex-wrap items-center justify-center gap-2 px-3">
         <span>Terminal failed to start.</span>

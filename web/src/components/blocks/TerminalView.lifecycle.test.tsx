@@ -48,13 +48,7 @@ afterEach(() => {
 });
 
 async function renderAndAttach(transport?: "control" | "pty") {
-  render(
-    <TerminalView
-      sessionId="conv_abc"
-      terminalId="terminal_bash_s1"
-      transport={transport}
-    />,
-  );
+  render(<TerminalView sessionId="conv_abc" terminalId="terminal_bash_s1" transport={transport} />);
   await waitFor(() => expect(terminalSessionMock.instances).toHaveLength(1));
 }
 
@@ -105,6 +99,41 @@ describe("TerminalView lifecycle recovery", () => {
     act(() => terminalSessionMock.instances[1].onState({ kind: "connected" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Attach" })).toBeNull());
     expect(terminalSessionMock.instances[1].setInputEnabled).toHaveBeenLastCalledWith(true);
+  });
+
+  it("restores an identical detached SSE value after a failed attach", async () => {
+    await renderAndAttach("control");
+    act(() => {
+      useTerminalLifecycleStore.getState().applyTerminalState({
+        type: "session_terminal_state",
+        conversationId: "conv_abc",
+        terminalId: "terminal_bash_s1",
+        state: "terminal_detached",
+      });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Attach" }));
+    await waitFor(() => expect(terminalSessionMock.instances).toHaveLength(2));
+    act(() =>
+      terminalSessionMock.instances[1].onState({ kind: "lifecycle", state: "terminal_detached" }),
+    );
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Attach" })).toBeVisible());
+  });
+
+  it("does not let a stale detached SSE value cover a connected bridge", async () => {
+    await renderAndAttach("control");
+    act(() => {
+      useTerminalLifecycleStore.getState().applyTerminalState({
+        type: "session_terminal_state",
+        conversationId: "conv_abc",
+        terminalId: "terminal_bash_s1",
+        state: "terminal_detached",
+      });
+      terminalSessionMock.instances[0].onState({ kind: "connected" });
+    });
+
+    expect(screen.queryByRole("button", { name: "Attach" })).toBeNull();
   });
 
   it("offers a working Retry action and clears a stale failed overlay", async () => {
