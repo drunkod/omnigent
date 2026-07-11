@@ -12442,8 +12442,15 @@ async def _create_session_from_existing_agent(
     # the native path and avoid double-persistence with the
     # transcript forwarder.
     native_agent = native_coding_agent_for_agent_name(agent.name)
+    initial_labels = dict(body.labels) if body.labels else {}
+    if body.local_runner_policy is not None and (body.host_id or inherited_runner_id):
+        from omnigent.server.session_binding import resolve_policy_mode_value
+
+        initial_labels["omnigent.local_runner_policy"] = resolve_policy_mode_value(
+            body.local_runner_policy
+        )
     if native_agent is not None:
-        _native_labels = dict(body.labels) if body.labels else {}
+        _native_labels = initial_labels
         _native_labels.update(native_agent.presentation_labels)
         await asyncio.to_thread(conversation_store.set_labels, conv.id, _native_labels)
         conv = await asyncio.to_thread(conversation_store.get_conversation, conv.id)
@@ -12455,12 +12462,12 @@ async def _create_session_from_existing_agent(
         # A native-harness sub-agent (claude-native / codex-native) must
         # render terminal-first with the Chat/Terminal pill, same as a
         # top-level wrapper session. Merge over any caller-supplied labels.
-        _merged = dict(body.labels) if body.labels else {}
+        _merged = initial_labels
         _merged.update(_sa_labels)
         await asyncio.to_thread(conversation_store.set_labels, conv.id, _merged)
         conv = await asyncio.to_thread(conversation_store.get_conversation, conv.id)
-    elif body.labels:
-        await asyncio.to_thread(conversation_store.set_labels, conv.id, body.labels)
+    elif initial_labels:
+        await asyncio.to_thread(conversation_store.set_labels, conv.id, initial_labels)
     if body.initial_items:
         runner_client = await _get_runner_client(conv.id, runner_router)
         if runner_client is None:

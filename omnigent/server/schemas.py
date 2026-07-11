@@ -649,6 +649,7 @@ class ConversationObject(BaseModel):
     created_at: int
     updated_at: int
     labels: dict[str, str] = Field(default_factory=dict)
+    local_runner_policy: str | None = None
 
 
 class ConversationDeleted(BaseModel):
