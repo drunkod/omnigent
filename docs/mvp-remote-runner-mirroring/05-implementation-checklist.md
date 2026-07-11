@@ -151,14 +151,15 @@ Target files:
 - [x] Block workspace escapes in all modes.
 - [x] Add approval event model for local actions.
 - [x] Ensure approvals are owner-only for MVP.
-- [ ] Add session history audit records.
+- [x] Add session history audit records.
 
 Evidence: presets are covered by the policy catalog, resolver, session-create
 route validation, and inherited-runner API test. Owner-only approval is covered
 by the tagged elicitation gate and cross-session/auth-off regression tests.
 Manual ask-gating and workspace containment are covered by
 `tests/runner/test_local_actions.py`. Local-action approvals use the tagged
-`mcp_elicitation` event shape; durable session history remains open.
+`mcp_elicitation` event shape. Terminal local-action outcomes persist as
+sanitized `local_action` items, upserted by `action_id`.
 
 Target files:
 
@@ -172,7 +173,7 @@ Target files:
 
 - [x] Add runner status panel.
 - [ ] Add workspace picker in new session flow.
-- [ ] Add local/cloud execution mode indicator.
+- [x] Add local/cloud execution mode indicator.
 - [x] Add terminal transport/reconnect status.
 - [ ] Add approval card for local shell/write action.
 - [ ] Add diff preview before write/apply-patch.
@@ -206,7 +207,7 @@ Target files:
 ## P11 — Observability
 
 - [ ] Add structured logs for runner connect/disconnect.
-- [ ] Add metrics for local action decisions.
+- [x] Add metrics for local action decisions.
 - [ ] Add metrics for terminal attach transport and close codes.
 - [ ] Add diagnostics endpoint for runner capabilities.
 - [ ] Ensure logs do not leak secrets or full file contents.
@@ -216,6 +217,10 @@ Target files:
 - `omnigent/server/performance_metrics.py`
 - `omnigent/runtime/telemetry.py`
 - `omnigent/runner/*`
+
+Evidence: `omnigent.server.permission_metrics` emits bounded-label OTel
+counters for local-action statuses and approval decisions; unit coverage is
+in `tests/server/test_permission_metrics.py`.
 
 ## P12 — Documentation and rollout
 
