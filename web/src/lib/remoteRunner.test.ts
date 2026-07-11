@@ -41,7 +41,11 @@ describe("remote runner discovery", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ hosts: [{ host_id: "h1", name: "Laptop", owner: "alice", status: "online" }] })),
+        new Response(
+          JSON.stringify({
+            hosts: [{ host_id: "h1", name: "Laptop", owner: "alice", status: "online" }],
+          }),
+        ),
       ),
     );
     const hosts = await fetchHosts();

@@ -44,6 +44,7 @@ from fastapi import FastAPI
 from omnigent.runtime import get_caps, session_stream
 from omnigent.runtime.agent_cache import AgentCache
 from omnigent.runtime.caps import RuntimeCaps
+from omnigent.server._elicitation_registry import _local_action_elicitations
 from omnigent.server.app import create_app
 from omnigent.spec.types import FunctionPolicySpec, FunctionRef
 from omnigent.stores.agent_store.sqlalchemy_store import SqlAlchemyAgentStore
@@ -1357,6 +1358,40 @@ async def test_resolve_url_cross_user_forbidden(
     # Non-owner is denied (403 forbidden, or 404 to avoid leaking
     # existence — both are acceptable refusals).
     assert resp.status_code in (403, 404), resp.text
+
+
+async def test_tagged_local_action_gate_survives_wrong_session_route(
+    auth_client: httpx.AsyncClient,
+    db_uri: str,
+) -> None:
+    """A wrong-session approval cannot consume another session's tag."""
+    from omnigent.server.auth import LEVEL_EDIT
+    from omnigent.stores.permission_store.sqlalchemy_store import SqlAlchemyPermissionStore
+
+    agent = await create_test_agent(auth_client, user="alice@example.com")
+    bob_agent = await create_test_agent(auth_client, user="bob@example.com")
+    session_a = await _create_session(auth_client, agent["id"], user="alice@example.com")
+    session_b = await _create_session(auth_client, bob_agent["id"], user="bob@example.com")
+    SqlAlchemyPermissionStore(db_uri).grant("bob@example.com", session_a, LEVEL_EDIT)
+    elicitation_id = "elicit_route_local_action"
+    _local_action_elicitations[elicitation_id] = session_a
+    try:
+        wrong_session = await auth_client.post(
+            f"/v1/sessions/{session_b}/elicitations/{elicitation_id}/resolve",
+            json={"action": "accept"},
+            headers={"X-Forwarded-Email": "bob@example.com"},
+        )
+        assert wrong_session.status_code == 202, wrong_session.text
+        assert _local_action_elicitations[elicitation_id] == session_a
+
+        collaborator = await auth_client.post(
+            f"/v1/sessions/{session_a}/elicitations/{elicitation_id}/resolve",
+            json={"action": "accept"},
+            headers={"X-Forwarded-Email": "bob@example.com"},
+        )
+        assert collaborator.status_code == 403, collaborator.text
+    finally:
+        _local_action_elicitations.pop(elicitation_id, None)
 
 
 # ── GET /sessions/{id}/elicitations/{eid} (approval page) ────

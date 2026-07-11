@@ -10086,13 +10086,17 @@ async def _relay_runner_stream(
                             status=str(event.get("status", "unknown")),
                             policy_mode=str(event.get("policy_mode", "unknown")),
                         )
-                        if event.get("status") in {
-                            "completed",
-                            "failed",
-                            "denied",
-                            "blocked",
-                            "approved",
-                        } and conversation_store is not None:
+                        if (
+                            event.get("status")
+                            in {
+                                "completed",
+                                "failed",
+                                "denied",
+                                "blocked",
+                                "approved",
+                            }
+                            and conversation_store is not None
+                        ):
                             await asyncio.to_thread(
                                 _persist_local_action_item,
                                 conversation_store,

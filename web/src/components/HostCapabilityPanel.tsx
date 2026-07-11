@@ -32,7 +32,9 @@ export function HostCapabilityPanel({ enabled }: { enabled: boolean }) {
   }
   return (
     <div className="flex max-w-2xl flex-col gap-3">
-      {query.data.map((host) => <HostCard key={host.host_id} host={host} />)}
+      {query.data.map((host) => (
+        <HostCard key={host.host_id} host={host} />
+      ))}
     </div>
   );
 }

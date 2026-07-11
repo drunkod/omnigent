@@ -1605,14 +1605,18 @@ class SqlAlchemyConversationStore(ConversationStore):
         """Upsert one sanitized terminal local-action audit item."""
         action_id = item.data.action_id  # type: ignore[attr-defined]
         with self._session() as session:
-            row = session.execute(
-                select(SqlConversationItem).where(
-                    SqlConversationItem.workspace_id == current_workspace_id(),
-                    SqlConversationItem.conversation_id == conversation_id,
-                    SqlConversationItem.type == encode_item_type("local_action"),
-                    SqlConversationItem.data.like(f'%"action_id": "{action_id}"%'),
+            row = (
+                session.execute(
+                    select(SqlConversationItem).where(
+                        SqlConversationItem.workspace_id == current_workspace_id(),
+                        SqlConversationItem.conversation_id == conversation_id,
+                        SqlConversationItem.type == encode_item_type("local_action"),
+                        SqlConversationItem.data.like(f'%"action_id": "{action_id}"%'),
+                    )
                 )
-            ).scalars().first()
+                .scalars()
+                .first()
+            )
             if row is not None:
                 row.data = strip_nul_bytes(json.dumps(item.data.model_dump(exclude_none=True)))
                 return _to_item(row)

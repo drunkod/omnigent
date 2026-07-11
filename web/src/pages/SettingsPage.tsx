@@ -182,7 +182,10 @@ export function SettingsPage() {
       {section === "archived" && <ArchivedSection />}
       {section === "cli" && isElectronShell() && <LocalCliSection />}
       {section === "runners" && (
-        <Section title="Runners" description="Inspect paired machines and their reported capabilities.">
+        <Section
+          title="Runners"
+          description="Inspect paired machines and their reported capabilities."
+        >
           <HostCapabilityPanel enabled={info !== "loading" && info.remote_local_runner} />
         </Section>
       )}
