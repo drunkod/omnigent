@@ -1,4 +1,28 @@
 import type { TerminalUiState } from "@/lib/events";
+import { authenticatedFetch } from "@/lib/identity";
+
+export interface RemoteHost {
+  host_id: string;
+  name: string;
+  owner: string;
+  status: "online" | "offline";
+  sandbox_provider?: string | null;
+  configured_harnesses?: Record<string, boolean | string> | null;
+}
+
+export async function fetchHosts(): Promise<RemoteHost[]> {
+  const response = await authenticatedFetch("/v1/hosts");
+  if (!response.ok) throw new Error(`hosts fetch failed: ${response.status}`);
+  const body = (await response.json()) as { hosts?: RemoteHost[]; data?: RemoteHost[] };
+  return body.hosts ?? body.data ?? [];
+}
+
+export async function remoteLocalRunnerEnabled(): Promise<boolean> {
+  const response = await authenticatedFetch("/v1/info");
+  if (!response.ok) return false;
+  const info = (await response.json()) as { remote_local_runner?: boolean };
+  return info.remote_local_runner === true;
+}
 
 export type AttachLifecycleState = Extract<
   TerminalUiState,
