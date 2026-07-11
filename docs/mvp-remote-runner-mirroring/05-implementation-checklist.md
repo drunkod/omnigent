@@ -146,12 +146,19 @@ Target files:
 
 ## P8 — Permission and policy integration
 
-- [ ] Add local runner policy presets: manual, assisted, auto.
-- [ ] Ask-gate every side-effectful action in manual mode.
-- [ ] Block workspace escapes in all modes.
-- [ ] Add approval event model for local actions.
-- [ ] Ensure approvals are owner-only for MVP.
+- [x] Add local runner policy presets: manual, assisted, auto.
+- [x] Ask-gate every side-effectful action in manual mode.
+- [x] Block workspace escapes in all modes.
+- [x] Add approval event model for local actions.
+- [x] Ensure approvals are owner-only for MVP.
 - [ ] Add session history audit records.
+
+Evidence: presets are covered by the policy catalog, resolver, session-create
+route validation, and inherited-runner API test. Owner-only approval is covered
+by the tagged elicitation gate and cross-session/auth-off regression tests.
+Manual ask-gating and workspace containment are covered by
+`tests/runner/test_local_actions.py`. Local-action approvals use the tagged
+`mcp_elicitation` event shape; durable session history remains open.
 
 Target files:
 
