@@ -104,6 +104,9 @@ interface ChatHeaderProps {
   conversationId: string | undefined;
   /** Session execution mode label used to gate the local-runner badge. */
   executionMode?: string | null;
+  /** Persisted local-runner workspace and policy labels. */
+  workspaceLabel?: string | null;
+  policyMode?: string | null;
   /** The bound agent (mcp_servers + policies) for the info popover. */
   boundAgent: Agent | undefined;
   /** Whether the Share button/menu entry should render. */
@@ -268,7 +271,12 @@ export function ChatHeader({
             nothing when the user is alone. */}
         {conversationId && <PresenceAvatars />}
         {conversationId && (
-          <RunnerStatusBadge conversationId={conversationId} executionMode={executionMode} />
+          <RunnerStatusBadge
+            conversationId={conversationId}
+            executionMode={executionMode}
+            workspaceLabel={workspaceLabel}
+            policyMode={policyMode}
+          />
         )}
         {/* Desktop (md+) action buttons. On mobile these collapse into
             the three-dot "Session actions" menu below, which renders
