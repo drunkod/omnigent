@@ -19879,6 +19879,11 @@ def create_sessions_router(
             stay in this async hook.
             """
             events: list[dict[str, Any]] = []
+            from omnigent.server import _runner_state_registry
+
+            runner_snapshot = _runner_state_registry.snapshot(session_id)
+            if runner_snapshot is not None:
+                events.append(runner_snapshot)
             try:
                 page = await asyncio.to_thread(
                     conversation_store.list_conversations,
