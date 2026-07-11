@@ -56,6 +56,8 @@ _TRUTHY_STRINGS = ("1", "true", "yes")
 # routes/host_tunnel.py.
 _LOCAL_SINGLE_USER_ENV = "OMNIGENT_LOCAL_SINGLE_USER"
 
+_REMOTE_LOCAL_RUNNER_ENV = "OMNIGENT_REMOTE_LOCAL_RUNNER"
+
 # Name of the trusted identity header read in header-auth mode.
 # Overridable so deploys behind a proxy that uses a different header
 # name (e.g. Cloudflare Access' ``Cf-Access-Authenticated-User-Email``)
@@ -110,6 +112,12 @@ def local_single_user_enabled() -> bool:
     :returns: ``True`` when the single-user marker is set and truthy.
     """
     return env_var_is_truthy(_LOCAL_SINGLE_USER_ENV)
+
+
+def remote_local_runner_enabled() -> bool:
+    """Whether the opt-in remote local-runner capability is enabled."""
+
+    return env_var_is_truthy(_REMOTE_LOCAL_RUNNER_ENV)
 
 
 def resolve_auth_header() -> str:
