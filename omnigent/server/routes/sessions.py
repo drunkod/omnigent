@@ -4028,16 +4028,19 @@ async def _resolve_elicitation(
         if isinstance(elicitation_id, str)
         else None
     )
-    owner_id = (
-        _get_session_owner_id(session_id, permission_store)
-        if permission_store is not None
-        else None
-    )
-    if local_action_session == session_id and owner_id is not None and user_id != owner_id:
-        raise OmnigentError(
-            "only the session owner may approve local machine actions",
-            code=ErrorCode.FORBIDDEN,
+    if local_action_session == session_id:
+        # Local-action tags are the only path that needs an owner lookup.
+        # A permission store is expected whenever auth-backed ownership exists.
+        owner_id = (
+            _get_session_owner_id(session_id, permission_store)
+            if permission_store is not None
+            else None
         )
+        if owner_id is not None and user_id != owner_id:
+            raise OmnigentError(
+                "only the session owner may approve local machine actions",
+                code=ErrorCode.FORBIDDEN,
+            )
     harness_future = _harness_elicitation_registry.get(elicitation_id)
     if harness_future is not None and not harness_future.done():
         # Only the session that owns this elicitation
