@@ -3970,6 +3970,7 @@ async def _resolve_elicitation(
     runner_router: RunnerRouter | None,
     conversation_store: ConversationStore | None = None,
     user_id: str | None = None,
+    permission_store: PermissionStore | None = None,
 ) -> None:
     """
     Resolve one outstanding elicitation from an approval payload.
@@ -4025,7 +4026,11 @@ async def _resolve_elicitation(
     if (
         isinstance(elicitation_id, str)
         and _local_action_elicitations.get(elicitation_id) == session_id
-        and user_id != _get_session_owner_id(session_id, permission_store)
+        and (
+            permission_store is None
+            or user_id is None
+            or user_id != _get_session_owner_id(session_id, permission_store)
+        )
     ):
         raise OmnigentError(
             "only the session owner may approve local machine actions",
@@ -4079,7 +4084,10 @@ async def _resolve_elicitation(
             )
     # Runner-side elicitations (policy approvals, scaffold dispatch)
     # resolve when the canonical approval event reaches the runner.
-    await _forward_approval_to_runner(session_id, data, runner_router)
+    try:
+        await _forward_approval_to_runner(session_id, data, runner_router)
+    finally:
+        _local_action_elicitations.pop(elicitation_id, None)
 
 
 # Fire-and-forget tasks that ask the bound runner to pop a native-terminal
@@ -18587,7 +18595,12 @@ def create_sessions_router(
                 )
         _resolve_data = {"elicitation_id": elicitation_id, **body.model_dump(exclude_none=True)}
         await _resolve_elicitation(
-            session_id, _resolve_data, runner_router, conversation_store, user_id
+            session_id,
+            _resolve_data,
+            runner_router,
+            conversation_store,
+            user_id,
+            permission_store,
         )
         # Apply any policy writes deferred by the relay tool-call ASK gate
         # (e.g. a cost-budget checkpoint) now that the verdict is in.
@@ -19040,7 +19053,12 @@ def create_sessions_router(
             # The dedicated URL endpoint (``.../elicitations/{eid}/
             # resolve``) routes through the same helper.
             await _resolve_elicitation(
-                session_id, body.data, runner_router, conversation_store, user_id
+                session_id,
+                body.data,
+                runner_router,
+                conversation_store,
+                user_id,
+                permission_store,
             )
             # Apply any policy writes deferred by the relay tool-call ASK gate
             # (e.g. a cost-budget checkpoint) now that the verdict is in.
