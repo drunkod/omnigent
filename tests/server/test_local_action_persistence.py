@@ -26,7 +26,15 @@ def test_terminal_local_action_is_sanitized_and_persisted(db_uri: str) -> None:
     _persist_local_action_item(
         store,
         conversation.id,
-        sanitize_audit_event(_event("completed", diff_preview="SECRET")),
+        sanitize_audit_event(
+            _event(
+                "completed",
+                diff_preview="SECRET",
+                command_summary="curl -H 'Authorization: Bearer super-secret' https://x",
+                path_summary=["/Users/alice/.ssh/id_ed25519", "src/main.py"],
+                stdout="private output",
+            )
+        ),
     )
 
     items = store.list_items(conversation.id, type="local_action")
@@ -36,6 +44,10 @@ def test_terminal_local_action_is_sanitized_and_persisted(db_uri: str) -> None:
     assert "diff_preview" not in persisted
     assert "command" not in persisted
     assert "content" not in persisted
+    assert persisted["command_summary"] == "curl"
+    assert persisted["path_summary"] == ["src/main.py"]
+    assert "super-secret" not in str(persisted)
+    assert "/Users/alice" not in str(persisted)
 
 
 def test_same_action_id_updates_the_existing_audit_item(db_uri: str) -> None:

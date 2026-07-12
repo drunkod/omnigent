@@ -9629,10 +9629,15 @@ def _persist_local_action_item(
     action_id = event.get("action_id")
     if not isinstance(action_id, str) or not action_id:
         return
+    from omnigent.server.audit_sanitizer import sanitize_local_action_history
+
+    safe_event = sanitize_local_action_history(event)
+    safe_event["action_id"] = action_id
+    safe_event["status"] = event["status"]
     item = NewConversationItem(
         type="local_action",
         response_id=action_id,
-        data=parse_item_data("local_action", event),
+        data=parse_item_data("local_action", safe_event),
     )
     conversation_store.upsert_local_action(session_id, item)
 

@@ -570,10 +570,25 @@ class SlashCommandData(BaseModel):
 class LocalActionData(BaseModel):
     """Sanitized audit payload for one runner-local action lifecycle."""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
     action_id: str
     status: str
+    session_id: str | None = None
+    runner_id: str | None = None
+    workspace_id: str | None = None
+    kind: str | None = None
+    requested_by: str | None = None
+    policy_mode: str | None = None
+    risk_flags: list[str] = Field(default_factory=list)
+    approval_id: str | None = None
+    cwd: str = "."
+    path_summary: list[str] = Field(default_factory=list)
+    command_summary: str | None = None
+    started_at: float | None = None
+    finished_at: float | None = None
+    exit_code: int | None = None
+    output_truncated: bool = False
 
 
 ItemData = (
