@@ -27,6 +27,20 @@ def _build() -> HelloFrame:
     )
 
 
+def test_default_hello_preserves_legacy_harnesses_without_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(RUNNER_WORKSPACES_ENV_VAR, raising=False)
+    monkeypatch.delenv(RUNNER_WORKSPACE_ENV_VAR, raising=False)
+    monkeypatch.setattr(capabilities_module.shutil, "which", lambda _command: None)
+
+    hello = _build()
+
+    assert hello.workspace_roots == []
+    assert hello.harnesses == ["claude-native", "codex"]
+    assert RUNNER_WORKSPACE_ENV_VAR not in os.environ
+
+
 def test_default_hello_advertises_single_env_workspace_and_native_codex(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
