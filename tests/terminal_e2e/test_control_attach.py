@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 import pytest
 from websockets.asyncio.client import connect
@@ -73,3 +74,41 @@ async def test_read_collaborator_cannot_open_interactive_attach(
         ):
             pass
     assert exc_info.value.response.status_code == 403
+
+
+async def test_resize_reaches_terminal_process(
+    terminal_tunnel: TerminalTunnelFixture,
+) -> None:
+    """A browser resize changes tmux dimensions observed by the pane process."""
+    async with connect(
+        terminal_tunnel.url(),
+        additional_headers={"X-Forwarded-Email": "owner@example.com"},
+    ) as conn:
+        await _receive_until(conn, b"T12_READY")
+        await conn.send(json.dumps({"type": "resize", "cols": 101, "rows": 37}))
+        output = await _receive_until(conn, b"T12_SIZE:101x37")
+    assert output.count(b"T12_SIZE:101x37") == 1
+
+
+async def test_multiline_utf8_paste_arrives_once_and_in_order(
+    terminal_tunnel: TerminalTunnelFixture,
+) -> None:
+    """A browser paste preserves line order, UTF-8, and wide characters."""
+    lines = ["first", "wide:界🙂", *(f"chunk-{index}:" + "x" * 512 for index in range(12)), "last"]
+    payload = ("\n".join(lines) + "\n").encode()
+
+    async with connect(
+        terminal_tunnel.url(),
+        additional_headers={"X-Forwarded-Email": "owner@example.com"},
+    ) as conn:
+        await _receive_until(conn, b"T12_READY")
+        await conn.send(payload)
+        output = await _receive_until(conn, b"T12_ECHO:last")
+
+    positions = []
+    for line in lines:
+        marker = b"T12_ECHO:" + line.encode()
+        assert output.count(marker) == 1
+        positions.append(output.index(marker))
+    assert positions == sorted(positions)
+    assert "界🙂".encode() in output

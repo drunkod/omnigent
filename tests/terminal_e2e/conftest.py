@@ -6,6 +6,7 @@ import asyncio
 import shutil
 import socket
 import sys
+import textwrap
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -104,10 +105,22 @@ async def terminal_tunnel(tmp_path: Path) -> AsyncIterator[TerminalTunnelFixture
     session_id = "conv_t12_control"
     terminal_id = "terminal_probe_main"
     terminal_registry = TerminalRegistry()
-    script = (
-        "import sys; "
-        "print('T12_READY', flush=True); "
-        "[(sys.stdout.write('T12_ECHO:' + line), sys.stdout.flush()) for line in sys.stdin]"
+    script = textwrap.dedent(
+        """
+        import os
+        import signal
+        import sys
+
+        def report_size(*_args):
+            size = os.get_terminal_size(sys.stdout.fileno())
+            print(f"T12_SIZE:{size.columns}x{size.lines}", flush=True)
+
+        signal.signal(signal.SIGWINCH, report_size)
+        print("T12_READY", flush=True)
+        for line in sys.stdin:
+            sys.stdout.write("T12_ECHO:" + line)
+            sys.stdout.flush()
+        """
     )
     await terminal_registry.launch(
         session_id,
