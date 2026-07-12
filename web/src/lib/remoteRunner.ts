@@ -10,11 +10,37 @@ export interface RemoteHost {
   configured_harnesses?: Record<string, boolean | string> | null;
 }
 
+export interface RunnerWorkspace {
+  workspace_id: string;
+  display_name?: string | null;
+  path_label?: string | null;
+  capabilities: string[];
+}
+
+export interface LocalRunnerSummary {
+  runner_id: string;
+  online: boolean;
+  runner_version?: string | null;
+  os?: string | null;
+  arch?: string | null;
+  harnesses: string[];
+  terminal_transports: string[];
+  tool_capabilities: string[];
+  workspaces: RunnerWorkspace[];
+}
+
 export async function fetchHosts(): Promise<RemoteHost[]> {
   const response = await authenticatedFetch("/v1/hosts");
   if (!response.ok) throw new Error(`hosts fetch failed: ${response.status}`);
   const body = (await response.json()) as { hosts?: RemoteHost[]; data?: RemoteHost[] };
   return body.hosts ?? body.data ?? [];
+}
+
+export async function fetchLocalRunners(): Promise<LocalRunnerSummary[]> {
+  const response = await authenticatedFetch("/v1/runners");
+  if (!response.ok) throw new Error(`runner discovery failed: ${response.status}`);
+  const body = (await response.json()) as { data?: LocalRunnerSummary[] };
+  return body.data ?? [];
 }
 
 export async function remoteLocalRunnerEnabled(): Promise<boolean> {

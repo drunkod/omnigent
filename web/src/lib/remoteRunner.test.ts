@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   attachQuery,
+  fetchLocalRunners,
   fetchHosts,
   remoteLocalRunnerEnabled,
   stateFromAttachClose,
@@ -37,6 +38,34 @@ describe("remote runner attach contract", () => {
 });
 
 describe("remote runner discovery", () => {
+  it("fetches opaque runner and workspace identifiers", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            data: [
+              {
+                runner_id: "runner_abc",
+                online: true,
+                harnesses: ["codex"],
+                terminal_transports: ["control"],
+                tool_capabilities: ["read_file"],
+                workspaces: [
+                  { workspace_id: "ws_123", path_label: "~/src/app", capabilities: ["read"] },
+                ],
+              },
+            ],
+          }),
+        ),
+      ),
+    );
+
+    const runners = await fetchLocalRunners();
+    expect(runners[0].runner_id).toBe("runner_abc");
+    expect(runners[0].workspaces[0].workspace_id).toBe("ws_123");
+  });
+
   it("fetches the hosts-shaped API envelope", async () => {
     vi.stubGlobal(
       "fetch",

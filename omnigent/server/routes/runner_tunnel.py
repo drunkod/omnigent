@@ -239,11 +239,32 @@ def create_runner_tunnel_router(
             # Scope listing to the caller's own runners.
             if user_id is not None and session.owner is not None and session.owner != user_id:
                 continue
+            workspaces: list[dict[str, object]] = []
+            for workspace in session.hello.workspace_roots:
+                if not isinstance(workspace, dict):
+                    continue
+                workspace_id = workspace.get("workspace_id")
+                if not isinstance(workspace_id, str) or not workspace_id:
+                    continue
+                safe_workspace: dict[str, object] = {"workspace_id": workspace_id}
+                for key in ("display_name", "path_label", "capabilities"):
+                    value = workspace.get(key)
+                    if key == "capabilities" and isinstance(value, list):
+                        safe_workspace[key] = [item for item in value if isinstance(item, str)]
+                    elif key != "capabilities" and isinstance(value, str):
+                        safe_workspace[key] = value
+                workspaces.append(safe_workspace)
             data.append(
                 {
                     "runner_id": runner_id,
                     "online": True,
                     "harnesses": list(session.hello.harnesses),
+                    "runner_version": session.hello.runner_version,
+                    "os": session.hello.os_name,
+                    "arch": session.hello.arch,
+                    "terminal_transports": list(session.hello.terminal_transports),
+                    "tool_capabilities": list(session.hello.tool_capabilities),
+                    "workspaces": workspaces,
                 }
             )
         return {"data": data}
