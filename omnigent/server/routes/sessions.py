@@ -12326,6 +12326,58 @@ async def _create_session_from_existing_agent(
                     # Validate ownership before policy labels are applied below.
                     inherited_runner_id = None
 
+    local_runner_labels: dict[str, str] = {}
+    if body.runner_id is None and inherited_runner_id is not None:
+        from omnigent.server.session_binding import (
+            EXECUTION_MODE_LABEL_KEY,
+            LOCAL_RUNNER_POLICY_LABEL_KEY,
+            WORKSPACE_ID_LABEL_KEY,
+            WORKSPACE_LABEL_LABEL_KEY,
+        )
+
+        parent_labels = parent_conv.labels if parent_conv is not None else {}
+        local_runner_labels = {
+            key: parent_labels[key]
+            for key in (
+                EXECUTION_MODE_LABEL_KEY,
+                WORKSPACE_ID_LABEL_KEY,
+                WORKSPACE_LABEL_LABEL_KEY,
+                LOCAL_RUNNER_POLICY_LABEL_KEY,
+            )
+            if key in parent_labels
+        }
+    if body.runner_id is not None:
+        from omnigent.server.session_binding import (
+            advertised_workspace_label,
+            merge_local_runner_labels,
+            validate_local_runner_binding,
+        )
+
+        if runner_router is None:
+            raise OmnigentError(
+                "runner tunnel registry is not configured",
+                code=ErrorCode.INTERNAL_ERROR,
+            )
+        binding = validate_local_runner_binding(
+            runner_id=body.runner_id,
+            workspace_id=body.workspace_id,
+            registry=runner_router.binding_registry,
+            user_id=user_id,
+            harness=harness_override,
+        )
+        workspace_label = (
+            advertised_workspace_label(binding.hello, body.workspace_id)
+            if binding is not None and body.workspace_id is not None
+            else None
+        )
+        local_runner_labels = merge_local_runner_labels(
+            body.labels,
+            runner_id=body.runner_id,
+            workspace_id=body.workspace_id,
+            workspace_label=workspace_label,
+            policy_mode=body.local_runner_policy,
+        )
+
     # Workspace validation: if the caller is binding to a host,
     # they must also pass a workspace, and the workspace must
     # satisfy the agent's os_env.cwd boundary on that host (per
@@ -12347,6 +12399,7 @@ async def _create_session_from_existing_agent(
     if (
         body.local_runner_policy is not None
         and body.host_id is None
+        and body.runner_id is None
         and inherited_runner_id is None
     ):
         raise OmnigentError(
@@ -12438,7 +12491,7 @@ async def _create_session_from_existing_agent(
             agent_id=agent.id,
             title=body.title,
             parent_conversation_id=body.parent_session_id,
-            runner_id=inherited_runner_id,
+            runner_id=body.runner_id or inherited_runner_id,
             kind="sub_agent" if body.parent_session_id else "default",
             sub_agent_name=body.sub_agent_name,
             host_id=body.host_id,
@@ -12506,7 +12559,7 @@ async def _create_session_from_existing_agent(
     # the native path and avoid double-persistence with the
     # transcript forwarder.
     native_agent = native_coding_agent_for_agent_name(agent.name)
-    initial_labels = dict(body.labels) if body.labels else {}
+    initial_labels = local_runner_labels or (dict(body.labels) if body.labels else {})
     if body.local_runner_policy is not None:
         from omnigent.server.session_binding import resolve_policy_mode_value
 
@@ -14122,6 +14175,14 @@ def create_sessions_router(
                     "remote local runner support is not enabled on this server",
                     code=ErrorCode.INVALID_INPUT,
                 )
+        if body.runner_id is not None:
+            from omnigent.server.auth import remote_local_runner_enabled
+
+            if not remote_local_runner_enabled():
+                raise OmnigentError(
+                    "remote local runner support is not enabled on this server",
+                    code=ErrorCode.INVALID_INPUT,
+                )
 
         resp = await _create_session_from_existing_agent(
             conversation_store,
@@ -14169,6 +14230,8 @@ def create_sessions_router(
                         "session_id": resp.id,
                         "agent_id": conv.agent_id,
                         "sub_agent_name": conv.sub_agent_name,
+                        "workspace_id": conv.labels.get("omnigent.workspace_id"),
+                        "execution_mode": conv.labels.get("omnigent.execution_mode"),
                     },
                     timeout=10.0,
                 )

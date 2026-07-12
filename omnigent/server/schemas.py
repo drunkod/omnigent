@@ -1315,6 +1315,8 @@ class SessionCreateRequest(BaseModel):
     host_type: Literal["external", "managed"] = "external"
     host_id: str | None = None
     workspace: str | None = None
+    runner_id: str | None = None
+    workspace_id: str | None = None
     git: SessionGitOptions | None = None
     terminal_launch_args: list[str] | None = None
     model_override: str | None = None
@@ -1337,6 +1339,20 @@ class SessionCreateRequest(BaseModel):
         """
         if self.git is not None and self.host_id is None:
             raise ValueError("git worktree creation requires host_id")
+        return self
+
+    @model_validator(mode="after")
+    def _check_runner_binding_fields(self) -> SessionCreateRequest:
+        """Keep opaque runner binding separate from host/path launches."""
+        if self.runner_id is not None and self.host_id is not None:
+            raise ValueError("runner_id and host_id are mutually exclusive")
+        if self.runner_id is not None and self.workspace is not None:
+            raise ValueError(
+                "runner-bound sessions use workspace_id; raw workspace paths "
+                "are only valid for host launches"
+            )
+        if self.workspace_id is not None and self.runner_id is None:
+            raise ValueError("workspace_id requires runner_id")
         return self
 
     @model_validator(mode="after")
