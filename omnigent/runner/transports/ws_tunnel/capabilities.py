@@ -1,23 +1,28 @@
 """Capability helpers for runner tunnel hello frames.
 
-This module is intentionally side-effect free: callers pass in the runner's
-known harness/env lists and optional workspace registry, and the helper returns
-a capability-bearing :class:`HelloFrame` without opening files, sockets, or
-spawning terminal processes.
+The helper normally discovers the runner's approved workspace registry from the
+process environment because the production tunnel caller has no separate
+registry parameter.  Supplying ``workspace_registry`` keeps tests and embedded
+callers deterministic.
 """
 
 from __future__ import annotations
 
+import os
 import platform
 import shutil
 from collections.abc import Iterable
+from pathlib import Path
 from typing import Any, Protocol
 
+from omnigent.harness_aliases import is_native_harness
+from omnigent.runner.identity import RUNNER_WORKSPACE_ENV_VAR
 from omnigent.runner.transports.ws_tunnel.frames import (
     ALLOWED_HELLO_MODES,
     FRAME_PROTOCOL_VERSION,
     HelloFrame,
 )
+from omnigent.runner.workspace_registry import WorkspaceRegistry
 
 DEFAULT_TERMINAL_FEATURE_FLAGS = frozenset({"terminal-pty", "terminal-control"})
 DEFAULT_TOOL_CAPABILITIES = [
@@ -76,6 +81,62 @@ def detect_terminal_transports(
     return transports
 
 
+def _default_workspace_registry() -> WorkspaceRegistry:
+    """Return the production runner workspace registry from environment wiring."""
+
+    return WorkspaceRegistry.from_env()
+
+
+def _native_workspace_ready(registry: AdvertisedWorkspaceRegistry) -> bool:
+    """Return whether legacy native terminals have one unambiguous local cwd.
+
+    Native terminal launch still reads ``OMNIGENT_RUNNER_WORKSPACE`` while the
+    public session API binds with an opaque ``workspace_id``.  Until the runner
+    has a per-session workspace-id resolver, advertising a native harness for a
+    multi-root registry can launch it in the wrong directory.  For exactly one
+    concrete runner-owned root, seed the legacy environment variable before any
+    session starts.  A conflicting pre-existing value fails closed.
+    """
+
+    if not isinstance(registry, WorkspaceRegistry) or len(registry) != 1:
+        return False
+    root = next(iter(registry)).root.resolve()
+    configured = os.environ.get(RUNNER_WORKSPACE_ENV_VAR)
+    if configured is None:
+        os.environ[RUNNER_WORKSPACE_ENV_VAR] = str(root)
+        return True
+    try:
+        return Path(configured.strip()).expanduser().resolve() == root
+    except (OSError, RuntimeError, ValueError):
+        return False
+
+
+def _advertised_harnesses(
+    harnesses: Iterable[str],
+    *,
+    native_workspace_ready: bool,
+) -> list[str]:
+    """Return truthful harness capability names for this runner process."""
+
+    result: list[str] = []
+    codex_binary_ready = shutil.which("codex") is not None
+    for harness in harnesses:
+        if is_native_harness(harness) and not native_workspace_ready:
+            continue
+        if harness == "codex-native" and not codex_binary_ready:
+            continue
+        if harness not in result:
+            result.append(harness)
+
+    # The tunnel's legacy harness tuple contains the Codex SDK spelling.  Add
+    # the native TUI spelling only when both its binary and cwd prerequisites
+    # are true, so the runner picker cannot create a session that immediately
+    # fails with ``native_terminal_start_failed``.
+    if "codex" in result and codex_binary_ready and native_workspace_ready:
+        result.append("codex-native")
+    return result
+
+
 def build_hello(
     *,
     runner_version: str,
@@ -95,7 +156,8 @@ def build_hello(
     :param mode: Runner placement mode. Must be one of
         :data:`ALLOWED_HELLO_MODES`.
     :param workspace_registry: Optional registry exposing display-only workspace
-        summaries. Path enforcement remains runner-side.
+        summaries. When omitted, load the production registry from runner
+        environment wiring. Path enforcement remains runner-side.
     :param feature_flags: Optional feature flag names forwarded to
         :func:`detect_terminal_transports`.
     :param system: Optional platform override forwarded to
@@ -109,15 +171,21 @@ def build_hello(
         allowed = ", ".join(sorted(ALLOWED_HELLO_MODES))
         raise ValueError(f"unsupported runner mode {mode!r}; expected one of: {allowed}")
 
+    registry = workspace_registry if workspace_registry is not None else _default_workspace_registry()
+    native_workspace_ready = _native_workspace_ready(registry)
+
     return HelloFrame(
         runner_version=runner_version,
         frame_protocol_version=FRAME_PROTOCOL_VERSION,
-        harnesses=list(harnesses),
+        harnesses=_advertised_harnesses(
+            harnesses,
+            native_workspace_ready=native_workspace_ready,
+        ),
         envs=list(envs),
         mode=mode,
         os_name=platform.system().lower(),
         arch=platform.machine().lower(),
-        workspace_roots=workspace_registry.advertise() if workspace_registry is not None else [],
+        workspace_roots=registry.advertise(),
         terminal_transports=detect_terminal_transports(
             feature_flags=feature_flags,
             system=system,
