@@ -1,0 +1,19 @@
++ python .github/scripts/implement_t11.py
+T11 source transformations completed
++ python .github/scripts/implement_t11_post.py
+T11 compatibility migrations completed
++ python -m pip install --upgrade pip
+Requirement already satisfied: pip in /opt/hostedtoolcache/Python/3.12.13/x64/lib/python3.12/site-packages (26.1.2)
++ python -m pip install -e '.[dev]'
+Obtaining file:///home/runner/work/omnigent/omnigent
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Checking if build backend supports build_editable: started
+  Checking if build backend supports build_editable: finished with status 'done'
+  Getting requirements to build editable: started
+  Getting requirements to build editable: finished with status 'done'
+  Preparing editable metadata (pyproject.toml): started
+  Preparing editable metadata (pyproject.toml): finished with status 'done'
+INFO: pip is looking at multiple versions of omnigent to determine which version is compatible with other requirements. This could take a while.
+ERROR: Could not find a version that satisfies the requirement omnigent-client==0.5.0.dev0 (from omnigent) (from versions: 0.0.1rc1, 0.1.0rc1, 0.1.0rc2, 0.1.0rc3, 0.1.0rc4, 0.1.0, 0.1.1rc2, 0.1.1, 0.2.0rc1, 0.2.0, 0.3.0rc1, 0.3.0, 0.4.0rc1, 0.4.0rc2, 0.4.0, 0.5.0rc1, 0.5.0rc2, 0.5.0, 0.5.1)
+ERROR: No matching distribution found for omnigent-client==0.5.0.dev0
