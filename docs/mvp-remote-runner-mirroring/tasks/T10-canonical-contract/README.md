@@ -1,40 +1,69 @@
 # T10 — Stage 1 blockers: canonical contracts
 
-Outcome of the full-branch security review at `8b1c9493`. These four steps
-are **sequential** and gate all remaining UI/E2E work — every later track
-builds on the contracts frozen here.
+T10 is the sequential critical path created by the full-branch architectural review.
+All remaining product UI and release claims depend on the contracts frozen here.
 
-Verified ground truth (do not re-derive):
+## Verified starting state
 
-- `SessionCreateRequest` (schemas.py ~L1311) speaks `host_id` + raw
-  `workspace` path + `local_runner_policy`. No `runner_id`/`workspace_id`.
-- `omnigent/server/session_binding.py` already implements and unit-tests
-  `validate_local_runner_binding`, `merge_local_runner_labels`,
-  `advertised_workspace_ids/label` — with **zero production callers**.
-- `run_shell` (local_actions.py ~L322) resolves only `cwd`; the approved
-  command runs via `create_subprocess_shell` with full user-level access.
-- `AuditRecord.command_summary = command[:400]` persists through a
-  `ConfigDict(extra="allow")` entity; the sanitizer drops only five exact
-  keys (`content`, `diff_preview`, `stdout`, `stderr`, `token`).
-- `DEFAULT_TOOL_CAPABILITIES` advertises `search_files`/`git_status`/
-  `git_diff`, which are served by the environment-filesystem routes, not
-  the audited `LocalActionGateway`.
+- Public session creation still uses `host_id + workspace` for the host-launch flow.
+- `session_binding.py` has helper-level `runner_id + workspace_id` validation and label
+  helpers without a production session-create caller.
+- The current web hosts model does not provide the canonical owner-scoped runner and
+  opaque-workspace discovery shape needed by that create contract.
+- Direct file operations are workspace-contained, but `run_shell` resolves only `cwd`
+  before invoking arbitrary shell text.
+- Persisted local-action data is open-ended and may retain raw command summaries or
+  path values despite exact-key sanitization.
+- `search_files`, `git_status`, and `git_diff` are advertised near gateway actions but
+  are served through a separate environment-filesystem path.
 
-## Steps (strict order)
+## Steps — strict order
 
-1. `step-01-canonical-session-binding.md` — wire `runner_id +
-   workspace_id` through the public session API using the existing
-   helpers. Everything downstream keys on this contract.
-2. `step-02-shell-security-contract.md` — decide and implement the shell
-   containment story (or rename the guarantee).
-3. `step-03-audit-schema-freeze.md` — allowlisted audit entity,
-   secret-safe summaries, TOCTOU re-resolve, write limits.
-4. `step-04-capability-truthfulness.md` — gateway-served search/git or a
-   trimmed advertisement.
+1. `step-01-canonical-session-binding.md`
+   - freeze owner-scoped runner discovery;
+   - wire `runner_id + workspace_id` into public session creation;
+   - keep host-launch `host_id + workspace` separate;
+   - cover snapshot, child/fork/resume, and reconnect.
+2. `step-02-shell-security-contract.md`
+   - choose strict OS-sandbox mode or trusted-machine shell mode;
+   - implement/document the selected guarantee;
+   - remove any stronger claims.
+3. `step-03-audit-schema-freeze.md`
+   - replace open-ended persistence with an allowlisted bounded schema;
+   - redact by value and add log/history secret tests;
+   - add limits and race-safe revalidation.
+4. `step-04-capability-truthfulness.md`
+   - give every advertised action one authorization/workspace/audit path; or
+   - trim the advertisement.
 
-## Explicitly out of scope here
+A later step must not silently redesign an earlier contract. If a step discovers that
+an earlier decision is invalid, reopen and update the earlier document and its tests.
 
-- Multi-replica approval state: the whole elicitation registry is
-  process-local by existing design. Add a single-replica support
-  statement to the rollout docs (P12) instead of re-architecting now.
-- Terminal parity E2E (T12) and approval UI (T11) — Stage 2, after this.
+## Stage 2 unlocked by T10
+
+- `../T09-runner-ux/` — picker and capability UI.
+- `../T11-approval-ui.md` — approval/diff UI and approval-flow E2E.
+- `../T12-terminal-parity-e2e.md` — real terminal parity and reconnect E2E.
+
+T09 needs steps 01 and 04. T11 needs steps 02 and 03. T12 may begin its fixture after
+step 01 and then proceed in parallel.
+
+## Explicit support boundary
+
+Pending local-action approval ownership is currently process-local. For alpha, either:
+
+- document and enforce single-replica support for sessions with pending approvals; or
+- move approval ownership/resolution state to shared storage.
+
+The rollout documents must choose one. Do not imply multi-replica approval safety by
+omission.
+
+## Done when
+
+- the checklist P5/P7/P8 items reference route/integration evidence rather than helper
+  existence;
+- no local-runner create request accepts or reconstructs a raw local workspace path;
+- shell behavior matches its documented security mode;
+- persisted/logged audit data passes realistic secret tests;
+- capability discovery is truthful; and
+- T09/T11/T12 can implement against stable contracts without probing or guessing.
