@@ -2,8 +2,8 @@
 
 The helper normally discovers the runner's approved workspace registry from the
 process environment because the production tunnel caller has no separate
-registry parameter.  Supplying ``workspace_registry`` keeps tests and embedded
-callers deterministic.
+registry parameter. Supplying ``workspace_registry`` preserves the caller's
+explicit capability fixture without probing or mutating process workspace state.
 """
 
 from __future__ import annotations
@@ -87,18 +87,18 @@ def _default_workspace_registry() -> WorkspaceRegistry:
     return WorkspaceRegistry.from_env()
 
 
-def _native_workspace_ready(registry: AdvertisedWorkspaceRegistry) -> bool:
+def _native_workspace_ready(registry: WorkspaceRegistry) -> bool:
     """Return whether legacy native terminals have one unambiguous local cwd.
 
     Native terminal launch still reads ``OMNIGENT_RUNNER_WORKSPACE`` while the
-    public session API binds with an opaque ``workspace_id``.  Until the runner
+    public session API binds with an opaque ``workspace_id``. Until the runner
     has a per-session workspace-id resolver, advertising a native harness for a
-    multi-root registry can launch it in the wrong directory.  For exactly one
-    concrete runner-owned root, seed the legacy environment variable before any
-    session starts.  A conflicting pre-existing value fails closed.
+    multi-root registry can launch it in the wrong directory. For exactly one
+    runner-owned root, seed the legacy environment variable before any session
+    starts. A conflicting pre-existing value fails closed.
     """
 
-    if not isinstance(registry, WorkspaceRegistry) or len(registry) != 1:
+    if len(registry) != 1:
         return False
     root = next(iter(registry)).root.resolve()
     configured = os.environ.get(RUNNER_WORKSPACE_ENV_VAR)
@@ -128,7 +128,7 @@ def _advertised_harnesses(
         if harness not in result:
             result.append(harness)
 
-    # The tunnel's legacy harness tuple contains the Codex SDK spelling.  Add
+    # The tunnel's legacy harness tuple contains the Codex SDK spelling. Add
     # the native TUI spelling only when both its binary and cwd prerequisites
     # are true, so the runner picker cannot create a session that immediately
     # fails with ``native_terminal_start_failed``.
@@ -157,7 +157,8 @@ def build_hello(
         :data:`ALLOWED_HELLO_MODES`.
     :param workspace_registry: Optional registry exposing display-only workspace
         summaries. When omitted, load the production registry from runner
-        environment wiring. Path enforcement remains runner-side.
+        environment wiring and apply native-launch readiness filtering. When
+        supplied, preserve the caller's advertised harness list unchanged.
     :param feature_flags: Optional feature flag names forwarded to
         :func:`detect_terminal_transports`.
     :param system: Optional platform override forwarded to
@@ -171,16 +172,20 @@ def build_hello(
         allowed = ", ".join(sorted(ALLOWED_HELLO_MODES))
         raise ValueError(f"unsupported runner mode {mode!r}; expected one of: {allowed}")
 
-    registry = workspace_registry if workspace_registry is not None else _default_workspace_registry()
-    native_workspace_ready = _native_workspace_ready(registry)
+    if workspace_registry is None:
+        registry: AdvertisedWorkspaceRegistry = _default_workspace_registry()
+        advertised_harnesses = _advertised_harnesses(
+            harnesses,
+            native_workspace_ready=_native_workspace_ready(registry),
+        )
+    else:
+        registry = workspace_registry
+        advertised_harnesses = list(harnesses)
 
     return HelloFrame(
         runner_version=runner_version,
         frame_protocol_version=FRAME_PROTOCOL_VERSION,
-        harnesses=_advertised_harnesses(
-            harnesses,
-            native_workspace_ready=native_workspace_ready,
-        ),
+        harnesses=advertised_harnesses,
         envs=list(envs),
         mode=mode,
         os_name=platform.system().lower(),
