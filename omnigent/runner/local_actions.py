@@ -12,6 +12,7 @@ import asyncio
 import contextlib
 import difflib
 import os
+import shutil
 import signal
 import time
 import uuid
@@ -124,6 +125,7 @@ class LocalActionGateway:
         runner_id: str,
         publish_audit: AuditPublisher,
         request_approval: PayloadApprovalRequester,
+        strict_shell: bool = False,
     ) -> None:
         """Initialize the gateway.
 
@@ -139,6 +141,12 @@ class LocalActionGateway:
         self._runner_id = runner_id
         self._publish_audit = publish_audit
         self._request_approval = request_approval
+        self._strict_shell = strict_shell
+        if strict_shell and shutil.which("bwrap") is None:
+            raise OmnigentError(
+                "strict local shell requires the bwrap sandbox",
+                code=ErrorCode.INVALID_INPUT,
+            )
         self._write_locks: dict[str, asyncio.Lock] = {}
 
     def _write_lock(self, workspace_id: str) -> asyncio.Lock:
@@ -351,14 +359,52 @@ class LocalActionGateway:
         record.started_at = time.time()
         record.status = "running"
         self._publish_audit(record)
-        proc = await asyncio.create_subprocess_shell(
-            command,
-            cwd=str(resolved_cwd),
-            env=subprocess_env(),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            start_new_session=True,
-        )
+        env = subprocess_env()
+        if self._strict_shell:
+            proc = await asyncio.create_subprocess_exec(
+                "bwrap",
+                "--die-with-parent",
+                "--unshare-net",
+                "--ro-bind",
+                "/usr",
+                "/usr",
+                "--ro-bind",
+                "/bin",
+                "/bin",
+                "--ro-bind",
+                "/lib",
+                "/lib",
+                "--proc",
+                "/proc",
+                "--dev",
+                "/dev",
+                "--bind",
+                str(resolved_cwd),
+                "/workspace",
+                "--chdir",
+                "/workspace",
+                "--setenv",
+                "HOME",
+                "/workspace",
+                "--",
+                "/bin/sh",
+                "-lc",
+                command,
+                cwd=str(resolved_cwd),
+                env=env,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                start_new_session=True,
+            )
+        else:
+            proc = await asyncio.create_subprocess_shell(
+                command,
+                cwd=str(resolved_cwd),
+                env=env,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                start_new_session=True,
+            )
         try:
             stdout, stderr = await asyncio.wait_for(proc.communicate(), _SHELL_TIMEOUT_S)
         except asyncio.TimeoutError as exc:

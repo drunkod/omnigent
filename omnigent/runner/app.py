@@ -8526,6 +8526,7 @@ def create_runner_app(
         runner_id=get_stable_runner_id(),
         publish_audit=_publish_local_action_audit,
         request_approval=_request_local_action_approval,
+        strict_shell=os.environ.get("OMNIGENT_STRICT_LOCAL_SHELL") == "1",
     )
 
     # Per-session filesystem registries for sessions whose workspace

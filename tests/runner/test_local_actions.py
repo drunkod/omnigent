@@ -18,7 +18,7 @@ from omnigent.runner.workspace_policy import PolicyMode
 from omnigent.runner.workspace_registry import WorkspaceRegistry
 
 
-def _make_gateway(tmp_path: Path, *, approval: bool = True):
+def _make_gateway(tmp_path: Path, *, approval: bool = True, strict_shell: bool = False):
     root = tmp_path / "workspace"
     root.mkdir()
     registry = WorkspaceRegistry.from_paths([root])
@@ -38,8 +38,15 @@ def _make_gateway(tmp_path: Path, *, approval: bool = True):
         runner_id="runner_test1",
         publish_audit=publish,
         request_approval=request_approval,
+        strict_shell=strict_shell,
     )
     return gateway, workspace_id, root, audits, approval_payloads
+
+
+def test_strict_shell_fails_closed_without_bwrap(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr("omnigent.runner.local_actions.shutil.which", lambda _: None)
+    with pytest.raises(OmnigentError, match="bwrap sandbox"):
+        _make_gateway(tmp_path, strict_shell=True)
 
 
 def test_read_file_allowed_and_audited(tmp_path: Path) -> None:
