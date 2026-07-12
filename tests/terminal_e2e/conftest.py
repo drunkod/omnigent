@@ -27,7 +27,7 @@ from omnigent.server.auth import LEVEL_OWNER, LEVEL_READ, RESERVED_USER_PUBLIC, 
 from omnigent.server.routes.terminal_attach import create_terminal_attach_router
 from omnigent.terminals import TerminalRegistry
 from tests.runner.helpers import NullServerClient
-from tests.runner.transports.ws_tunnel.helpers import run_tunnel_harness
+from tests.runner.transports.ws_tunnel.helpers import TunnelHarness, run_tunnel_harness
 
 
 class _PermissionStore:
@@ -85,6 +85,7 @@ class TerminalTunnelFixture:
     runner_id: str
     tunnel_registry: TunnelRegistry
     terminal_registry: TerminalRegistry
+    tunnel: TunnelHarness
 
     def url(
         self,
@@ -99,11 +100,14 @@ class TerminalTunnelFixture:
             f"&transport={transport}"
         )
 
-    def disconnect_runner(self) -> None:
+    async def disconnect_runner(self) -> None:
         """Drop the active runner generation while leaving tmux alive."""
-        session = self.tunnel_registry.get(self.runner_id)
-        assert session is not None
-        self.tunnel_registry.deregister(self.runner_id, session=session)
+        await self.tunnel.disconnect()
+
+    def reconnect_runner(self) -> None:
+        """Register a new tunnel generation for the same runner and tmux pane."""
+        assert self.tunnel_registry.get(self.runner_id) is None
+        self.tunnel.reconnect()
 
     async def close_terminal(self) -> None:
         """Kill only the tmux terminal while leaving the runner online."""
@@ -168,10 +172,11 @@ async def terminal_tunnel(tmp_path: Path) -> AsyncIterator[TerminalTunnelFixture
     conversation_store = _ConversationStore(session_id)
 
     async with run_tunnel_harness(runner_app, runner_id=runner_id, hello=hello) as tunnel:
-        session = tunnel.registry.get(runner_id)
-        assert session is not None
 
         def connect_runner(runner_path: str) -> _TunneledWSConn:
+            session = tunnel.registry.get(runner_id)
+            if session is None:
+                raise RuntimeError("runner is offline")
             return _TunneledWSConn(
                 registry=tunnel.registry,
                 session=session,
@@ -208,6 +213,7 @@ async def terminal_tunnel(tmp_path: Path) -> AsyncIterator[TerminalTunnelFixture
                 runner_id=runner_id,
                 tunnel_registry=tunnel.registry,
                 terminal_registry=terminal_registry,
+                tunnel=tunnel,
             )
         finally:
             server.should_exit = True
