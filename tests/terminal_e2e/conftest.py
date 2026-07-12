@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import shutil
+import socket
 import sys
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -12,72 +12,86 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
+import uvicorn
+from fastapi import FastAPI
 
+from omnigent.entities import Conversation, SessionPermission
 from omnigent.inner.datamodel import TerminalEnvSpec
 from omnigent.runner import create_runner_app
-from omnigent.runner.transports.ws_tunnel.frames import (
-    HelloFrame,
-    WSCloseFrame,
-    WSFrame,
-    decode_frame,
-)
-from omnigent.runner.transports.ws_tunnel.registry import TunnelRegistry
-from omnigent.runner.transports.ws_tunnel.serve import (
-    _cancel_ws_channels,
-    _handle_tunnel_frame,
-    _RunnerWSChannel,
-)
+from omnigent.runner.transports.ws_tunnel.frames import HelloFrame
+from omnigent.runtime import _globals, set_runner_ws_factory
 from omnigent.server._runner_ws_tunnel import _TunneledWSConn
+from omnigent.server.auth import LEVEL_OWNER, LEVEL_READ, RESERVED_USER_PUBLIC, UnifiedAuthProvider
+from omnigent.server.routes.terminal_attach import create_terminal_attach_router
 from omnigent.terminals import TerminalRegistry
 from tests.runner.helpers import NullServerClient
+from tests.runner.transports.ws_tunnel.helpers import run_tunnel_harness
 
 
-class _LoopbackWebSocket:
-    """One half of an in-memory runner tunnel WebSocket pair."""
-
+class _PermissionStore:
     def __init__(self) -> None:
-        self.inbound: asyncio.Queue[str] = asyncio.Queue()
-        self.peer: _LoopbackWebSocket | None = None
+        self.grants: dict[tuple[str, str], SessionPermission] = {}
 
-    def link(self, peer: _LoopbackWebSocket) -> None:
-        self.peer = peer
-        peer.peer = self
+    def add(self, user_id: str, session_id: str, level: int) -> None:
+        self.grants[(user_id, session_id)] = SessionPermission(
+            user_id=user_id, conversation_id=session_id, level=level
+        )
 
-    async def send_text(self, data: str) -> None:
-        assert self.peer is not None
-        await self.peer.inbound.put(data)
+    def get(self, user_id: str, conversation_id: str) -> SessionPermission | None:
+        return self.grants.get((user_id, conversation_id))
 
-    async def receive_text(self) -> str:
-        return await self.inbound.get()
+    def is_admin(self, user_id: str) -> bool:
+        return False
+
+    def check_access(self, user_id: str | None, conversation_id: str, required_level: int) -> bool:
+        if user_id is None:
+            return False
+        grant = self.get(user_id, conversation_id) or self.get(
+            RESERVED_USER_PUBLIC, conversation_id
+        )
+        return grant is not None and grant.level >= required_level
+
+    def get_permission_level(self, user_id: str | None, conversation_id: str) -> int | None:
+        if user_id is None:
+            return None
+        grant = self.get(user_id, conversation_id) or self.get(
+            RESERVED_USER_PUBLIC, conversation_id
+        )
+        return grant.level if grant is not None else None
+
+
+class _ConversationStore:
+    def __init__(self, session_id: str) -> None:
+        self.conversation = Conversation(
+            id=session_id,
+            created_at=0,
+            updated_at=0,
+            root_conversation_id=session_id,
+        )
+
+    def get_conversation(self, conversation_id: str) -> Conversation | None:
+        return self.conversation if conversation_id == self.conversation.id else None
 
 
 @dataclass
 class TerminalTunnelFixture:
     """Handles exposed by one real tmux terminal behind a runner tunnel."""
 
-    registry: TunnelRegistry
-    runner_id: str
     session_id: str
     terminal_id: str
+    websocket_base_url: str
 
-    def connect(
+    def url(
         self,
         *,
         read_only: bool = False,
         transport: str = "control",
-    ) -> _TunneledWSConn:
-        """Open the server-side connection used by the terminal attach proxy."""
-        session = self.registry.get(self.runner_id)
-        assert session is not None
-        runner_path = (
-            f"/v1/sessions/{self.session_id}/resources/terminals/"
+    ) -> str:
+        """Return the public browser-facing terminal attach URL."""
+        return (
+            f"{self.websocket_base_url}/v1/sessions/{self.session_id}/resources/terminals/"
             f"{self.terminal_id}/attach?read_only={'true' if read_only else 'false'}"
             f"&transport={transport}"
-        )
-        return _TunneledWSConn(
-            registry=self.registry,
-            session=session,
-            runner_path=runner_path,
         )
 
 
@@ -112,68 +126,61 @@ async def terminal_tunnel(tmp_path: Path) -> AsyncIterator[TerminalTunnelFixture
         per_session_workspace=False,
     )
 
-    server_ws = _LoopbackWebSocket()
-    runner_ws = _LoopbackWebSocket()
-    server_ws.link(runner_ws)
-    tunnel_registry = TunnelRegistry()
     runner_id = "runner-t12-control"
-    session = tunnel_registry.register(
-        runner_id,
-        server_ws,
-        HelloFrame(
-            runner_version="t12-test",
-            frame_protocol_version=1,
-            harnesses=["test"],
-            envs=["caller_process"],
-            terminal_transports=["control", "pty"],
-        ),
+    hello = HelloFrame(
+        runner_version="t12-test",
+        frame_protocol_version=1,
+        harnesses=["test"],
+        envs=["caller_process"],
+        terminal_transports=["control", "pty"],
     )
-    ws_channels: dict[str, _RunnerWSChannel] = {}
-    dispatch_tasks: dict[str, asyncio.Task[None]] = {}
+    permission_store = _PermissionStore()
+    permission_store.add("owner@example.com", session_id, LEVEL_OWNER)
+    permission_store.add("viewer@example.com", session_id, LEVEL_READ)
+    conversation_store = _ConversationStore(session_id)
 
-    async def send_server_frames() -> None:
-        while True:
-            data = await session.outbound_queue.get()
-            if data is None:
-                return
-            await session.ws.send_text(data)
+    async with run_tunnel_harness(runner_app, runner_id=runner_id, hello=hello) as tunnel:
+        session = tunnel.registry.get(runner_id)
+        assert session is not None
 
-    async def receive_server_frames() -> None:
-        while True:
-            frame = decode_frame(await server_ws.receive_text())
-            if isinstance(frame, (WSFrame, WSCloseFrame)):
-                tunnel_registry.route_ws_inbound(runner_id, frame, session=session)
-
-    async def receive_runner_frames() -> None:
-        while True:
-            await _handle_tunnel_frame(
-                runner_app,
-                await runner_ws.receive_text(),
-                runner_ws.send_text,
-                dispatch_tasks,
-                ws_channels,
+        def connect_runner(runner_path: str) -> _TunneledWSConn:
+            return _TunneledWSConn(
+                registry=tunnel.registry,
+                session=session,
+                runner_path=runner_path,
             )
 
-    tasks = [
-        asyncio.create_task(send_server_frames(), name="t12-tunnel-send"),
-        asyncio.create_task(receive_server_frames(), name="t12-server-receive"),
-        asyncio.create_task(receive_runner_frames(), name="t12-runner-receive"),
-    ]
-    try:
-        yield TerminalTunnelFixture(
-            registry=tunnel_registry,
-            runner_id=runner_id,
-            session_id=session_id,
-            terminal_id=terminal_id,
+        prior_factory = _globals._runner_ws_factory
+        set_runner_ws_factory(connect_runner)
+        server_app = FastAPI()
+        server_app.include_router(
+            create_terminal_attach_router(
+                auth_provider=UnifiedAuthProvider(source="header"),
+                permission_store=permission_store,  # type: ignore[arg-type]
+                conversation_store=conversation_store,  # type: ignore[arg-type]
+            ),
+            prefix="/v1",
         )
-    finally:
-        for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-        await _cancel_ws_channels(ws_channels)
-        for task in dispatch_tasks.values():
-            task.cancel()
-        await asyncio.gather(*dispatch_tasks.values(), return_exceptions=True)
-        with contextlib.suppress(KeyError):
-            tunnel_registry.deregister(runner_id)
-        await terminal_registry.shutdown()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(("127.0.0.1", 0))
+        sock.listen()
+        port = sock.getsockname()[1]
+        server = uvicorn.Server(uvicorn.Config(server_app, log_level="warning", lifespan="off"))
+        server_task = asyncio.create_task(
+            server.serve(sockets=[sock]), name="t12-public-attach-server"
+        )
+        try:
+            while not server.started:
+                await asyncio.sleep(0.01)
+            yield TerminalTunnelFixture(
+                session_id=session_id,
+                terminal_id=terminal_id,
+                websocket_base_url=f"ws://127.0.0.1:{port}",
+            )
+        finally:
+            server.should_exit = True
+            await server_task
+            set_runner_ws_factory(prior_factory)
+            sock.close()
+            await terminal_registry.shutdown()
