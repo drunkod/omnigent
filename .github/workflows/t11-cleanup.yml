@@ -1,0 +1,31 @@
+name: T11 cleanup
+
+on:
+  push:
+    branches:
+      - feat/mvp-remaining-tracks
+    paths:
+      - .github/workflows/t11-cleanup.yml
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/mvp-remaining-tracks
+          fetch-depth: 0
+      - name: Restore unrelated lockfile and remove workflow
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git checkout f72115eb7896db5214ff217f7cd17cd0be237f9e -- web/package-lock.json
+          rm .github/workflows/t11-cleanup.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore(t11): restore unchanged web lockfile"
+          git push origin HEAD:feat/mvp-remaining-tracks
