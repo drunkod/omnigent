@@ -219,14 +219,23 @@ def create_terminal_attach_router(
                         await _shuttle_ws_frames(websocket, runner_ws)
             except _RunnerWSClosed as closed:
                 code = (
-                    closed.code
-                    if closed.code and closed.code >= 1000
-                    else _WS_CLOSE_INTERNAL_ERROR
+                    ATTACH_CLOSE_RUNNER_OFFLINE
+                    if closed.code == 1006
+                    else (
+                        closed.code
+                        if closed.code and closed.code >= 1000
+                        else _WS_CLOSE_INTERNAL_ERROR
+                    )
+                )
+                reason = (
+                    "runner offline; reconnect the local runner"
+                    if code == ATTACH_CLOSE_RUNNER_OFFLINE
+                    else closed.reason or ""
                 )
                 with contextlib.suppress(RuntimeError):
                     await websocket.close(
                         code=code,
-                        reason=closed.reason or "",
+                        reason=reason,
                     )
             except OmnigentError as exc:
                 if exc.code == ErrorCode.RUNNER_UNAVAILABLE:

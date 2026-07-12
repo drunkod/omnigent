@@ -20,6 +20,7 @@ from omnigent.entities import Conversation, SessionPermission
 from omnigent.inner.datamodel import TerminalEnvSpec
 from omnigent.runner import create_runner_app
 from omnigent.runner.transports.ws_tunnel.frames import HelloFrame
+from omnigent.runner.transports.ws_tunnel.registry import TunnelRegistry
 from omnigent.runtime import _globals, set_runner_ws_factory
 from omnigent.server._runner_ws_tunnel import _TunneledWSConn
 from omnigent.server.auth import LEVEL_OWNER, LEVEL_READ, RESERVED_USER_PUBLIC, UnifiedAuthProvider
@@ -81,6 +82,9 @@ class TerminalTunnelFixture:
     session_id: str
     terminal_id: str
     websocket_base_url: str
+    runner_id: str
+    tunnel_registry: TunnelRegistry
+    terminal_registry: TerminalRegistry
 
     def url(
         self,
@@ -94,6 +98,17 @@ class TerminalTunnelFixture:
             f"{self.terminal_id}/attach?read_only={'true' if read_only else 'false'}"
             f"&transport={transport}"
         )
+
+    def disconnect_runner(self) -> None:
+        """Drop the active runner generation while leaving tmux alive."""
+        session = self.tunnel_registry.get(self.runner_id)
+        assert session is not None
+        self.tunnel_registry.deregister(self.runner_id, session=session)
+
+    async def close_terminal(self) -> None:
+        """Kill only the tmux terminal while leaving the runner online."""
+        closed = await self.terminal_registry.close(self.session_id, "probe", "main")
+        assert closed
 
 
 @pytest_asyncio.fixture
@@ -190,6 +205,9 @@ async def terminal_tunnel(tmp_path: Path) -> AsyncIterator[TerminalTunnelFixture
                 session_id=session_id,
                 terminal_id=terminal_id,
                 websocket_base_url=f"ws://127.0.0.1:{port}",
+                runner_id=runner_id,
+                tunnel_registry=tunnel.registry,
+                terminal_registry=terminal_registry,
             )
         finally:
             server.should_exit = True

@@ -34,7 +34,7 @@ fails when tmux is unavailable.
 | --- | --- | --- |
 | Collaborator interactive attach is rejected before runner proxy | Covered | `test_read_collaborator_cannot_open_interactive_attach` |
 | Collaborator read-only attach receives output | Covered | `test_read_only_collaborator_observes_but_cannot_drive_terminal` |
-| Runner offline differs from terminal exit | Pending | No live T12 test. |
+| Runner offline differs from terminal exit | Covered | `test_runner_tunnel_drop_closes_attach_as_runner_offline`; `test_terminal_exit_closes_attach_as_terminal_exited` |
 | Same-runner reconnect avoids duplicate output and input | Pending | No live T12 test. |
 | Refresh while offline restores preserved-session state | Pending | Component/store coverage exists; no live browser fixture. |
 | Unsupported transport does not retry-loop | Pending | Component coverage exists; no live T12 test. |

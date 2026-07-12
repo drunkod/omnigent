@@ -35,4 +35,4 @@ jobs:
           uv run python -c "from omnigent.version import VERSION; print('server/runner version:', VERSION)"
           tmux -V
           echo "terminal transport: control"
-      - run: uv run python -m pytest -q tests/terminal_e2e/test_control_attach.py
+      - run: uv run python -m pytest -q tests/terminal_e2e/
