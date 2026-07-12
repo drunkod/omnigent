@@ -53,14 +53,16 @@ async def test_read_only_collaborator_observes_but_cannot_drive_terminal(
         output = await _receive_until(viewer, b"T12_READY")
         assert b"T12_READY" in output
         await viewer.send(b"must-not-execute\n")
-        await asyncio.sleep(0.2)
 
-    async with connect(
-        terminal_tunnel.url(),
-        additional_headers={"X-Forwarded-Email": "owner@example.com"},
-    ) as owner:
-        output = await _receive_until(owner, b"T12_READY")
-        assert b"T12_ECHO:must-not-execute" not in output
+        async with connect(
+            terminal_tunnel.url(),
+            additional_headers={"X-Forwarded-Email": "owner@example.com"},
+        ) as owner:
+            initial = await _receive_until(owner, b"T12_READY")
+            await owner.send(b"owner-barrier\n")
+            echoed = await _receive_until(owner, b"T12_ECHO:owner-barrier")
+
+    assert b"T12_ECHO:must-not-execute" not in initial + echoed
 
 
 async def test_read_collaborator_cannot_open_interactive_attach(

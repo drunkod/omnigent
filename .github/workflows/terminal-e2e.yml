@@ -8,6 +8,7 @@ on:
       - "omnigent/server/_runner_ws_tunnel.py"
       - "omnigent/server/routes/terminal_attach.py"
       - "omnigent/terminals/**"
+      - "tests/runner/transports/ws_tunnel/**"
       - "tests/terminal_e2e/**"
       - ".github/workflows/terminal-e2e.yml"
 
