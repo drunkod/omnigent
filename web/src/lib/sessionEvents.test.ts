@@ -646,6 +646,29 @@ describe("response.output_item.done (routing_decision)", () => {
 });
 
 describe("response.elicitation_request (FLAT envelope)", () => {
+  it("lifts only typed local-action approval metadata", () => {
+    const out = parse("response.elicitation_request", {
+      type: "response.elicitation_request",
+      elicitation_id: "elicit_local",
+      params: {
+        mode: "form",
+        message: "runner action",
+        phase: "tool_call",
+        policy_name: "local_runner",
+        content_preview: '{"command":"curl -H Authorization: Bearer secret"}',
+        requestedSchema: {},
+        kind: "run_shell",
+        policy_mode: "manual",
+        command: "curl -H Authorization: Bearer secret",
+      },
+    });
+
+    expect((out[0] as ElicitationRequest).localAction).toEqual({
+      kind: "run_shell",
+      policyMode: "manual",
+    });
+  });
+
   it("lifts structured Codex requestUserInput payloads", () => {
     // Codex's final plan-mode prompt rides as the same
     // ``ask_user_question`` extra as Claude's AskUserQuestion flow.

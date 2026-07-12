@@ -846,6 +846,19 @@ export function parseEvent(rawType: string, data: Record<string, unknown>): Stre
     // `host` is the WebFetch request domain when present (drives the
     // button label and the rule scope).
     const rememberScopeRaw = p.remember_scope;
+    const localActionKind = p.kind;
+    const localActionPolicyMode = p.policy_mode;
+    const localAction: ElicitationRequest["localAction"] =
+      (localActionKind === "read_file" ||
+        localActionKind === "write_file" ||
+        localActionKind === "list_dir" ||
+        localActionKind === "run_shell" ||
+        localActionKind === "apply_patch") &&
+      (localActionPolicyMode === "manual" ||
+        localActionPolicyMode === "assisted" ||
+        localActionPolicyMode === "auto")
+        ? { kind: localActionKind, policyMode: localActionPolicyMode }
+        : null;
     const rememberScope: RememberScope | null =
       rememberScopeRaw &&
       typeof rememberScopeRaw === "object" &&
@@ -874,6 +887,7 @@ export function parseEvent(rawType: string, data: Record<string, unknown>): Stre
       phase,
       policyName,
       contentPreview: String(p.content_preview ?? ""),
+      localAction,
       askUserQuestion:
         askUserQuestionRaw &&
         typeof askUserQuestionRaw === "object" &&

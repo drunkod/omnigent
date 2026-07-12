@@ -97,6 +97,10 @@ export type RenderItem =
       phase: string;
       policyName: string;
       contentPreview: string;
+      localAction?: {
+        kind: "read_file" | "write_file" | "list_dir" | "run_shell" | "apply_patch";
+        policyMode: "manual" | "assisted" | "auto";
+      } | null;
       requestedSchema: Record<string, unknown>;
       url?: string | null;
       status: "pending" | "responded";
@@ -721,6 +725,7 @@ function buildAssistantItems(
         phase: b.phase,
         policyName: b.policyName,
         contentPreview: b.contentPreview,
+        localAction: b.localAction,
         requestedSchema: b.requestedSchema,
         url: b.url,
         status: b.status,

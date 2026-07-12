@@ -91,6 +91,10 @@ interface ApprovalCardProps {
   phase: string;
   policyName: string;
   contentPreview: string;
+  localAction?: {
+    kind: "read_file" | "write_file" | "list_dir" | "run_shell" | "apply_patch";
+    policyMode: "manual" | "assisted" | "auto";
+  } | null;
   requestedSchema: Record<string, unknown>;
   /**
    * Standalone approval page URL when the elicitation uses URL mode.
@@ -164,6 +168,7 @@ export function ApprovalCard({
   phase,
   policyName,
   contentPreview,
+  localAction,
   requestedSchema,
   url,
   status,
@@ -241,6 +246,15 @@ export function ApprovalCard({
   const isAskUserQuestion = askPayload !== null;
   const isMultiChoice = optionLabels.length > 0;
   const isCodexCommandApproval = codexCommand !== null && codexCommand !== undefined;
+  const localActionLabel = localAction
+    ? {
+        read_file: "Read file",
+        write_file: "Write file",
+        list_dir: "List directory",
+        run_shell: "Run shell command",
+        apply_patch: "Apply patch",
+      }[localAction.kind]
+    : null;
   // External URL: the elicitation points to a third-party page (OAuth,
   // external MCP server, etc.) — show a link. Our own /approve/...
   // paths are handled inline with approve/reject buttons.
@@ -474,7 +488,7 @@ export function ApprovalCard({
               ? askUserQuestionTitle
               : isMultiChoice
                 ? "Choose an option"
-                : "Approval required"}
+                : (localActionLabel ?? "Approval required")}
         {policyName && !isAskUserQuestion && !isExitPlanMode && (
           <span className="text-muted-foreground text-xs">· {policyName}</span>
         )}
@@ -516,7 +530,12 @@ export function ApprovalCard({
           </>
         ) : (
           <>
-            <span>{message}</span>
+            <span>{localActionLabel ? `${localActionLabel} requires approval.` : message}</span>
+            {localAction && (
+              <span className="text-xs text-muted-foreground">
+                Policy: {localAction.policyMode}
+              </span>
+            )}
             {formattedPreview && (
               <pre className="max-h-64 overflow-y-auto rounded bg-muted px-2 py-1 font-mono text-xs whitespace-pre-wrap break-words">
                 {formattedPreview}
@@ -575,6 +594,7 @@ export function ElicitationCard({
       phase={item.phase}
       policyName={item.policyName}
       contentPreview={item.contentPreview}
+      localAction={item.localAction}
       requestedSchema={item.requestedSchema}
       url={item.url}
       status={item.status}
