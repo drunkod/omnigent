@@ -286,12 +286,7 @@ def create_runner_tunnel_router(
         session = registry.get(runner_id)
         online = session is not None
         # Hide runners owned by other users.
-        if (
-            online
-            and user_id is not None
-            and session.owner is not None
-            and session.owner != user_id
-        ):
+        if online and user_id is not None and session.owner != user_id:
             online = False
         result: dict[str, str | bool] = {"runner_id": runner_id, "online": online}
         if not online and runner_exit_reports is not None:
