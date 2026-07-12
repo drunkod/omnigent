@@ -48,6 +48,21 @@ an earlier decision is invalid, reopen and update the earlier document and its t
 T09 needs steps 01 and 04. T11 needs steps 02 and 03. T12 may begin its fixture after
 step 01 and then proceed in parallel.
 
+## Post-fix native readiness hardening
+
+The immediate native Codex startup fix is intentionally fail-closed for ambiguous
+workspace roots, but it leaves three release-hardening items that do not block T11:
+
+- distinguish binary installation from credential/provider readiness;
+- resolve `workspace_id` per session so multi-root native runners do not depend on a
+  process-wide cwd;
+- add named required CI jobs for capability, binding, and startup classification.
+
+The executable plan is
+[`follow-up-native-runner-readiness.md`](follow-up-native-runner-readiness.md).
+Do not broaden the current single-root compatibility fallback instead of completing
+that plan.
+
 ## Explicit support boundary
 
 Pending local-action approval ownership is currently process-local. For alpha, either:
