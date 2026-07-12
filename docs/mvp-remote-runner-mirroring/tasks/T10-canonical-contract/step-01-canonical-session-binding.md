@@ -1,180 +1,240 @@
-# T10 Step 01 — Canonical `runner_id + workspace_id` session contract
+# T10 Step 01 — Canonical runner discovery and session binding
 
-Blocker #1. The binding helpers are done and tested; this step gives them
-their first production callers and makes the public API match the plan:
-the server accepts opaque identifiers and persists identifiers/labels only
-— never raw local paths — for local-runner sessions.
+Blocker #1. The server needs one owner-scoped discovery contract and one local-runner
+create contract based on opaque IDs. The existing host-launch contract remains valid
+for host-managed launches but must not be reused by the local-runner picker.
 
-## 1. Extend `SessionCreateRequest` (schemas.py ~L1311)
+## Contract decision
+
+### Existing host-launch mode
+
+```json
+{
+  "host_id": "host_...",
+  "workspace": "/absolute/path/on/host"
+}
+```
+
+This path asks a host daemon to launch a runner in a server-selected absolute path. It
+is not the local-runner mirroring contract and remains separate.
+
+### Canonical local-runner mode
+
+```json
+{
+  "runner_id": "runner_...",
+  "workspace_id": "ws_...",
+  "local_runner_policy": "manual"
+}
+```
+
+The server validates live advertised metadata and persists identifiers/display labels
+only. It never receives, reconstructs, or forwards a local absolute workspace path for
+this mode.
+
+## 1. Owner-scoped discovery API
+
+Add a stable server projection for the UI. Recommended endpoint:
+
+```text
+GET /v1/runners
+```
+
+An enriched `/v1/hosts` response is acceptable only if it preserves the exact
+semantics below and exposes an explicit `runner_id`; do not force the UI to treat
+`host_id` as a runner identifier.
+
+```json
+{
+  "data": [
+    {
+      "runner_id": "runner_abc",
+      "host_id": "host_optional",
+      "display_name": "Workstation",
+      "online": true,
+      "runner_version": "0.3.0",
+      "os": "darwin",
+      "arch": "arm64",
+      "harnesses": ["codex", "claude-native"],
+      "terminal_transports": ["control", "pty"],
+      "tool_capabilities": ["read_file", "write_file", "run_shell"],
+      "workspaces": [
+        {
+          "workspace_id": "ws_123",
+          "display_name": "omnigent",
+          "path_label": "~/src/omnigent",
+          "capabilities": ["read", "write", "shell", "git", "terminal"]
+        }
+      ]
+    }
+  ]
+}
+```
+
+Requirements:
+
+- scope results to the authenticated owner;
+- derive fields from live tunnel hello metadata and persisted ownership;
+- include offline entries only when ownership and reconnect semantics are explicit;
+- omit root paths, tokens, auth headers, and other machine secrets;
+- validate/normalize the response with a server schema;
+- add tests for owner isolation, malformed hello entries, offline state, and no-path
+  exposure.
+
+## 2. Extend `SessionCreateRequest`
 
 ```python
 class SessionCreateRequest(BaseModel):
     ...
-    labels: dict[str, str] = Field(default_factory=dict)
     local_runner_policy: str | None = None
-    # Canonical local-runner binding (T04/T10). Mutually exclusive with
-    # host_id + workspace: a request may bind EITHER to a paired local
-    # runner by opaque ids OR use the host-launch flow, not both.
     runner_id: str | None = None
     workspace_id: str | None = None
 
     @model_validator(mode="after")
-    def _validate_binding_exclusivity(self) -> "SessionCreateRequest":
+    def _validate_local_runner_binding_shape(self) -> "SessionCreateRequest":
         if self.runner_id is not None and self.host_id is not None:
             raise ValueError("runner_id and host_id are mutually exclusive")
         if self.workspace_id is not None and self.runner_id is None:
             raise ValueError("workspace_id requires runner_id")
+        if self.runner_id is not None and self.workspace_id is None:
+            raise ValueError("runner_id requires workspace_id")
         if self.runner_id is not None and self.workspace is not None:
             raise ValueError(
-                "local-runner sessions bind workspaces by workspace_id; "
-                "raw workspace paths are host-launch only"
+                "local-runner sessions bind by workspace_id; raw workspace paths "
+                "are not accepted"
             )
         return self
 ```
 
-## 2. Wire the existing validator into `_create_session_from_existing_agent`
+The multipart/session-upload create path must either support the same binding metadata
+or reject local-runner fields explicitly; do not leave two create routes with different
+security behavior.
 
-Insert after the harness override validation (~L12260), before any row is
-created. The helpers are already written — this is call-site plumbing:
+## 3. Route wiring
 
-```python
-# sessions.py — local-runner binding (T10). validate_local_runner_binding
-# checks: runner online, caller owns it, workspace_id advertised in the
-# runner's hello, harness supported. Fail-loud before create_conversation.
-if body.runner_id is not None:
-    from omnigent.server.session_binding import (
-        merge_local_runner_labels,
-        validate_local_runner_binding,
-    )
+Before creating a conversation row:
 
-    binding = validate_local_runner_binding(
-        registry=runner_router,          # adapt: LocalRunnerRegistryLike
-        runner_id=body.runner_id,
-        workspace_id=body.workspace_id,
-        harness=resolved_harness,        # from _validated_harness_override
-        user_id=user_id,
-    )
-    initial_labels = merge_local_runner_labels(
-        initial_labels,
-        runner_id=body.runner_id,
-        workspace_id=body.workspace_id,
-        workspace_label=binding.workspace_label,
-        policy_mode=body.local_runner_policy,
-    )
-```
+1. resolve the selected agent's effective harness;
+2. require the feature flag;
+3. validate the runner is online and owned by the caller;
+4. validate the workspace ID is advertised by that runner;
+5. validate the runner advertises the harness;
+6. derive a display-only workspace label from the advertised entry;
+7. persist the runner and labels atomically with conversation creation.
 
-Adaptation notes:
-
-- Match the helpers' real signatures in `session_binding.py` — the sketch
-  compresses them. `merge_local_runner_labels` already sets
-  `omnigent.execution_mode = "local_runner"`, `omnigent.workspace_id`,
-  `omnigent.workspace_label`, and (since `540eb918`) the policy label.
-- Persist `runner_id` on the conversation row the same way host-launch
-  does (`create_conversation(..., runner_id=...)`) so terminal attach and
-  reconnect routing work unchanged.
-- The `remote_local_runner` flag check (~L14057) must now also gate
-  `body.runner_id is not None`, not just `local_runner_policy`:
+Use the existing helpers in `omnigent/server/session_binding.py`, adapting their real
+signatures rather than duplicating checks.
 
 ```python
-if (body.local_runner_policy is not None or body.runner_id is not None) \
-        and not remote_local_runner_enabled():
-    raise OmnigentError(..., code=ErrorCode.INVALID_INPUT)
+binding = validate_local_runner_binding(
+    registry=tunnel_registry,
+    runner_id=body.runner_id,
+    workspace_id=body.workspace_id,
+    user_id=user_id,
+    harness=resolved_harness,
+)
+
+labels = merge_local_runner_labels(
+    initial_labels,
+    runner_id=body.runner_id,
+    workspace_id=body.workspace_id,
+    workspace_label=advertised_workspace_label(binding.hello, body.workspace_id),
+)
+labels[LOCAL_RUNNER_POLICY_LABEL_KEY] = normalized_policy
+
+conversation_store.create_conversation(
+    ...,
+    runner_id=body.runner_id,
+    labels=labels,
+)
 ```
 
-## 3. Snapshot, fork, resume
+The sketch compresses the actual store and helper signatures. Preserve the existing
+host-launch transaction/error cleanup behavior.
 
-- **Snapshot**: labels already flow to the UI (`bd527fa4` reads
-  `omnigent.workspace_label` / `omnigent.local_runner_policy` in the
-  header) — verify `omnigent.workspace_id` is included, not stripped.
-- **Fork/child**: `inherited_runner_id` (~L12263) already copies the
-  parent's runner with an ownership re-check. Extend it to also copy the
-  workspace labels so a child lands in the same workspace:
+## 4. Runner initialization
 
-```python
-if inherited_runner_id is not None and parent_conv is not None:
-    parent_labels = parent_conv.labels or {}
-    for key in (WORKSPACE_ID_LABEL_KEY, WORKSPACE_LABEL_LABEL_KEY,
-                EXECUTION_MODE_LABEL_KEY):
-        if key in parent_labels:
-            initial_labels.setdefault(key, parent_labels[key])
+When assigning or reconnecting the session, send `workspace_id` and execution mode to
+the runner. The runner resolves the workspace through its local `WorkspaceRegistry`.
+The server must not convert `workspace_id` to a path.
+
+The runner must fail loudly if:
+
+- the workspace was revoked after session creation;
+- the workspace no longer exists;
+- the runner restarted without that workspace approval; or
+- the session's binding does not match the runner receiving it.
+
+Define whether a revoked/missing workspace blocks the next action only or marks the
+whole session degraded. Surface the selected behavior in the snapshot and T09 copy.
+
+## 5. Snapshot and inheritance
+
+Snapshot fields/labels must expose:
+
+- `runner_id` or an opaque runner reference suitable for diagnostics;
+- `omnigent.execution_mode = local_runner`;
+- `omnigent.workspace_id`;
+- `omnigent.workspace_label`;
+- `omnigent.local_runner_policy`;
+- current runner/workspace availability when the snapshot already carries liveness.
+
+Child/fork behavior:
+
+- inherit runner/workspace/policy only when the operation is defined as same-machine;
+- revalidate caller access and current advertisement before creating the child;
+- never inherit the display label without the opaque ID;
+- reject a conflicting explicit child binding.
+
+Resume/reconnect behavior:
+
+- reuse the persisted binding;
+- revalidate it against the live runner on the next initialization/action;
+- do not replace it from client-local state.
+
+## 6. Tests
+
+Discovery tests:
+
+- owner sees owned runner; another user does not;
+- response includes explicit `runner_id` and opaque workspace IDs;
+- response contains no absolute root or token;
+- malformed capability entries are ignored or fail with the documented behavior;
+- offline state is represented consistently.
+
+Create-route tests:
+
+- valid owner/runner/workspace/harness creates and persists labels;
+- foreign runner is rejected;
+- unknown/unadvertised workspace is rejected;
+- unsupported harness is rejected;
+- feature-off request is rejected;
+- `runner_id + host_id` is rejected;
+- `runner_id + workspace` is rejected;
+- `runner_id` without `workspace_id` is rejected;
+- multipart create follows the same rule;
+- child/fork inheritance revalidates and preserves the binding;
+- resume/reconnect sends `workspace_id`, not a path;
+- revoked workspace fails loudly.
+
+## Frontend handoff
+
+T09 consumes the exact discovery schema and sends:
+
+```json
+{
+  "runner_id": "runner_abc",
+  "workspace_id": "ws_123",
+  "local_runner_policy": "manual"
+}
 ```
 
-- **Resume**: no new work if resume reuses the conversation row (labels
-  persist); add the assertion to the tests below.
-
-## 4. Runner receives the workspace
-
-Trace how host-launch passes `workspace` to the runner today and send the
-**workspace_id** for local-runner sessions instead; the runner resolves it
-via its `WorkspaceRegistry` (`resolve_in_workspace` is already
-id-keyed). The server must never send a path it computed itself.
-
-## 5. Route-level tests — `tests/server/integration/test_remote_local_runner_sessions.py`
-
-This is the file the P5 checklist row has always pointed at. Cases:
-
-```python
-"""Canonical runner_id + workspace_id session binding (T10)."""
-
-
-async def test_create_with_runner_and_workspace_persists_labels(
-    auth_client, online_runner_owned_by
-):
-    online_runner_owned_by(
-        "alice@example.com", runner_id="runner_a",
-        workspaces=[{"workspace_id": "ws_1", "path_label": "~/proj"}],
-        harnesses=["codex"],
-    )
-    resp = await auth_client.post(
-        "/v1/sessions",
-        json={"agent_id": AGENT, "runner_id": "runner_a", "workspace_id": "ws_1"},
-        headers=_as("alice@example.com"),
-    )
-    assert resp.status_code == 201
-    labels = resp.json()["labels"]
-    assert labels["omnigent.execution_mode"] == "local_runner"
-    assert labels["omnigent.workspace_id"] == "ws_1"
-    assert labels["omnigent.workspace_label"] == "~/proj"
-
-
-async def test_foreign_runner_is_rejected(auth_client, online_runner_owned_by):
-    online_runner_owned_by("alice@example.com", runner_id="runner_a")
-    resp = await auth_client.post(
-        "/v1/sessions",
-        json={"agent_id": AGENT, "runner_id": "runner_a", "workspace_id": "ws_1"},
-        headers=_as("bob@example.com"),
-    )
-    assert resp.status_code in (403, 404)
-
-
-async def test_unadvertised_workspace_is_rejected(...):
-    # runner online, owned, but workspace_id not in its hello → 400/404
-
-
-async def test_unsupported_harness_is_rejected(...):
-    # runner advertises harnesses=["claude"], agent resolves to codex → 400
-
-
-async def test_raw_workspace_path_rejected_for_runner_sessions(...):
-    # runner_id + workspace → 422 from the model validator
-
-
-async def test_child_inherits_workspace_binding(...):
-    # parent bound to runner_a/ws_1 → child created with
-    # parent_session_id carries the same three labels
-```
-
-## 6. Frontend follow-through (小 slice, after server lands)
-
-`web/src/lib/remoteRunner.ts`'s `RemoteHost` has no workspace collection —
-extend it and switch the T09 picker's create payload from
-`host_id + workspace path` to `runner_id + workspace_id` for paired
-runners. Keep the host-launch path untouched for its existing flow.
+No probing or `workspacePathFor(...)` fallback remains after this step.
 
 ## Done when
 
-- All six route tests green; P5's three reopened rows re-checked with this
-  file as evidence.
-- `validate_local_runner_binding` and `merge_local_runner_labels` each
-  have ≥1 production caller (grep proves it).
-- No code path accepts a raw path for a `runner_id`-bound session.
+- discovery and create models are documented and validated;
+- `validate_local_runner_binding` and label helpers have production callers;
+- local-runner mode never accepts or emits a raw local root;
+- snapshot/inheritance/reconnect tests are green; and
+- T09 can implement from generated/typed API evidence without guessing field names.
