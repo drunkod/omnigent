@@ -48,12 +48,14 @@ import {
   castAskUserQuestionPayload,
   parseAskUserQuestionPreview,
 } from "@/lib/askUserQuestion";
+import type { LocalActionApproval } from "@/lib/localActionApproval";
 import { formatPreview } from "@/lib/previewFormat";
 import type { RenderItem } from "@/lib/renderItems";
 import type { RememberScope } from "@/lib/types";
 import { useChatStore } from "@/store/chatStore";
 import { AskUserQuestionForm, type AskUserQuestionAnswers } from "./AskUserQuestionForm";
 import { ExitPlanModeReview } from "./ExitPlanModeReview";
+import { LocalActionApprovalDetails } from "./LocalActionApprovalCard";
 
 /**
  * Extract the answer-option labels from an AskUserQuestion-shaped
@@ -91,10 +93,7 @@ interface ApprovalCardProps {
   phase: string;
   policyName: string;
   contentPreview: string;
-  localAction?: {
-    kind: "read_file" | "write_file" | "list_dir" | "run_shell" | "apply_patch";
-    policyMode: "manual" | "assisted" | "auto";
-  } | null;
+  localAction?: LocalActionApproval | null;
   requestedSchema: Record<string, unknown>;
   /**
    * Standalone approval page URL when the elicitation uses URL mode.
@@ -246,15 +245,12 @@ export function ApprovalCard({
   const isAskUserQuestion = askPayload !== null;
   const isMultiChoice = optionLabels.length > 0;
   const isCodexCommandApproval = codexCommand !== null && codexCommand !== undefined;
-  const localActionLabel = localAction
-    ? {
-        read_file: "Read file",
-        write_file: "Write file",
-        list_dir: "List directory",
-        run_shell: "Run shell command",
-        apply_patch: "Apply patch",
-      }[localAction.kind]
-    : null;
+  const localActionLabel =
+    localAction?.kind === "write_file"
+      ? "Write file"
+      : localAction?.kind === "run_shell"
+        ? "Run shell command"
+        : null;
   // External URL: the elicitation points to a third-party page (OAuth,
   // external MCP server, etc.) — show a link. Our own /approve/...
   // paths are handled inline with approve/reject buttons.
@@ -442,6 +438,8 @@ export function ApprovalCard({
                 </span>
               )}
             </>
+          ) : localAction ? (
+            <span>{localActionLabel} request resolved.</span>
           ) : (
             <span>{message}</span>
           )}
@@ -531,11 +529,7 @@ export function ApprovalCard({
         ) : (
           <>
             <span>{localActionLabel ? `${localActionLabel} requires approval.` : message}</span>
-            {localAction && (
-              <span className="text-xs text-muted-foreground">
-                Policy: {localAction.policyMode}
-              </span>
-            )}
+            {localAction && <LocalActionApprovalDetails approval={localAction} />}
             {formattedPreview && (
               <pre className="max-h-64 overflow-y-auto rounded bg-muted px-2 py-1 font-mono text-xs whitespace-pre-wrap break-words">
                 {formattedPreview}

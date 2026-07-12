@@ -64,6 +64,7 @@ import type {
   ToolResult,
 } from "./events";
 import { NATIVE_TOOL_TYPES } from "./events";
+import { parseLocalActionApproval } from "./localActionApproval";
 import type { ErrorInfo, ModelUsage, RememberScope, Response } from "./types";
 
 /**
@@ -846,19 +847,26 @@ export function parseEvent(rawType: string, data: Record<string, unknown>): Stre
     // `host` is the WebFetch request domain when present (drives the
     // button label and the rule scope).
     const rememberScopeRaw = p.remember_scope;
-    const localActionKind = p.kind;
-    const localActionPolicyMode = p.policy_mode;
-    const localAction: ElicitationRequest["localAction"] =
-      (localActionKind === "read_file" ||
-        localActionKind === "write_file" ||
-        localActionKind === "list_dir" ||
-        localActionKind === "run_shell" ||
-        localActionKind === "apply_patch") &&
-      (localActionPolicyMode === "manual" ||
-        localActionPolicyMode === "assisted" ||
-        localActionPolicyMode === "auto")
-        ? { kind: localActionKind, policyMode: localActionPolicyMode }
-        : null;
+    const localActionWirePresent =
+      p.local_action !== undefined ||
+      (typeof p.kind === "string" &&
+        (p.policy_mode === "manual" || p.policy_mode === "assisted" || p.policy_mode === "auto"));
+    const legacyLocalAction = {
+      version: 1,
+      action_id: p.action_id,
+      kind: p.kind,
+      policy_mode: p.policy_mode,
+      workspace_label: p.workspace_label,
+      cwd: p.cwd,
+      path_summary: p.path_summary,
+      command_preview: p.command_preview,
+      diff_preview: p.diff_preview,
+      diff_truncated: p.diff_truncated,
+      risk_flags: p.risk_flags,
+      shell_guarantee: p.shell_guarantee,
+      expires_at: p.expires_at,
+    };
+    const localAction = parseLocalActionApproval(p.local_action ?? legacyLocalAction);
     const rememberScope: RememberScope | null =
       rememberScopeRaw &&
       typeof rememberScopeRaw === "object" &&
@@ -877,7 +885,10 @@ export function parseEvent(rawType: string, data: Record<string, unknown>): Stre
       elicitationId,
       targetSessionId:
         typeof targetSessionId === "string" && targetSessionId ? targetSessionId : null,
-      message: String(p.message ?? ""),
+      message:
+        localActionWirePresent && localAction === null
+          ? "Unsupported local action approval."
+          : String(p.message ?? ""),
       requestedSchema:
         requestedSchema && typeof requestedSchema === "object" && !Array.isArray(requestedSchema)
           ? (requestedSchema as Record<string, unknown>)
@@ -886,7 +897,7 @@ export function parseEvent(rawType: string, data: Record<string, unknown>): Stre
       url: typeof p.url === "string" && p.url ? p.url : null,
       phase,
       policyName,
-      contentPreview: String(p.content_preview ?? ""),
+      contentPreview: localActionWirePresent ? "" : String(p.content_preview ?? ""),
       localAction,
       askUserQuestion:
         askUserQuestionRaw &&

@@ -1,3 +1,4 @@
+import type { LocalActionApproval } from "./localActionApproval";
 // Block walker — converts a flat `AnyBlock[]` into a list of bubble
 // groups for the JSX layer to map over.
 //
@@ -97,10 +98,7 @@ export type RenderItem =
       phase: string;
       policyName: string;
       contentPreview: string;
-      localAction?: {
-        kind: "read_file" | "write_file" | "list_dir" | "run_shell" | "apply_patch";
-        policyMode: "manual" | "assisted" | "auto";
-      } | null;
+      localAction?: LocalActionApproval | null;
       requestedSchema: Record<string, unknown>;
       url?: string | null;
       status: "pending" | "responded";

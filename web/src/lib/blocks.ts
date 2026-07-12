@@ -1,3 +1,4 @@
+import type { LocalActionApproval } from "./localActionApproval";
 // Mirrors sdks/python-client/omnigent_client/_blocks.py.
 //
 // Hand-ported. When _blocks.py changes, update this file and the
@@ -391,10 +392,7 @@ export interface ElicitationBlock {
   policyName: string;
   /** Truncated snapshot of the gated content. */
   contentPreview: string;
-  localAction?: {
-    kind: "read_file" | "write_file" | "list_dir" | "run_shell" | "apply_patch";
-    policyMode: "manual" | "assisted" | "auto";
-  } | null;
+  localAction?: LocalActionApproval | null;
   /** A restricted-JSON-Schema form. `{}` for a binary accept/decline. */
   requestedSchema: Record<string, unknown>;
   /** Standalone approval page URL when ``mode === "url"``. */

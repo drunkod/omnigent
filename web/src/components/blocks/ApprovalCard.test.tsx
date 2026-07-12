@@ -20,7 +20,14 @@ describe("ApprovalCard — binary approve/reject", () => {
         requestedSchema={{}}
         status="pending"
         response={null}
-        localAction={{ kind: "run_shell", policyMode: "manual" }}
+        localAction={{
+          version: 1,
+          kind: "run_shell",
+          policyMode: "manual",
+          pathSummary: [],
+          diffTruncated: false,
+          riskFlags: [],
+        }}
       />,
     );
 
