@@ -157,8 +157,10 @@ def build_hello(
         :data:`ALLOWED_HELLO_MODES`.
     :param workspace_registry: Optional registry exposing display-only workspace
         summaries. When omitted, load the production registry from runner
-        environment wiring and apply native-launch readiness filtering. When
-        supplied, preserve the caller's advertised harness list unchanged.
+        environment wiring and apply native-launch readiness filtering whenever
+        workspace roots exist. A zero-root hello preserves the legacy harness
+        list because the runner is already unselectable for local execution.
+        When supplied, preserve the caller's advertised harness list unchanged.
     :param feature_flags: Optional feature flag names forwarded to
         :func:`detect_terminal_transports`.
     :param system: Optional platform override forwarded to
@@ -173,11 +175,18 @@ def build_hello(
         raise ValueError(f"unsupported runner mode {mode!r}; expected one of: {allowed}")
 
     if workspace_registry is None:
-        registry: AdvertisedWorkspaceRegistry = _default_workspace_registry()
-        advertised_harnesses = _advertised_harnesses(
-            harnesses,
-            native_workspace_ready=_native_workspace_ready(registry),
-        )
+        default_registry = _default_workspace_registry()
+        registry: AdvertisedWorkspaceRegistry = default_registry
+        if len(default_registry) == 0:
+            # Preserve the existing tunnel contract for runners with no local
+            # roots. The UI already disables them because ``workspace_roots`` is
+            # empty, so filtering here adds no safety and breaks old/new skew.
+            advertised_harnesses = list(harnesses)
+        else:
+            advertised_harnesses = _advertised_harnesses(
+                harnesses,
+                native_workspace_ready=_native_workspace_ready(default_registry),
+            )
     else:
         registry = workspace_registry
         advertised_harnesses = list(harnesses)
