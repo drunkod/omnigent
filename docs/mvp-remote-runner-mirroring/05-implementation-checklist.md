@@ -102,10 +102,10 @@ The existing helper tests do not close these route items.
 - [x] Add write diff preview and stale-content conflict detection.
 - [x] Bound shell duration and captured output; strip runner auth from the child env.
 - [ ] Freeze the shell security contract and implement the stated boundary.
-- [ ] Add `search_files` through the same gateway, or remove it from that capability
-  contract.
-- [ ] Add fixed-argv `git_status` and `git_diff` through the same gateway, or document
-  a separate authorized read-only route.
+- [x] Keep `search_files` off the gateway capability contract until it has
+  the gateway audit/policy path; it remains an explicit filesystem route.
+- [x] Keep `git_status` and `git_diff` off the gateway capability contract
+  until they converge on a fixed-argv, authorized read-only path.
 - [ ] Implement `apply_patch` with preview and race-safe write semantics before
   advertising it.
 - [ ] Add request-size limits and re-resolve/no-follow protections for writes.

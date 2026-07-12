@@ -24,10 +24,7 @@ DEFAULT_TOOL_CAPABILITIES = [
     "read_file",
     "write_file",
     "list_dir",
-    "search_files",
     "run_shell",
-    "git_status",
-    "git_diff",
 ]
 _SUPPORTED_TMUX_PLATFORMS = {"darwin", "linux"}
 
