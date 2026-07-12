@@ -14475,6 +14475,44 @@ def create_sessions_router(
                 runner_router=runner_router,
             )
 
+        explicit_runner_id = parsed_metadata.runner_id
+        if explicit_runner_id is not None:
+            from omnigent.server.auth import remote_local_runner_enabled
+            from omnigent.server.session_binding import (
+                advertised_workspace_label,
+                merge_local_runner_labels,
+                validate_local_runner_binding,
+            )
+
+            if not remote_local_runner_enabled():
+                raise OmnigentError(
+                    "remote local runner support is not enabled on this server",
+                    code=ErrorCode.INVALID_INPUT,
+                )
+            if runner_router is None:
+                raise OmnigentError(
+                    "runner tunnel registry is not configured",
+                    code=ErrorCode.INTERNAL_ERROR,
+                )
+            binding = validate_local_runner_binding(
+                runner_id=explicit_runner_id,
+                workspace_id=parsed_metadata.workspace_id,
+                registry=runner_router.binding_registry,
+                user_id=user_id,
+                harness=None,
+            )
+            label = (
+                advertised_workspace_label(binding.hello, parsed_metadata.workspace_id)
+                if binding is not None and parsed_metadata.workspace_id is not None
+                else None
+            )
+            parsed_metadata.labels = merge_local_runner_labels(
+                parsed_metadata.labels,
+                runner_id=explicit_runner_id,
+                workspace_id=parsed_metadata.workspace_id,
+                workspace_label=label,
+            )
+
         bundle_bytes = await bundle.read()
         result = await asyncio.to_thread(
             _create_session_from_bundle,
@@ -14482,11 +14520,9 @@ def create_sessions_router(
             artifact_store,
             parsed_metadata,
             bundle_bytes,
-            inherited_runner_id,
+            explicit_runner_id or inherited_runner_id,
         )
-        # Top-level creates (no inherited runner) skip the notify —
-        # their runner registers itself later.
-        if inherited_runner_id is not None:
+        if explicit_runner_id or inherited_runner_id:
             await _notify_runner_of_bundled_child(
                 result.session_id,
                 result.agent_id,

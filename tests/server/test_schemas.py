@@ -622,6 +622,14 @@ def test_session_create_runner_binding_accepts_opaque_ids() -> None:
     assert req.workspace_id == "ws_1"
 
 
+def test_multipart_session_metadata_accepts_opaque_ids() -> None:
+    from omnigent.server.schemas import SessionCreateMetadata
+
+    metadata = SessionCreateMetadata(runner_id="runner_a", workspace_id="ws_1")
+    assert metadata.runner_id == "runner_a"
+    assert metadata.workspace_id == "ws_1"
+
+
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [

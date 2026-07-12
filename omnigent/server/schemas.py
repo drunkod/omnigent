@@ -1452,10 +1452,26 @@ class SessionCreateMetadata(BaseModel):
     reasoning_effort: str | None = None
     host_id: str | None = None
     workspace: str | None = None
+    runner_id: str | None = None
+    workspace_id: str | None = None
     terminal_launch_args: list[str] | None = None
     parent_session_id: str | None = None
 
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def _check_runner_binding_fields(self) -> SessionCreateMetadata:
+        """Keep bundled runner binding separate from host/path launches."""
+        if self.runner_id is not None and self.host_id is not None:
+            raise ValueError("runner_id and host_id are mutually exclusive")
+        if self.runner_id is not None and self.workspace is not None:
+            raise ValueError(
+                "runner-bound sessions use workspace_id; raw workspace paths "
+                "are only valid for host launches"
+            )
+        if self.workspace_id is not None and self.runner_id is None:
+            raise ValueError("workspace_id requires runner_id")
+        return self
 
 
 class CreatedSessionResponse(BaseModel):
