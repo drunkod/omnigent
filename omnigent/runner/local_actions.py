@@ -379,12 +379,13 @@ class LocalActionGateway:
         record = self._new_record(
             session_id=session_id, workspace_id=workspace_id, kind="run_shell", mode=mode
         )
-        record.command_summary = command[:400]
+        command_preview = safe_shell_command_preview(command)
+        record.command_summary = command_preview
         record.cwd = cwd
         await self._gate(
             record,
             classify_action("run_shell", mode=mode, command=command, cwd=cwd),
-            command_preview=safe_shell_command_preview(command),
+            command_preview=command_preview,
             shell_guarantee="strict_workspace" if self._strict_shell else "trusted_machine",
         )
         resolved_cwd = self._resolve_or_audit(record, cwd)
