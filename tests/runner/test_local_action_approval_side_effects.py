@@ -123,6 +123,8 @@ async def test_denied_shell_never_starts_and_preview_hides_arguments(tmp_path, m
     assert secret not in str(captured[0])
     assert captured[0]["shell_guarantee"] == "trusted_machine"
     assert [event["status"] for event in audits] == ["requested", "denied"]
+    assert all(event["command_summary"] == "curl [arguments hidden]" for event in audits)
+    assert secret not in str(audits)
 
 
 @pytest.mark.asyncio
