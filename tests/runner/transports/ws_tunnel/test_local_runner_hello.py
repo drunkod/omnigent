@@ -13,9 +13,10 @@ from omnigent.runner.identity import (
 )
 from omnigent.runner.transports.ws_tunnel import capabilities as capabilities_module
 from omnigent.runner.transports.ws_tunnel.capabilities import build_hello
+from omnigent.runner.transports.ws_tunnel.frames import HelloFrame
 
 
-def _build() -> object:
+def _build() -> HelloFrame:
     return build_hello(
         runner_version="test",
         harnesses=["claude-native", "codex"],
@@ -88,3 +89,27 @@ def test_default_hello_blocks_native_harnesses_for_ambiguous_multi_root_runner(
     assert "claude-native" not in hello.harnesses
     assert "codex-native" not in hello.harnesses
     assert RUNNER_WORKSPACE_ENV_VAR not in os.environ
+
+
+def test_default_hello_fails_closed_on_conflicting_legacy_workspace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    approved = tmp_path / "approved"
+    stale = tmp_path / "stale"
+    approved.mkdir()
+    stale.mkdir()
+    monkeypatch.setenv(RUNNER_WORKSPACES_ENV_VAR, str(approved))
+    monkeypatch.setenv(RUNNER_WORKSPACE_ENV_VAR, str(stale))
+    monkeypatch.setattr(
+        capabilities_module.shutil,
+        "which",
+        lambda command: "/usr/bin/codex" if command == "codex" else None,
+    )
+
+    hello = _build()
+
+    assert len(hello.workspace_roots) == 1
+    assert "claude-native" not in hello.harnesses
+    assert "codex-native" not in hello.harnesses
+    assert os.environ[RUNNER_WORKSPACE_ENV_VAR] == str(stale)
