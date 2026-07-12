@@ -67,7 +67,10 @@ Target files:
 - [x] Store runner id and pairing auth in existing `~/.omnigent` state pattern.
 - [x] Add `omni runner status`.
 - [x] Add `omni runner disconnect` or equivalent stop flow.
-- [x] Show tmux, shell, git, Node, harness CLI readiness.
+- [ ] Show tmux, shell, git, Node, harness CLI readiness.
+  *(Partial: `local_readiness()` probes tmux/git/node only; harness
+  readiness rides the hello's `configured_harnesses`. Shell probe and a
+  unified readiness view are open.)*
 
 Target files:
 
@@ -83,7 +86,9 @@ Target files:
 - [x] Add workspace list/validate endpoints.
 - [x] Canonicalize and enforce workspace paths.
 - [x] Add symlink escape tests.
-- [x] Return project metadata: git root/status, available shells, harness readiness.
+- [ ] Return project metadata: git root/status, available shells, harness readiness.
+  *(Open: `advertise()` returns workspace_id / display_name / path_label /
+  capabilities only.)*
 
 Target files:
 
@@ -95,11 +100,17 @@ Target files:
 ## P5 — Session binding
 
 - [x] Add `execution_mode` concept if not already present.
-- [x] Persist selected `runner_id` and `workspace_id` or equivalent labels.
-- [x] Validate caller owns runner/workspace.
-- [x] Validate selected harness is supported by runner.
-- [x] Ensure session snapshot exposes binding to UI.
+- [ ] Persist selected `runner_id` and `workspace_id` or equivalent labels.
+- [ ] Validate caller owns runner/workspace.
+- [ ] Validate selected harness is supported by runner.
+- [ ] Ensure session snapshot exposes binding to UI.
 - [x] Define fork/resume semantics.
+
+*(Status correction: the `session_binding.py` helpers implement and unit-test
+all of the above, but `validate_local_runner_binding` and
+`merge_local_runner_labels` have no production callers —
+`SessionCreateRequest` still speaks host_id + raw workspace path. Route-level
+wiring is tracked in `tasks/T10-canonical-contract/step-01`.)*
 
 Target files:
 
@@ -129,11 +140,17 @@ Target files:
 
 - [x] Inventory all existing file/shell tools and their execution location.
 - [x] Add runner-local action gateway.
-- [x] Implement read/list/search.
+- [x] Implement read/list (`LocalActionGateway`, audited + gated).
+- [ ] Implement search through the gateway.
+  *(`search_files` exists on the environment-filesystem routes, outside the
+  gateway's audit/policy path, while `DEFAULT_TOOL_CAPABILITIES` advertises
+  it as a tool action — see `tasks/T10-canonical-contract/step-04`.)*
 - [x] Implement `write_file` with diff preview.
 - [ ] Implement `apply_patch` with diff preview.
 - [x] Implement shell command execution with cwd/env enforcement.
-- [x] Implement git status/diff helpers.
+- [ ] Implement git status/diff helpers through the gateway.
+  *(Same channel mismatch as search — advertised but served outside the
+  gateway.)*
 - [x] Stream/truncate outputs safely.
 
 Target files:
@@ -148,10 +165,18 @@ Target files:
 
 - [x] Add local runner policy presets: manual, assisted, auto.
 - [x] Ask-gate every side-effectful action in manual mode.
-- [x] Block workspace escapes in all modes.
+- [ ] Block workspace escapes in all modes.
+  *(File operations ARE contained via `resolve_in_workspace` + symlink
+  tests. Shell is ask-gated but NOT contained: `run_shell` only resolves
+  `cwd`; the approved command text can reference any path. Decision +
+  fix tracked in `tasks/T10-canonical-contract/step-02`.)*
 - [x] Add approval event model for local actions.
 - [x] Ensure approvals are owner-only for MVP.
-- [x] Add session history audit records.
+- [ ] Add session history audit records (payload-free).
+  *(Persistence mechanics exist and are tested, but `command_summary`
+  persists the first 400 chars of raw commands (may embed bearer tokens)
+  and the entity allows extra fields. Allowlist schema + value redaction
+  tracked in `tasks/T10-canonical-contract/step-03`.)*
 
 Evidence: presets are covered by the policy catalog, resolver, session-create
 route validation, and inherited-runner API test. Owner-only approval is covered

@@ -1,6 +1,9 @@
 # Remote AI Terminal Runner with Local Machine Mirroring — MVP Planning
 
-Status: planning only. This branch intentionally adds Markdown task specifications and does not change runtime code.
+Status: implementation in progress. Originally a planning-only branch; it now
+carries runtime changes across runner, server (including a DB migration),
+policies, CLI, web UI, and tests. Review accordingly. The checklist in
+`05-implementation-checklist.md` is the source of truth for per-item status.
 
 ## Purpose
 
@@ -102,9 +105,11 @@ and security assumptions against the live branch:
   default + reconnect overlay on the existing `TerminalSession.ts`, approval cards. (P9.)
 - `tasks/T08-permissions-policies-tests.md` — policy presets, owner-only approvals,
   audit persistence/redaction, telemetry names, permission test suite, rollout gates. (P8/P11.)
+- `tasks/T10-canonical-contract/` — sequential blockers for the public runner/workspace
+  contract, shell security guarantee, audit schema, and capability truthfulness.
 
-Implementation order matches the checklist's PR sequence: T01 → T02+T03 → T04 → T06 →
-T05 → T08 → T07.
+Implementation order is now: T01 → T02+T03 → T04 → T06 → T05 → T08 → T10 (steps
+01–04) → T11/T09/T12 parallel tracks → release docs and CI gates.
 
 ## Suggested implementation shape
 
