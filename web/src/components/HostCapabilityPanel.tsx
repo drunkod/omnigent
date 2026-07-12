@@ -1,39 +1,54 @@
-import { useHosts, type Host } from "@/hooks/useHosts";
+import { useLocalRunners } from "@/hooks/useLocalRunners";
+import type { LocalRunnerSummary } from "@/lib/remoteRunner";
 
-function HostCard({ host }: { host: Host }) {
-  const harnesses = Object.keys(host.configured_harnesses ?? {});
+function RunnerCard({ runner }: { runner: LocalRunnerSummary }) {
   return (
-    <section className="rounded border p-3" aria-label={`Host ${host.host_id}`}>
+    <section className="rounded border p-3" aria-label={`Runner ${runner.runner_id}`}>
       <header className="flex items-center gap-2">
         <span
-          className={`size-2 rounded-full ${host.status === "online" ? "bg-emerald-500" : "bg-muted-foreground"}`}
-          aria-label={host.status}
+          className={`size-2 rounded-full ${runner.online ? "bg-emerald-500" : "bg-muted-foreground"}`}
+          aria-label={runner.online ? "online" : "offline"}
         />
-        <strong>{host.name}</strong>
-        <span className="text-xs text-muted-foreground">{host.status}</span>
+        <strong>{runner.runner_id}</strong>
+        <span className="text-xs text-muted-foreground">
+          {runner.online ? "online" : "offline"}
+        </span>
       </header>
       <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
         <dt className="text-muted-foreground">Harnesses</dt>
-        <dd>{harnesses.length ? harnesses.join(", ") : "None reported"}</dd>
-        <dt className="text-muted-foreground">Runner</dt>
-        <dd>{host.configured_harnesses ? "Capabilities reported" : "No capability report"}</dd>
+        <dd>{runner.harnesses.length ? runner.harnesses.join(", ") : "None reported"}</dd>
+        <dt className="text-muted-foreground">Workspaces</dt>
+        <dd>
+          {runner.workspaces.length
+            ? runner.workspaces
+                .map(
+                  (workspace) =>
+                    workspace.display_name ?? workspace.path_label ?? workspace.workspace_id,
+                )
+                .join(", ")
+            : "No approved workspaces"}
+        </dd>
+        <dt className="text-muted-foreground">Terminal</dt>
+        <dd>{runner.terminal_transports.join(", ") || "No transport reported"}</dd>
+        <dt className="text-muted-foreground">Tools</dt>
+        <dd>{runner.tool_capabilities.join(", ") || "No gateway tools reported"}</dd>
       </dl>
     </section>
   );
 }
 
 export function HostCapabilityPanel({ enabled }: { enabled: boolean }) {
-  const query = useHosts({ enabled, includeSandbox: true });
+  const query = useLocalRunners(enabled);
   if (!enabled) return null;
-  if (query.isLoading) return <p>Loading hosts…</p>;
-  if (query.isError) return <p role="alert">Couldn’t load hosts: {String(query.error)}</p>;
+  if (query.isLoading) return <p>Loading runners…</p>;
+  if (query.isError) return <p role="alert">Couldn’t load runners: {String(query.error)}</p>;
   if (!query.data?.length) {
-    return <p>No hosts paired. Run `omnigent host` on your machine to pair one.</p>;
+    return <p>No local runners paired. Start a runner on your machine to pair one.</p>;
   }
   return (
     <div className="flex max-w-2xl flex-col gap-3">
-      {query.data.map((host) => (
-        <HostCard key={host.host_id} host={host} />
+      {query.data.map((runner) => (
+        <RunnerCard key={runner.runner_id} runner={runner} />
       ))}
     </div>
   );
