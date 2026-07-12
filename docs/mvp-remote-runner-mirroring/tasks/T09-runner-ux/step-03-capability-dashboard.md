@@ -1,101 +1,79 @@
-# T09 Step 03 — Runner capability dashboard (Deferred D)
+# T09 Step 03 — Runner capability and degraded-state dashboard
 
-Track 2, step 3. Depends on step 01 (`useHosts`). A read-only panel
-showing everything a paired host advertises: version, OS/arch, harness
-readiness, terminal transports, workspaces, last-seen, reconnect state.
-Lands last in the track because it's pure presentation over data steps
-01–02 already fetch.
+Depends on T09 step 01 and T10 step 04. This panel is presentation over the canonical
+runner discovery model; it must not invent readiness or imply that an advertised tool
+has stronger policy/audit guarantees than its real dispatch path.
 
-## 1. Panel — `web/src/components/HostCapabilityPanel.tsx`
+## Display model
 
-```tsx
-import { useHosts } from "../hooks/useHosts";
-import type { HostRunnerInfo } from "../lib/remoteRunner";
+For each runner show:
 
-function HostCard({ host }: { host: HostRunnerInfo }) {
-  return (
-    <section className="rounded border p-3" aria-label={`Host ${host.host_id}`}>
-      <header className="flex items-center gap-2">
-        <span
-          className={`h-2 w-2 rounded-full ${host.online ? "bg-green-500" : "bg-gray-400"}`}
-          aria-hidden
-        />
-        <strong>{host.display_name ?? host.host_id}</strong>
-        <span className="text-xs opacity-70">
-          {host.os}/{host.arch} · {host.runner_version ?? "unknown version"}
-        </span>
-      </header>
+- display name and opaque `runner_id` only in diagnostic detail;
+- online/offline/reconnecting state;
+- runner version and OS/architecture when available;
+- configured/ready harnesses;
+- terminal transports;
+- approved workspaces by display name/path label, never absolute root;
+- truthful local action/tool capabilities after T10 step 04;
+- specific degraded reasons when the server provides them.
 
-      <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-        <dt>Harnesses</dt>
-        <dd>{host.harnesses.length ? host.harnesses.join(", ") : "none detected"}</dd>
-        <dt>Terminal transports</dt>
-        <dd>{host.terminal_transports.join(", ") || "unavailable (tmux missing?)"}</dd>
-        <dt>Workspaces</dt>
-        <dd>
-          <ul>
-            {host.workspaces.map((ws) => (
-              <li key={ws.workspace_id}>
-                {ws.display_name} <span className="opacity-70">({ws.path_label})</span>
-              </li>
-            ))}
-          </ul>
-        </dd>
-      </dl>
-    </section>
-  );
-}
+Prefer explicit fields such as:
 
-export function HostCapabilityPanel({ enabled }: { enabled: boolean }) {
-  const { hosts, error } = useHosts(enabled);
-  if (!enabled) return null;
-  if (error) return <p role="alert">Couldn’t load hosts: {error}</p>;
-  if (hosts === null) return <p>Loading…</p>;
-  if (hosts.length === 0) {
-    return (
-      <p>
-        No hosts paired. Run <code>omnigent host --server {window.location.origin}</code>{" "}
-        on your machine to pair one.
-      </p>
-    );
-  }
-  return (
-    <div className="flex flex-col gap-3">
-      {hosts.map((h) => (
-        <HostCard key={h.host_id} host={h} />
-      ))}
-    </div>
-  );
+```typescript
+interface RunnerDegradedReason {
+  code:
+    | "runner_offline"
+    | "tmux_missing"
+    | "shell_sandbox_unavailable"
+    | "harness_missing"
+    | "workspace_missing"
+    | "version_mismatch";
+  detail?: string;
 }
 ```
 
-Mount wherever settings/infrastructure panels live (follow the existing
-settings-page pattern; there is no dedicated infra page yet — a
-"Runners" section in settings is the smallest home).
+Do not derive `tmux_missing` merely from an empty transport list if the API can state a
+more precise reason. If the server does not expose a needed diagnostic, add a bounded
+server projection rather than guessing client-side.
 
-## 2. Empty/degraded states worth explicit copy
+## Placement
 
-- **Offline host**: keep the card, gray dot, add last-seen when the API
-  exposes it (`GET /v1/hosts` — check the probed payload; if absent, file
-  a small server follow-up rather than faking it client-side).
-- **No terminal transports**: means tmux missing/unsupported platform —
-  the copy above says so, matching `detect_terminal_transports`'s
-  behavior (runner `capabilities.py`).
-- **Harness not installed**: shows in the harness list; the picker
-  (step 02) is where the actionable warning lives.
+Use the existing settings/infrastructure pattern. A “Runners” section in settings is
+the smallest alpha surface. Reuse the same `useLocalRunners` data source as the picker;
+do not add a second poll loop.
 
-## 3. Tests — `HostCapabilityPanel.test.tsx`
+## Required states and copy
 
-```tsx
-it("renders one card per host with harnesses and workspaces", ...);
-it("shows pairing instructions when no hosts exist", ...);
-it("marks offline hosts with a gray indicator", ...);
-it("explains missing terminal transports", ...);
-```
+- **No runner paired:** pairing instructions and documentation link.
+- **Offline:** retain the card, disable new-session selection, show last-seen only when
+  supplied by the server.
+- **No workspaces:** explain how to approve one locally.
+- **No terminal transport:** show the server-provided reason.
+- **Harness unavailable:** name the missing harness and keep unrelated harnesses usable.
+- **Strict shell requested but unavailable:** fail closed and show the missing sandbox
+  requirement.
+- **Trusted-machine shell mode:** display that owner approval grants normal user-level
+  shell access; do not label it workspace-sandboxed.
+- **Version mismatch:** name the minimum compatible runner/server version when known.
+
+## Tests
+
+- one card per runner with opaque workspace summaries;
+- no absolute path rendered or serialized in component snapshots;
+- offline and no-workspace states are actionable;
+- degraded reasons map to stable copy;
+- shell-mode copy matches T10 step 02;
+- capability names shown are exactly the T10 step 04 advertisement;
+- the panel and picker share one fetch/store path;
+- feature-off mode renders nothing.
+
+## Manual QA
+
+Pair a real runner, add/remove a workspace, stop/restart the runner, remove tmux or a
+harness in a disposable environment, and verify the panel changes without exposing
+secrets or local roots.
 
 ## Done when
 
-- Panel reflects a live paired host end-to-end (manual QA with
-  `omnigent host`).
-- All degraded states render specific copy, not blank sections.
-- Track 2 complete: fetch → picker/badge → dashboard.
+The panel is a truthful diagnostic projection of the canonical runner contract and all
+of its degraded states are explicit rather than inferred from missing fields.
