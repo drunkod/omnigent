@@ -1344,6 +1344,10 @@ class SessionCreateRequest(BaseModel):
     @model_validator(mode="after")
     def _check_runner_binding_fields(self) -> SessionCreateRequest:
         """Keep opaque runner binding separate from host/path launches."""
+        if self.runner_id is not None and not self.runner_id.strip():
+            raise ValueError("runner_id must not be empty")
+        if self.workspace_id is not None and not self.workspace_id.strip():
+            raise ValueError("workspace_id must not be empty")
         if self.runner_id is not None and self.host_id is not None:
             raise ValueError("runner_id and host_id are mutually exclusive")
         if self.runner_id is not None and self.workspace is not None:
@@ -1353,6 +1357,8 @@ class SessionCreateRequest(BaseModel):
             )
         if self.workspace_id is not None and self.runner_id is None:
             raise ValueError("workspace_id requires runner_id")
+        if self.runner_id is not None and self.workspace_id is None:
+            raise ValueError("runner_id requires workspace_id")
         return self
 
     @model_validator(mode="after")
@@ -1449,6 +1455,7 @@ class SessionCreateMetadata(BaseModel):
 
     title: str | None = None
     labels: dict[str, str] = Field(default_factory=dict)
+    local_runner_policy: str | None = None
     reasoning_effort: str | None = None
     host_id: str | None = None
     workspace: str | None = None
@@ -1462,6 +1469,10 @@ class SessionCreateMetadata(BaseModel):
     @model_validator(mode="after")
     def _check_runner_binding_fields(self) -> SessionCreateMetadata:
         """Keep bundled runner binding separate from host/path launches."""
+        if self.runner_id is not None and not self.runner_id.strip():
+            raise ValueError("runner_id must not be empty")
+        if self.workspace_id is not None and not self.workspace_id.strip():
+            raise ValueError("workspace_id must not be empty")
         if self.runner_id is not None and self.host_id is not None:
             raise ValueError("runner_id and host_id are mutually exclusive")
         if self.runner_id is not None and self.workspace is not None:
@@ -1471,6 +1482,8 @@ class SessionCreateMetadata(BaseModel):
             )
         if self.workspace_id is not None and self.runner_id is None:
             raise ValueError("workspace_id requires runner_id")
+        if self.runner_id is not None and self.workspace_id is None:
+            raise ValueError("runner_id requires workspace_id")
         return self
 
 

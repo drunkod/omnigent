@@ -8,6 +8,26 @@ afterEach(() => {
 });
 
 describe("ApprovalCard — binary approve/reject", () => {
+  it("does not render producer previews for local actions", () => {
+    const secret = "Bearer super-secret-value";
+    render(
+      <ApprovalCard
+        elicitationId="elic_local"
+        message={`run ${secret}`}
+        phase="tool_call"
+        policyName="local_runner"
+        contentPreview={JSON.stringify({ command: `curl -H Authorization: ${secret}` })}
+        requestedSchema={{}}
+        status="pending"
+        response={null}
+        localAction={{ kind: "run_shell", policyMode: "manual" }}
+      />,
+    );
+
+    expect(screen.getByText("Run shell command requires approval.")).toBeDefined();
+    expect(screen.queryByText(secret)).toBeNull();
+  });
+
   it("renders Approve and Reject buttons when requestedSchema has no enum", () => {
     // Policy-ASK and PermissionRequest cards arrive with an empty
     // schema (binary decision). The card should render the

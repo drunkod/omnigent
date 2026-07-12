@@ -2206,6 +2206,7 @@ export function NewChatLandingScreen() {
     (workspace) => workspace.workspace_id === selectedRunnerWorkspaceId,
   );
   const localRunnerSelected = selectedRunnerId !== null;
+  const selectedRunnerHarness = pickedHarness ?? selectedAgent?.harness ?? null;
   // Warn-only readiness signal for the agent picker: only meaningful when
   // a connected host is selected (a sandbox provisions its own tooling).
   // Selection stays allowed — the host re-checks at launch and the create
@@ -2662,7 +2663,13 @@ export function NewChatLandingScreen() {
         // same way the fork-resume path does.
         const bundle = await buildAgentBundle(pendingAgent);
         const metadata: Record<string, unknown> = {};
-        if (workspaceTrimmed) metadata.workspace = workspaceTrimmed;
+        if (localRunnerSelected) {
+          metadata.runner_id = selectedRunnerId;
+          metadata.workspace_id = selectedRunnerWorkspaceId;
+          metadata.local_runner_policy = "manual";
+        } else if (workspaceTrimmed) {
+          metadata.workspace = workspaceTrimmed;
+        }
         data = await createBundledSession(
           bundle,
           metadata as Parameters<typeof createBundledSession>[1],
@@ -3289,7 +3296,12 @@ export function NewChatLandingScreen() {
                         <DropdownMenuItem
                           key={runner.runner_id}
                           onSelect={() => selectLocalRunner(runner.runner_id)}
-                          disabled={!runner.online || runner.workspaces.length === 0}
+                          disabled={
+                            !runner.online ||
+                            runner.workspaces.length === 0 ||
+                            (selectedRunnerHarness !== null &&
+                              !runner.harnesses.includes(selectedRunnerHarness))
+                          }
                           data-testid={`new-chat-landing-runner-${runner.runner_id}`}
                           data-active={runner.runner_id === selectedRunnerId ? "true" : undefined}
                           className="text-xs data-[active=true]:bg-accent/60"
@@ -3298,9 +3310,12 @@ export function NewChatLandingScreen() {
                           <span className="flex min-w-0 flex-col">
                             <span className="truncate">Local runner</span>
                             <span className="truncate text-[11px] text-muted-foreground">
-                              {runner.online
-                                ? `${runner.workspaces.length} workspace(s)`
-                                : "offline"}
+                              {!runner.online
+                                ? "offline"
+                                : selectedRunnerHarness !== null &&
+                                    !runner.harnesses.includes(selectedRunnerHarness)
+                                  ? `missing ${selectedRunnerHarness}`
+                                  : `${runner.workspaces.length} workspace(s)`}
                             </span>
                           </span>
                         </DropdownMenuItem>

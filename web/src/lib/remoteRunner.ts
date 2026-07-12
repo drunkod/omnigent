@@ -39,8 +39,50 @@ export async function fetchHosts(): Promise<RemoteHost[]> {
 export async function fetchLocalRunners(): Promise<LocalRunnerSummary[]> {
   const response = await authenticatedFetch("/v1/runners");
   if (!response.ok) throw new Error(`runner discovery failed: ${response.status}`);
-  const body = (await response.json()) as { data?: LocalRunnerSummary[] };
-  return body.data ?? [];
+  const body = (await response.json()) as { data?: unknown[] };
+  if (!Array.isArray(body.data)) return [];
+  return body.data.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const runner = entry as Record<string, unknown>;
+    if (typeof runner.runner_id !== "string" || typeof runner.online !== "boolean") return [];
+    const workspaces = Array.isArray(runner.workspaces) ? runner.workspaces : [];
+    return [
+      {
+        runner_id: runner.runner_id,
+        online: runner.online,
+        runner_version: typeof runner.runner_version === "string" ? runner.runner_version : null,
+        os: typeof runner.os === "string" ? runner.os : null,
+        arch: typeof runner.arch === "string" ? runner.arch : null,
+        harnesses: Array.isArray(runner.harnesses)
+          ? runner.harnesses.filter((value): value is string => typeof value === "string")
+          : [],
+        terminal_transports: Array.isArray(runner.terminal_transports)
+          ? runner.terminal_transports.filter((value): value is string => typeof value === "string")
+          : [],
+        tool_capabilities: Array.isArray(runner.tool_capabilities)
+          ? runner.tool_capabilities.filter((value): value is string => typeof value === "string")
+          : [],
+        workspaces: workspaces.flatMap((value) => {
+          if (!value || typeof value !== "object") return [];
+          const workspace = value as Record<string, unknown>;
+          if (typeof workspace.workspace_id !== "string") return [];
+          return [
+            {
+              workspace_id: workspace.workspace_id,
+              display_name:
+                typeof workspace.display_name === "string" ? workspace.display_name : null,
+              path_label: typeof workspace.path_label === "string" ? workspace.path_label : null,
+              capabilities: Array.isArray(workspace.capabilities)
+                ? workspace.capabilities.filter(
+                    (capability): capability is string => typeof capability === "string",
+                  )
+                : [],
+            },
+          ];
+        }),
+      },
+    ];
+  });
 }
 
 export async function remoteLocalRunnerEnabled(): Promise<boolean> {

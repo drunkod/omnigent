@@ -83,8 +83,8 @@ def test_validate_local_runner_binding_accepts_online_owner_harness_and_workspac
     assert session.hello.workspace_roots[0]["workspace_id"] == "ws_abc123"
 
 
-def test_validate_local_runner_binding_allows_legacy_unowned_runner() -> None:
-    assert (
+def test_validate_local_runner_binding_rejects_ownerless_runner_for_authenticated_user() -> None:
+    with pytest.raises(OmnigentError) as excinfo:
         validate_local_runner_binding(
             runner_id="runner_test1",
             workspace_id="ws_abc123",
@@ -92,8 +92,8 @@ def test_validate_local_runner_binding_allows_legacy_unowned_runner() -> None:
             user_id="alice@example.com",
             harness="codex",
         )
-        is not None
-    )
+
+    assert excinfo.value.code == ErrorCode.FORBIDDEN
 
 
 def test_validate_local_runner_binding_rejects_offline_runner() -> None:
@@ -127,7 +127,7 @@ def test_validate_local_runner_binding_rejects_harness_mismatch() -> None:
         validate_local_runner_binding(
             runner_id="runner_test1",
             workspace_id="ws_abc123",
-            registry=_registry(harnesses=["claude-native"]),
+            registry=_registry(owner="alice@example.com", harnesses=["claude-native"]),
             user_id="alice@example.com",
             harness="codex",
         )

@@ -12312,6 +12312,29 @@ async def _create_session_from_existing_agent(
         _validated_harness_override, body.harness_override, agent
     )
 
+    binding_harness = harness_override
+    if body.runner_id is not None and binding_harness is None:
+        if agent_cache is None:
+            raise OmnigentError(
+                "local runner binding requires a loadable agent spec",
+                code=ErrorCode.INVALID_INPUT,
+            )
+        try:
+            loaded_agent = await asyncio.to_thread(
+                agent_cache.load,
+                agent.id,
+                agent.bundle_location,
+                expand_env=agent.session_id is None,
+            )
+            from omnigent.harness_aliases import canonicalize_harness
+
+            binding_harness = canonicalize_harness(loaded_agent.spec.executor.harness_kind)
+        except (KeyError, AttributeError, ValueError, ImportError, OSError) as exc:
+            raise OmnigentError(
+                "local runner binding requires a loadable agent harness",
+                code=ErrorCode.INVALID_INPUT,
+            ) from exc
+
     # Inherit runner affinity from the parent session so the child
     # is assigned to the same runner (sub-agent co-location).
     inherited_runner_id: str | None = None
@@ -12368,7 +12391,7 @@ async def _create_session_from_existing_agent(
             workspace_id=body.workspace_id,
             registry=runner_router.binding_registry,
             user_id=user_id,
-            harness=harness_override,
+            harness=binding_harness,
         )
         workspace_label = (
             advertised_workspace_label(binding.hello, body.workspace_id)
@@ -14469,6 +14492,13 @@ def create_sessions_router(
             raise HTTPException(status_code=422, detail=[_multipart_missing_detail("bundle")])
         parsed_metadata = _parse_session_create_metadata(metadata)
         _reject_reserved_cost_control_label_seed(parsed_metadata.labels)
+        bundle_bytes = await bundle.read()
+        bundle_spec = None
+        if parsed_metadata.runner_id is not None:
+            bundle_spec = validate_agent_bundle(
+                bundle_bytes,
+                enforce_handler_allowlist=not local_single_user_enabled(),
+            )
 
         inherited_runner_id: str | None = None
         if parsed_metadata.parent_session_id is not None:
@@ -14499,12 +14529,15 @@ def create_sessions_router(
                     "runner tunnel registry is not configured",
                     code=ErrorCode.INTERNAL_ERROR,
                 )
+            from omnigent.harness_aliases import canonicalize_harness
+
+            bundle_harness = canonicalize_harness(bundle_spec.executor.harness_kind)
             binding = validate_local_runner_binding(
                 runner_id=explicit_runner_id,
                 workspace_id=parsed_metadata.workspace_id,
                 registry=runner_router.binding_registry,
                 user_id=user_id,
-                harness=None,
+                harness=bundle_harness,
             )
             label = (
                 advertised_workspace_label(binding.hello, parsed_metadata.workspace_id)
@@ -14516,9 +14549,9 @@ def create_sessions_router(
                 runner_id=explicit_runner_id,
                 workspace_id=parsed_metadata.workspace_id,
                 workspace_label=label,
+                policy_mode=parsed_metadata.local_runner_policy,
             )
 
-        bundle_bytes = await bundle.read()
         result = await asyncio.to_thread(
             _create_session_from_bundle,
             conversation_store,

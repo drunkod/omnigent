@@ -274,7 +274,7 @@ export function ApprovalCard({
   // approvals get a dedicated command render below, so showing the
   // transport JSON would expose unrelated ids and duplicate details.
   const formattedPreview =
-    isAskUserQuestion || isExitPlanMode || isMultiChoice || isCodexCommandApproval
+    localAction || isAskUserQuestion || isExitPlanMode || isMultiChoice || isCodexCommandApproval
       ? ""
       : formatPreview(contentPreview);
   const execPolicyAmendment =

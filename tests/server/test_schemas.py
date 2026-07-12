@@ -645,6 +645,14 @@ def test_multipart_session_metadata_accepts_opaque_ids() -> None:
             {"workspace_id": "ws_1"},
             "workspace_id requires runner_id",
         ),
+        (
+            {"runner_id": "runner_a"},
+            "runner_id requires workspace_id",
+        ),
+        (
+            {"runner_id": "", "workspace_id": "ws_1"},
+            "runner_id must not be empty",
+        ),
     ],
 )
 def test_session_create_runner_binding_rejects_legacy_mixes(
