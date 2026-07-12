@@ -19295,14 +19295,18 @@ def create_sessions_router(
             # → runner's ``pending_approvals`` resolves.
             elicit_data = body.data or {}
             elicit_id = f"elicit_{secrets.token_hex(16)}"
-            if isinstance(elicit_data.get("kind"), str) and isinstance(
+            local_action = elicit_data.get("local_action")
+            legacy_local_action = isinstance(elicit_data.get("kind"), str) and isinstance(
                 elicit_data.get("policy_mode"), str
-            ):
+            )
+            if isinstance(local_action, dict) or legacy_local_action:
                 _local_action_elicitations[elicit_id] = session_id
-            elicit_params = ElicitationRequestParams(
-                mode="form",
-                message=elicit_data.get("message", ""),
-                requestedSchema=elicit_data.get("requestedSchema"),
+            elicit_params = ElicitationRequestParams.model_validate(
+                {
+                    **elicit_data,
+                    "mode": "form",
+                    "message": elicit_data.get("message", ""),
+                }
             )
             event = ElicitationRequestEvent(
                 type="response.elicitation_request",

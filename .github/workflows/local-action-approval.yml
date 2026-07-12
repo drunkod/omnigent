@@ -60,6 +60,13 @@ jobs:
             echo "bubblewrap unavailable: trusted-machine denial fixture remains authoritative"
           fi
       - run: uv run python -m pytest -q tests/runner/test_local_action_approval_side_effects.py
+      - run: >-
+          uv run python -m pytest -q
+          tests/runner/transports/ws_tunnel/test_tunnel_e2e.py
+          tests/server/test_local_action_approval_gate.py
+          tests/server/test_local_action_persistence.py
+          tests/server/integration/test_sessions_elicitation_resolve_url.py
+          -k 'local_action or nested_local_action'
 
   web-local-action-approval:
     name: web-local-action-approval
@@ -81,3 +88,4 @@ jobs:
           src/lib/localActionApproval.test.ts
           src/components/blocks/LocalActionApprovalCard.test.tsx
           src/components/blocks/ApprovalCard.test.tsx
+          src/store/chatStore.test.ts

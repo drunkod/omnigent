@@ -1,10 +1,12 @@
 import asyncio
+from typing import Any
 
+import httpx
 import pytest
 
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.policies.types import PolicyMode
-from omnigent.runner import pending_approvals
+from omnigent.runner import create_runner_app, pending_approvals
 from omnigent.runner.local_actions import LocalActionGateway
 from omnigent.runner.workspace_registry import WorkspaceRegistry
 
@@ -42,7 +44,7 @@ async def test_owner_approval_writes_reviewed_content_once(tmp_path) -> None:
     )
 
     assert target.read_text(encoding="utf-8") == "after\n"
-    assert result["bytes_written"] == len("after\n".encode())
+    assert result["bytes_written"] == len(b"after\n")
     assert captured[0]["diff_preview"].startswith("--- a/note.txt")
     assert captured[0]["diff_truncated"] is False
     assert [event["status"] for event in audits] == ["requested", "approved", "completed"]
@@ -97,7 +99,11 @@ async def test_changed_target_conflicts_without_stale_write(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_denied_shell_never_starts_and_preview_hides_arguments(tmp_path, monkeypatch) -> None:
+async def test_denied_shell_never_starts_and_preview_hides_arguments(
+    tmp_path,
+    monkeypatch,
+    caplog,
+) -> None:
     captured = []
     audits = []
 
@@ -125,6 +131,7 @@ async def test_denied_shell_never_starts_and_preview_hides_arguments(tmp_path, m
     assert [event["status"] for event in audits] == ["requested", "denied"]
     assert all(event["command_summary"] == "curl [arguments hidden]" for event in audits)
     assert secret not in str(audits)
+    assert secret not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -138,3 +145,72 @@ async def test_pending_resolution_is_at_most_once() -> None:
     finally:
         pending_approvals.cleanup("elic_once")
         pending_approvals.reset_for_tests()
+
+
+@pytest.mark.asyncio
+async def test_runner_app_emits_nested_local_action_and_writes_once(tmp_path) -> None:
+    """The production approval producer sends only the typed nested payload."""
+
+    class _Response:
+        status_code = 200
+
+        def json(self) -> dict[str, str]:
+            return {"elicitation_id": "elicit_app_write"}
+
+        def raise_for_status(self) -> None:
+            return None
+
+    class _ServerClient:
+        def __init__(self) -> None:
+            self.posts: list[tuple[str, dict[str, Any]]] = []
+
+        async def post(self, path: str, **kwargs: Any) -> _Response:
+            self.posts.append((path, kwargs["json"]))
+            return _Response()
+
+    pending_approvals.reset_for_tests()
+    server = _ServerClient()
+    app = create_runner_app(
+        server_client=server,  # type: ignore[arg-type]
+        runner_workspace=tmp_path,
+        per_session_workspace=False,
+    )
+    workspace = app.state.local_action_gateway._workspaces.advertise(home=tmp_path)[0]
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://runner") as client:
+        request = asyncio.create_task(
+            client.post(
+                "/v1/runner/local-actions",
+                json={
+                    "session_id": "conv_app_write",
+                    "workspace_id": workspace["workspace_id"],
+                    "kind": "write_file",
+                    "path": "approved.txt",
+                    "content": "approved once\n",
+                    "policy_mode": "manual",
+                },
+            )
+        )
+        for _ in range(100):
+            if pending_approvals.has_pending("conv_app_write"):
+                break
+            await asyncio.sleep(0)
+        else:
+            raise AssertionError("runner never parked the local action")
+
+        path, event = server.posts[0]
+        assert path == "/v1/sessions/conv_app_write/events"
+        assert set(event["data"]) == {"message", "requestedSchema", "local_action"}
+        local_action = event["data"]["local_action"]
+        assert local_action["version"] == 1
+        assert local_action["kind"] == "write_file"
+        assert local_action["path_summary"] == ["approved.txt"]
+        assert local_action["diff_preview"].startswith("--- a/approved.txt")
+
+        assert pending_approvals.resolve("elicit_app_write", True) is True
+        assert pending_approvals.resolve("elicit_app_write", True) is False
+        response = await asyncio.wait_for(request, timeout=1.0)
+
+    assert response.status_code == 200, response.text
+    assert (tmp_path / "approved.txt").read_text(encoding="utf-8") == "approved once\n"
+    pending_approvals.reset_for_tests()

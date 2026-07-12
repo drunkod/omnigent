@@ -3291,7 +3291,6 @@ class SessionPresenceEvent(_SSEEventBase):
     viewers: list[PresenceViewer]
 
 
-
 class LocalActionApprovalParams(BaseModel):
     """Bounded transient UI detail for a runner-local approval."""
 
@@ -3379,9 +3378,7 @@ def _normalize_local_action_payload(raw: Any) -> dict[str, Any] | None:
     }
     optional_values = {
         "action_id": _bounded_optional_text(raw.get("action_id"), 128, nonempty=True),
-        "workspace_label": _bounded_optional_text(
-            raw.get("workspace_label"), 256, nonempty=True
-        ),
+        "workspace_label": _bounded_optional_text(raw.get("workspace_label"), 256, nonempty=True),
         "cwd": _workspace_relative_display(raw.get("cwd")),
         "command_preview": _bounded_optional_text(raw.get("command_preview"), 2_000),
         "diff_preview": diff_preview,
@@ -3455,9 +3452,7 @@ class ElicitationRequestParams(BaseModel):
         raw_local_action = data.get("local_action")
         legacy_kind = data.get("kind")
         local_kind = (
-            raw_local_action.get("kind")
-            if isinstance(raw_local_action, dict)
-            else legacy_kind
+            raw_local_action.get("kind") if isinstance(raw_local_action, dict) else legacy_kind
         )
         is_local_action = local_kind in {
             "read_file",
