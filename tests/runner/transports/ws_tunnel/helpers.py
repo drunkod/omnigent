@@ -11,6 +11,9 @@ from fastapi import FastAPI
 
 from omnigent.runner.transports.ws_tunnel.frames import (
     HelloFrame,
+    ResponseBodyFrame,
+    ResponseEndFrame,
+    ResponseHeadFrame,
     WSCloseFrame,
     WSFrame,
     decode_frame,
@@ -104,10 +107,13 @@ async def run_tunnel_harness(
     async def receive_server_frames() -> None:
         while True:
             frame = decode_frame(await server_ws.receive_text())
+            current = registry.get(runner_id)
+            if current is None:
+                continue
             if isinstance(frame, (WSFrame, WSCloseFrame)):
-                current = registry.get(runner_id)
-                if current is not None:
-                    registry.route_ws_inbound(runner_id, frame, session=current)
+                registry.route_ws_inbound(runner_id, frame, session=current)
+            elif isinstance(frame, (ResponseHeadFrame, ResponseBodyFrame, ResponseEndFrame)):
+                registry.route_response_frame(runner_id, frame, session=current)
 
     async def receive_runner_frames() -> None:
         while True:
