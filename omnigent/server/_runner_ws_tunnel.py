@@ -17,13 +17,13 @@ Wire flow per browser attach:
 2. Terminal-attach route resolves the conversation's pinned runner,
    calls the factory with the runner-side path it constructs.
 3. The factory returns :class:`_TunneledWSConn`. Entering its async
-   context allocates a fresh ``ch_id``, registers a
-   :class:`WSChannelState` on the tunnel registry, and sends a
-   ``ws.open`` frame down the tunnel naming the runner-side path.
+   context validates any explicitly requested transport against the
+   runner's advertised capabilities, allocates a fresh ``ch_id``,
+   registers a :class:`WSChannelState` on the tunnel registry, and
+   sends a ``ws.open`` frame down the tunnel naming the runner-side path.
 4. The runner's ASGI dispatch invokes its
    ``@app.websocket("/v1/sessions/{id}/resources/terminals/
-   {terminal_id}/attach")`` route, which runs
-   ``bridge_tmux_pty_to_websocket`` unchanged.
+   {terminal_id}/attach")`` route, which runs the selected tmux bridge.
 5. The terminal-attach route's existing shuttle pumps frames in
    both directions through ``conn.send()`` / ``conn.recv()``.
 6. Either side's close emits a ``ws.close`` frame; the receiver
@@ -40,11 +40,12 @@ import re
 import secrets
 from types import TracebackType
 from typing import TYPE_CHECKING
+from urllib.parse import parse_qs
 
 from websockets.exceptions import ConnectionClosed
 from websockets.frames import Close
 
-from omnigent.errors import OmnigentError
+from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.runner.transports.ws_tunnel.frames import (
     WSCloseFrame,
     WSFrame,
@@ -70,6 +71,7 @@ _logger = logging.getLogger(__name__)
 # construction, so the captured value feeds
 # ``router.client_for_existing_conversation()``.
 _RUNNER_PATH_RE = re.compile(r"^/v1/sessions/(?P<conv>[^/?]+)/resources/terminals/[^/?]+/attach")
+_KNOWN_TERMINAL_TRANSPORTS = frozenset({"control", "pty"})
 
 
 def make_tunnel_ws_factory(
@@ -114,6 +116,25 @@ def make_tunnel_ws_factory(
     return factory
 
 
+def _requested_terminal_transport(runner_path: str) -> str | None:
+    """Return a valid explicit ``transport`` query value, if one was requested.
+
+    Invalid values are deliberately ignored here, matching
+    :func:`omnigent.inner.terminal.resolve_terminal_transport`: a stray query
+    must not break an attach. Capability rejection applies only to the two
+    canonical transports the browser/server contract understands.
+    """
+
+    _path, separator, query_string = runner_path.partition("?")
+    if not separator:
+        return None
+    values = parse_qs(query_string).get("transport", [])
+    if not values:
+        return None
+    requested = values[-1].strip().lower()
+    return requested if requested in _KNOWN_TERMINAL_TRANSPORTS else None
+
+
 class _TunneledWSConn:
     """WS-client-shaped wrapper around one tunnel WS channel.
 
@@ -140,6 +161,23 @@ class _TunneledWSConn:
         self._closed_locally = False
 
     async def __aenter__(self) -> _TunneledWSConn:
+        requested_transport = _requested_terminal_transport(self._runner_path)
+        advertised_transports = self._session.hello.terminal_transports
+        # Empty capability lists belong to pre-capability runners and remain
+        # permissive for rolling upgrades. Once a runner advertises a non-empty
+        # list it is authoritative: do not open a channel that can only answer
+        # with an avoidable unsupported-transport failure later.
+        if (
+            requested_transport is not None
+            and advertised_transports
+            and requested_transport not in advertised_transports
+        ):
+            raise OmnigentError(
+                f"runner {self._session.runner_id!r} does not advertise terminal transport "
+                f"{requested_transport!r}",
+                code=ErrorCode.TERMINAL_TRANSPORT_UNSUPPORTED,
+            )
+
         # 4 random bytes → 8 hex chars; plenty of entropy for a
         # ch_id only required to be unique within one runner session.
         self._ch_id = secrets.token_hex(4)
@@ -189,8 +227,8 @@ class _TunneledWSConn:
         """Forward a browser-side frame to the runner over the tunnel.
 
         :param data: ``str`` → ``ws.frame`` with utf-8 encoding (the
-            JSON resize control frames). ``bytes`` → ``ws.frame``
-            with base64 encoding (keystrokes / mouse events).
+            JSON resize control frames). ``bytes`` → ``ws.frame`` with
+            base64 encoding (keystrokes / mouse events).
         """
         if self._closed_locally:
             return
