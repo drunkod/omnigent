@@ -29,7 +29,9 @@ async def _wait_for_terminal_exit(
     timeout: float = 5.0,
 ) -> None:
     """Wait until the fixture's foreground terminal process is no longer alive."""
-    entries = terminal_tunnel.terminal_registry.list_for_conversation(terminal_tunnel.session_id)
+    entries = terminal_tunnel.terminal_registry.list_for_conversation(
+        terminal_tunnel.session_id
+    )
     assert len(entries) == 1
     async with asyncio.timeout(timeout):
         while await entries[0].instance.is_alive():
@@ -109,7 +111,12 @@ async def test_multiline_utf8_paste_arrives_once_and_in_order(
     terminal_tunnel: TerminalTunnelFixture,
 ) -> None:
     """A browser paste preserves line order, UTF-8, and wide characters."""
-    lines = ["first", "wide:界🙂", *(f"chunk-{index}:" + "x" * 512 for index in range(12)), "last"]
+    lines = [
+        "first",
+        "wide:界🙂",
+        *(f"chunk-{index}:" + "x" * 512 for index in range(12)),
+        "last",
+    ]
     payload = ("\n".join(lines) + "\n").encode()
 
     async with connect(
@@ -174,7 +181,12 @@ async def test_alternate_screen_enter_and_exit_bytes_are_forwarded(
         await conn.send(b"T12_ALTSCREEN\n")
         output = await _receive_until(conn, b"T12_ALT_EXIT")
 
-    markers = [b"\x1b[?1049h", b"T12_ALT_ENTER", b"\x1b[?1049l", b"T12_ALT_EXIT"]
+    markers = [
+        b"\x1b[?1049h",
+        b"T12_ALT_ENTER",
+        b"\x1b[?1049l",
+        b"T12_ALT_EXIT",
+    ]
     positions = [output.index(marker) for marker in markers]
     assert positions == sorted(positions)
     assert all(output.count(marker) == 1 for marker in markers)
