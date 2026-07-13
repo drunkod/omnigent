@@ -17,6 +17,7 @@ import { type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { inertProps } from "@/lib/inert";
 
 interface MobilePanelDrawerProps {
   /** Whether the drawer is slid in (visible) or off-screen. */
@@ -65,7 +66,7 @@ export function MobilePanelDrawer({
       )}
       aria-hidden={!open}
       data-collapsed={!open || undefined}
-      inert={!open}
+      {...inertProps(!open)}
     >
       <header className="flex shrink-0 items-center justify-between border-border border-b px-4 py-2">
         <h2 className="font-medium text-sm">{title}</h2>

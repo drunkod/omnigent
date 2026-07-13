@@ -1,6 +1,7 @@
 import { BotIcon, FileIcon, ListTodoIcon, TerminalIcon, XIcon } from "lucide-react";
 import { useCallback, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
+import { inertProps } from "@/lib/inert";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FilesPanel } from "./FilesPanel";
 import { FileViewer } from "./FileViewer";
@@ -259,7 +260,7 @@ export function WorkspacePanel({
   return (
     <aside
       aria-label="Workspace"
-      inert={inert}
+      {...inertProps(Boolean(inert))}
       // Floating card on desktop: detached from the chat + window edges by
       // margins (no left margin — the left edge hosts the resize handle and
       // butts against main), rounded, bordered, and lifted off the
