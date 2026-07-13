@@ -38,8 +38,8 @@ fails when tmux is unavailable.
 | Same-runner reconnect avoids duplicate output and input | Covered | `test_same_runner_reconnect_reattaches_without_duplicate_io` |
 | Refresh while offline restores preserved-session state | Pending | Component/store coverage exists; no live browser fixture. |
 | Unsupported transport does not retry-loop | Pending | Component coverage exists; no live T12 test. |
-| Stale lifecycle state cannot cover a connected terminal | Pending | Component coverage exists; no live browser fixture. |
-| Reconnect during approval is at most once | Pending | T11 covers approval replay; no combined reconnect test. |
+| Stale lifecycle state cannot cover a connected terminal | Covered | `test_stale_generation_close_cannot_cover_live_reconnected_terminal` |
+| Reconnect during approval is at most once | Covered | `test_pending_local_action_executes_once_after_runner_tunnel_reconnect` |
 
 ## Required CI gates
 
@@ -47,4 +47,4 @@ fails when tmux is unavailable.
 | --- | --- | --- |
 | `terminal-e2e-control` | Active | Public route, control transport, real tmux |
 | `terminal-e2e-pty` | Pending product decision | Required only if PTY is part of the supported platform contract |
-| `terminal-e2e-reconnect` | Pending | Runner and browser lifecycle acceptance |
+| `terminal-e2e-reconnect` | Active | Runner generation, stale lifecycle, and approval reconnect acceptance |
