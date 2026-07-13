@@ -125,7 +125,7 @@ async def terminal_tunnel(tmp_path: Path) -> AsyncIterator[TerminalTunnelFixture
     terminal_id = "terminal_probe_main"
     terminal_registry = TerminalRegistry()
     script = textwrap.dedent(
-        r'''
+        r"""
         import os
         import signal
         import sys
@@ -165,7 +165,7 @@ async def terminal_tunnel(tmp_path: Path) -> AsyncIterator[TerminalTunnelFixture
             else:
                 sys.stdout.write("T12_ECHO:" + line)
                 sys.stdout.flush()
-        '''
+        """
     )
     await terminal_registry.launch(
         session_id,

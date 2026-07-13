@@ -29,9 +29,7 @@ async def _wait_for_terminal_exit(
     timeout: float = 5.0,
 ) -> None:
     """Wait until the fixture's foreground terminal process is no longer alive."""
-    entries = terminal_tunnel.terminal_registry.list_for_conversation(
-        terminal_tunnel.session_id
-    )
+    entries = terminal_tunnel.terminal_registry.list_for_conversation(terminal_tunnel.session_id)
     assert len(entries) == 1
     async with asyncio.timeout(timeout):
         while await entries[0].instance.is_alive():
