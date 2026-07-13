@@ -571,6 +571,22 @@ def test_attach_terminal_runner_unavailable_closes_4503(app: FastAPI) -> None:
     assert exc_info.value.code == ATTACH_CLOSE_RUNNER_OFFLINE
 
 
+def test_attach_terminal_bounds_multibyte_runner_close_reason(app: FastAPI) -> None:
+    """Runner close reasons fit the WebSocket 123-byte control-frame limit."""
+    conn = _FakeRunnerWSConn(close_code=4405, close_reason="é" * 100)
+    set_runner_ws_factory(_FakeRunnerWSFactory(conn))
+
+    with pytest.raises(WebSocketDisconnect) as exc_info:
+        with TestClient(app).websocket_connect(
+            "/v1/sessions/conv_ws/resources/terminals/terminal_bash_s1/attach"
+        ) as ws:
+            ws.receive_bytes()
+
+    assert exc_info.value.code == 4405
+    assert exc_info.value.reason == "é" * 61
+    assert len(exc_info.value.reason.encode("utf-8")) <= 123
+
+
 async def test_attach_terminal_proxy_forwards_browser_bytes_to_runner(
     app: FastAPI,
 ) -> None:

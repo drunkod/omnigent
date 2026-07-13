@@ -232,7 +232,8 @@ def create_terminal_attach_router(
                     if code == ATTACH_CLOSE_RUNNER_OFFLINE
                     else closed.reason or ""
                 )
-                with contextlib.suppress(RuntimeError):
+                reason = reason.encode("utf-8")[:123].decode("utf-8", errors="ignore")
+                with contextlib.suppress(RuntimeError, ValueError):
                     await websocket.close(
                         code=code,
                         reason=reason,
