@@ -3,6 +3,7 @@ name: Terminal E2E
 on:
   pull_request:
     paths:
+      - "designs/TERMINAL_MIRRORING_ACCEPTANCE.md"
       - "omnigent/inner/terminal.py"
       - "omnigent/runner/**"
       - "omnigent/server/_runner_ws_tunnel.py"
