@@ -20,7 +20,7 @@ from omnigent.entities import Conversation, SessionPermission
 from omnigent.inner.datamodel import TerminalEnvSpec
 from omnigent.runner import create_runner_app
 from omnigent.runner.transports.ws_tunnel.frames import HelloFrame
-from omnigent.runner.transports.ws_tunnel.registry import TunnelRegistry
+from omnigent.runner.transports.ws_tunnel.registry import RunnerSession, TunnelRegistry
 from omnigent.runtime import _globals, set_runner_ws_factory
 from omnigent.server._runner_ws_tunnel import _TunneledWSConn
 from omnigent.server.auth import LEVEL_OWNER, LEVEL_READ, RESERVED_USER_PUBLIC, UnifiedAuthProvider
@@ -100,9 +100,9 @@ class TerminalTunnelFixture:
             f"&transport={transport}"
         )
 
-    async def disconnect_runner(self) -> None:
+    async def disconnect_runner(self) -> RunnerSession:
         """Drop the active runner generation while leaving tmux alive."""
-        await self.tunnel.disconnect()
+        return await self.tunnel.disconnect()
 
     def reconnect_runner(self) -> None:
         """Register a new tunnel generation for the same runner and tmux pane."""
