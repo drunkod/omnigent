@@ -1,6 +1,6 @@
 # Pre-commit hooks for this repository: ruff (format + check) plus standard
-# file-hygiene checks. Heavier validation (typing, lockfile freshness,
-# OpenAPI drift) runs in CI rather than as commit-time hooks.
+# file-hygiene checks. Deterministic manifest/lock consistency runs locally;
+# heavier validation (typing, full installs, OpenAPI drift) runs in CI.
 #
 # A built web-UI bundle may be committed at this path (vendored, minified
 # JS/CSS) — never lint or "fix" it.
@@ -45,6 +45,16 @@ repos:
         # and Apple Icon Composer `.icon` bundles (machine-formatted; prettier
         # fights the tooling).
         exclude: ^(omnigent/server/static/web-ui/assets/|web/.*\.xcassets/|web/.*\.icon/)
+
+      # Fast, offline guard for the direct-dependency drift that `npm ci`
+      # otherwise discovers only after a push. It does not replace the full CI
+      # install; it verifies the manifest and lock root/resolutions agree.
+      - id: check-web-package-lock
+        name: check web package-lock consistency
+        language: system
+        entry: .venv/bin/python scripts/check_web_lockfile.py
+        files: ^web/(package\.json|package-lock\.json)$
+        pass_filenames: false
 
       # Android Kotlin formatting + linting via ktlint (config:
       # web/android/.editorconfig). The wrapper no-ops when ktlint is absent,
