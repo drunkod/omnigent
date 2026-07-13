@@ -35,4 +35,28 @@ jobs:
           uv run python -c "from omnigent.version import VERSION; print('server/runner version:', VERSION)"
           tmux -V
           echo "terminal transport: control"
-      - run: uv run python -m pytest -q tests/terminal_e2e/
+      - run: uv run python -m pytest -q tests/terminal_e2e/test_control_attach.py
+
+  terminal-e2e-reconnect:
+    name: terminal-e2e-reconnect
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install tmux
+        run: sudo apt-get update && sudo apt-get install -y tmux
+      - run: uv sync --extra dev --frozen
+      - name: Report reconnect prerequisites
+        run: |
+          uv run python -c "from omnigent.version import VERSION; print('server/runner version:', VERSION)"
+          tmux -V
+          echo "terminal acceptance: reconnect"
+      - run: >-
+          uv run python -m pytest -q
+          tests/terminal_e2e/test_lifecycle.py
+          tests/runner/transports/ws_tunnel/test_approval_reconnect.py
