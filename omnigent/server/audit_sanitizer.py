@@ -76,7 +76,7 @@ def _is_relative_path(value: str) -> bool:
 
 def _redact_strings(value: object) -> object:
     if isinstance(value, str):
-        return _SECRET_RE.sub("[REDACTED]", value)[:120]
+        return _SECRET_RE.sub("[REDACTED]", value[:1000])[:120]
     if isinstance(value, list):
         return [_redact_strings(item) for item in value[:32]]
     if isinstance(value, dict):

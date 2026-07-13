@@ -5,10 +5,10 @@ from omnigent.server.routes.sessions import _persist_local_action_item
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
 
 
-def _event(status: str, **extra: object) -> dict[str, object]:
+def _event(status: str, *, action_id: str = "act_1", **extra: object) -> dict[str, object]:
     return {
         "type": "session.local_action",
-        "action_id": "act_1",
+        "action_id": action_id,
         "session_id": "conv_x",
         "runner_id": "runner_1",
         "workspace_id": "ws_1",
@@ -59,6 +59,19 @@ def test_same_action_id_updates_the_existing_audit_item(db_uri: str) -> None:
     items = store.list_items(conversation.id, type="local_action")
     assert len(items.data) == 1
     assert items.data[0].data.status == "completed"
+
+
+def test_action_id_is_matched_as_an_exact_response_id(db_uri: str) -> None:
+    store = SqlAlchemyConversationStore(db_uri)
+    conversation = store.create_conversation()
+    _persist_local_action_item(store, conversation.id, _event("approved", action_id="act_%_1"))
+    _persist_local_action_item(store, conversation.id, _event("completed", action_id="act_%_1"))
+    _persist_local_action_item(store, conversation.id, _event("denied", action_id="act_other"))
+
+    items = store.list_items(conversation.id, type="local_action")
+    assert len(items.data) == 2
+    by_action = {item.data.action_id: item.data.status for item in items.data}
+    assert by_action == {"act_%_1": "completed", "act_other": "denied"}
 
 
 def test_intermediate_local_action_status_is_not_persisted(db_uri: str) -> None:

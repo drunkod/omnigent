@@ -11,6 +11,8 @@ from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.runner.identity import RUNNER_TUNNEL_BINDING_TOKEN_ENV_VAR
 from omnigent.runner.local_actions import (
     LocalActionGateway,
+    safe_shell_command_preview,
+    strict_shell_argv,
     subprocess_env,
     truncate_output,
 )
@@ -47,6 +49,26 @@ def test_strict_shell_fails_closed_without_bwrap(tmp_path: Path, monkeypatch) ->
     monkeypatch.setattr("omnigent.runner.local_actions.shutil.which", lambda _: None)
     with pytest.raises(OmnigentError, match="bwrap sandbox"):
         _make_gateway(tmp_path, strict_shell=True)
+
+
+def test_safe_shell_preview_skips_leading_assignments() -> None:
+    assert (
+        safe_shell_command_preview("API_KEY=secret LANG=C /usr/bin/curl https://example.com")
+        == "curl [arguments hidden]"
+    )
+    assert (
+        safe_shell_command_preview("not-a-name=visible command")
+        == "not-a-name=visible [arguments hidden]"
+    )
+    assert safe_shell_command_preview("API_KEY=secret") == "Command preview unavailable."
+
+
+def test_strict_shell_args_try_standard_64_bit_loader_path(tmp_path: Path) -> None:
+    argv = strict_shell_argv(tmp_path, "printf ok")
+
+    lib64_index = argv.index("--ro-bind-try")
+    assert argv[lib64_index : lib64_index + 3] == ["--ro-bind-try", "/lib64", "/lib64"]
+    assert argv[-3:] == ["/bin/sh", "-lc", "printf ok"]
 
 
 def test_read_file_allowed_and_audited(tmp_path: Path) -> None:

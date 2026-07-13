@@ -12,6 +12,7 @@ import asyncio
 import contextlib
 import difflib
 import os
+import re
 import shlex
 import shutil
 import signal
@@ -42,6 +43,7 @@ _SHELL_TIMEOUT_S = 600.0
 _MAX_DIFF_PREVIEW_CHARS = 64_000
 _MAX_COMMAND_PREVIEW_CHARS = 2_000
 _ENV_ALLOWLIST = frozenset({"PATH", "HOME", "LANG", "LC_ALL", "TERM", "TMPDIR", "USER", "SHELL"})
+_SHELL_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
 AuditPublisher = Callable[["AuditRecord"], None]
 PayloadApprovalRequester = Callable[..., Awaitable[bool]]
@@ -120,9 +122,52 @@ def safe_shell_command_preview(command: str) -> str:
         return "Command preview unavailable (unparseable input)."
     if not parts:
         return "Command preview unavailable."
-    executable = Path(parts[0]).name or "command"
-    preview = executable if len(parts) == 1 else f"{executable} [arguments hidden]"
+    command_index = 0
+    while command_index < len(parts) and _SHELL_ASSIGNMENT_RE.match(parts[command_index]):
+        command_index += 1
+    if command_index == len(parts):
+        return "Command preview unavailable."
+    executable = Path(parts[command_index]).name or "command"
+    preview = executable if command_index == len(parts) - 1 else f"{executable} [arguments hidden]"
     return preview[:_MAX_COMMAND_PREVIEW_CHARS]
+
+
+def strict_shell_argv(resolved_cwd: Path, command: str) -> list[str]:
+    """Build the bubblewrap command for one strict-shell action."""
+
+    return [
+        "bwrap",
+        "--die-with-parent",
+        "--unshare-net",
+        "--ro-bind",
+        "/usr",
+        "/usr",
+        "--ro-bind",
+        "/bin",
+        "/bin",
+        "--ro-bind",
+        "/lib",
+        "/lib",
+        "--ro-bind-try",
+        "/lib64",
+        "/lib64",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--bind",
+        str(resolved_cwd),
+        "/workspace",
+        "--chdir",
+        "/workspace",
+        "--setenv",
+        "HOME",
+        "/workspace",
+        "--",
+        "/bin/sh",
+        "-lc",
+        command,
+    ]
 
 
 def subprocess_env(source: dict[str, str] | None = None) -> dict[str, str]:
@@ -395,34 +440,7 @@ class LocalActionGateway:
         env = subprocess_env()
         if self._strict_shell:
             proc = await asyncio.create_subprocess_exec(
-                "bwrap",
-                "--die-with-parent",
-                "--unshare-net",
-                "--ro-bind",
-                "/usr",
-                "/usr",
-                "--ro-bind",
-                "/bin",
-                "/bin",
-                "--ro-bind",
-                "/lib",
-                "/lib",
-                "--proc",
-                "/proc",
-                "--dev",
-                "/dev",
-                "--bind",
-                str(resolved_cwd),
-                "/workspace",
-                "--chdir",
-                "/workspace",
-                "--setenv",
-                "HOME",
-                "/workspace",
-                "--",
-                "/bin/sh",
-                "-lc",
-                command,
+                *strict_shell_argv(resolved_cwd, command),
                 cwd=str(resolved_cwd),
                 env=env,
                 stdout=asyncio.subprocess.PIPE,
