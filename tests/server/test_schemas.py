@@ -64,6 +64,21 @@ def test_reasoning_started_roundtrip() -> None:
     }
 
 
+def test_policy_elicitation_is_not_normalized_as_legacy_local_action() -> None:
+    """A policy's kind/mode fields do not impersonate a runner action."""
+    params = ElicitationRequestParams.model_validate(
+        {
+            "message": "Policy approval required",
+            "kind": "run_shell",
+            "policy_mode": "manual",
+            "policy_name": "manual_shell_approval",
+        }
+    )
+
+    assert params.local_action is None
+    assert params.message == "Policy approval required"
+
+
 def test_reasoning_text_delta_roundtrip() -> None:
     event = ReasoningTextDeltaEvent(type="response.reasoning_text.delta", delta="Considering")
     assert event.model_dump(exclude_none=True) == {

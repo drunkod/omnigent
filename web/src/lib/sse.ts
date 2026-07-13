@@ -847,10 +847,12 @@ export function parseEvent(rawType: string, data: Record<string, unknown>): Stre
     // `host` is the WebFetch request domain when present (drives the
     // button label and the rule scope).
     const rememberScopeRaw = p.remember_scope;
-    const localActionWirePresent =
-      p.local_action !== undefined ||
-      (typeof p.kind === "string" &&
-        (p.policy_mode === "manual" || p.policy_mode === "assisted" || p.policy_mode === "auto"));
+    const legacyLocalActionWirePresent =
+      (p.kind === "write_file" || p.kind === "run_shell") &&
+      typeof p.action_id === "string" &&
+      p.action_id.length > 0 &&
+      (p.policy_mode === "manual" || p.policy_mode === "assisted" || p.policy_mode === "auto");
+    const localActionWirePresent = p.local_action !== undefined || legacyLocalActionWirePresent;
     const legacyLocalAction = {
       version: 1,
       action_id: p.action_id,
@@ -866,7 +868,9 @@ export function parseEvent(rawType: string, data: Record<string, unknown>): Stre
       shell_guarantee: p.shell_guarantee,
       expires_at: p.expires_at,
     };
-    const localAction = parseLocalActionApproval(p.local_action ?? legacyLocalAction);
+    const localAction = parseLocalActionApproval(
+      p.local_action ?? (legacyLocalActionWirePresent ? legacyLocalAction : null),
+    );
     const rememberScope: RememberScope | null =
       rememberScopeRaw &&
       typeof rememberScopeRaw === "object" &&

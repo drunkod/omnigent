@@ -2904,6 +2904,29 @@ class SessionInterruptedEvent(_SSEEventBase):
     data: SessionInterruptedPayload
 
 
+class SessionLocalActionEvent(_SSEEventBase):
+    """Sanitized audit edge for one runner-local action."""
+
+    type: Literal["session.local_action"]
+    action_id: str
+    session_id: str
+    runner_id: str
+    workspace_id: str
+    kind: str
+    requested_by: str
+    policy_mode: str
+    status: str
+    risk_flags: list[str] = Field(default_factory=list)
+    approval_id: str | None = None
+    cwd: str = "."
+    path_summary: list[str] = Field(default_factory=list)
+    command_summary: str | None = None
+    started_at: float | None = None
+    finished_at: float | None = None
+    exit_code: int | None = None
+    output_truncated: bool = False
+
+
 class SessionCreatedEvent(_SSEEventBase):
     """
     A child (sub-agent) session was spawned from this session.
@@ -3454,13 +3477,11 @@ class ElicitationRequestParams(BaseModel):
         local_kind = (
             raw_local_action.get("kind") if isinstance(raw_local_action, dict) else legacy_kind
         )
-        is_local_action = local_kind in {
-            "read_file",
-            "write_file",
-            "list_dir",
-            "run_shell",
-            "apply_patch",
-        }
+        is_local_action = (
+            local_kind in {"write_file", "run_shell"}
+            and isinstance(data.get("action_id"), str)
+            and bool(data["action_id"])
+        )
         if raw_local_action is None and is_local_action:
             raw_local_action = {
                 "version": 1,
@@ -4095,6 +4116,7 @@ ServerStreamEvent = Annotated[
     | SessionModelOptionsEvent
     | SessionInputConsumedEvent
     | SessionInterruptedEvent
+    | SessionLocalActionEvent
     | SessionCreatedEvent
     | SessionSupersededEvent
     | SessionPresenceEvent

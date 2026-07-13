@@ -928,6 +928,9 @@
               },
               {
                 "$ref": "#/components/schemas/TerminalCommandData"
+              },
+              {
+                "$ref": "#/components/schemas/LocalActionData"
               }
             ],
             "description": "The typed data payload (MessageData, etc.).",
@@ -1197,6 +1200,17 @@
             "default": null,
             "description": "Truncated preview of the underlying request payload (\u22641024 chars in current AP), for the consumer's renderer.",
             "title": "Content Preview"
+          },
+          "local_action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LocalActionApprovalParams"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           },
           "message": {
             "description": "Human-readable prompt the consumer renders, e.g. `\"Approve running 'rm -rf /tmp/cache'?\"`.",
@@ -1717,6 +1731,320 @@
           "workspace"
         ],
         "title": "LaunchRunnerRequest",
+        "type": "object"
+      },
+      "LocalActionApprovalParams": {
+        "additionalProperties": false,
+        "description": "Bounded transient UI detail for a runner-local approval.",
+        "properties": {
+          "action_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Action Id"
+          },
+          "command_preview": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Command Preview"
+          },
+          "cwd": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cwd"
+          },
+          "diff_preview": {
+            "anyOf": [
+              {
+                "maxLength": 65536,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Diff Preview"
+          },
+          "diff_truncated": {
+            "default": false,
+            "title": "Diff Truncated",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Expires At"
+          },
+          "kind": {
+            "enum": [
+              "write_file",
+              "run_shell"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "path_summary": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Path Summary",
+            "type": "array"
+          },
+          "policy_mode": {
+            "enum": [
+              "manual",
+              "assisted",
+              "auto"
+            ],
+            "title": "Policy Mode",
+            "type": "string"
+          },
+          "risk_flags": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Risk Flags",
+            "type": "array"
+          },
+          "shell_guarantee": {
+            "anyOf": [
+              {
+                "enum": [
+                  "strict_workspace",
+                  "trusted_machine"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Shell Guarantee"
+          },
+          "version": {
+            "const": 1,
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          },
+          "workspace_label": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Workspace Label"
+          }
+        },
+        "required": [
+          "kind",
+          "policy_mode"
+        ],
+        "title": "LocalActionApprovalParams",
+        "type": "object"
+      },
+      "LocalActionData": {
+        "additionalProperties": false,
+        "description": "Sanitized audit payload for one runner-local action lifecycle.",
+        "properties": {
+          "action_id": {
+            "title": "Action Id",
+            "type": "string"
+          },
+          "approval_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Id"
+          },
+          "command_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Command Summary"
+          },
+          "cwd": {
+            "default": ".",
+            "title": "Cwd",
+            "type": "string"
+          },
+          "exit_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Code"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "output_truncated": {
+            "default": false,
+            "title": "Output Truncated",
+            "type": "boolean"
+          },
+          "path_summary": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Path Summary",
+            "type": "array"
+          },
+          "policy_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Mode"
+          },
+          "requested_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested By"
+          },
+          "risk_flags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Risk Flags",
+            "type": "array"
+          },
+          "runner_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runner Id"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "workspace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Id"
+          }
+        },
+        "required": [
+          "action_id",
+          "status"
+        ],
+        "title": "LocalActionData",
         "type": "object"
       },
       "MCPServerSummary": {
@@ -2946,18 +3274,21 @@
             "session.heartbeat": "#/components/schemas/SessionHeartbeatEvent",
             "session.input.consumed": "#/components/schemas/SessionInputConsumedEvent",
             "session.interrupted": "#/components/schemas/SessionInterruptedEvent",
+            "session.local_action": "#/components/schemas/SessionLocalActionEvent",
             "session.model": "#/components/schemas/SessionModelEvent",
             "session.model_options": "#/components/schemas/SessionModelOptionsEvent",
             "session.presence": "#/components/schemas/SessionPresenceEvent",
             "session.reasoning_effort": "#/components/schemas/SessionReasoningEffortEvent",
             "session.resource.created": "#/components/schemas/SessionResourceCreatedEvent",
             "session.resource.deleted": "#/components/schemas/SessionResourceDeletedEvent",
+            "session.runner_state": "#/components/schemas/SessionRunnerStateEvent",
             "session.sandbox_status": "#/components/schemas/SessionSandboxStatusEvent",
             "session.skills": "#/components/schemas/SessionSkillsEvent",
             "session.status": "#/components/schemas/SessionStatusEvent",
             "session.superseded": "#/components/schemas/SessionSupersededEvent",
             "session.terminal.activity": "#/components/schemas/SessionTerminalActivityEvent",
             "session.terminal_pending": "#/components/schemas/SessionTerminalPendingEvent",
+            "session.terminal_state": "#/components/schemas/SessionTerminalStateEvent",
             "session.todos": "#/components/schemas/SessionTodosEvent",
             "session.usage": "#/components/schemas/SessionUsageEvent",
             "turn.cancelled": "#/components/schemas/TurnCancelledEvent",
@@ -2970,6 +3301,12 @@
         "oneOf": [
           {
             "$ref": "#/components/schemas/SessionStatusEvent"
+          },
+          {
+            "$ref": "#/components/schemas/SessionRunnerStateEvent"
+          },
+          {
+            "$ref": "#/components/schemas/SessionTerminalStateEvent"
           },
           {
             "$ref": "#/components/schemas/SessionUsageEvent"
@@ -3006,6 +3343,9 @@
           },
           {
             "$ref": "#/components/schemas/SessionInterruptedEvent"
+          },
+          {
+            "$ref": "#/components/schemas/SessionLocalActionEvent"
           },
           {
             "$ref": "#/components/schemas/SessionCreatedEvent"
@@ -3937,6 +4277,157 @@
         "title": "SessionListItem",
         "type": "object"
       },
+      "SessionLocalActionEvent": {
+        "description": "Sanitized audit edge for one runner-local action.",
+        "properties": {
+          "action_id": {
+            "title": "Action Id",
+            "type": "string"
+          },
+          "approval_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Approval Id"
+          },
+          "command_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Command Summary"
+          },
+          "cwd": {
+            "default": ".",
+            "title": "Cwd",
+            "type": "string"
+          },
+          "exit_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Exit Code"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Finished At"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "output_truncated": {
+            "default": false,
+            "title": "Output Truncated",
+            "type": "boolean"
+          },
+          "path_summary": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Path Summary",
+            "type": "array"
+          },
+          "policy_mode": {
+            "title": "Policy Mode",
+            "type": "string"
+          },
+          "requested_by": {
+            "title": "Requested By",
+            "type": "string"
+          },
+          "risk_flags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Risk Flags",
+            "type": "array"
+          },
+          "runner_id": {
+            "title": "Runner Id",
+            "type": "string"
+          },
+          "sequence_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Sequence Number"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "type": {
+            "const": "session.local_action",
+            "title": "Type",
+            "type": "string"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "action_id",
+          "session_id",
+          "runner_id",
+          "workspace_id",
+          "kind",
+          "requested_by",
+          "policy_mode",
+          "status"
+        ],
+        "title": "SessionLocalActionEvent",
+        "type": "object"
+      },
       "SessionModelEvent": {
         "description": "Active-model update from a terminal-backed integration.\n\nEmitted after an `external_model_change` POST from the\n`omnigent claude` transcript forwarder when the model is\nswitched inside the Claude Code terminal (a `/model` command or\nthe in-TUI picker). Lets the web model picker reflect a TUI-side\nswitch without a reload.",
         "properties": {
@@ -4742,6 +5233,52 @@
         "title": "SessionResponse",
         "type": "object"
       },
+      "SessionRunnerStateEvent": {
+        "description": "Runner connectivity lifecycle edge for a bound session.",
+        "properties": {
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "runner_id": {
+            "title": "Runner Id",
+            "type": "string"
+          },
+          "sequence_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Sequence Number"
+          },
+          "state": {
+            "enum": [
+              "runner_offline",
+              "runner_reconnected"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "type": {
+            "const": "session.runner_state",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "conversation_id",
+          "runner_id",
+          "state"
+        ],
+        "title": "SessionRunnerStateEvent",
+        "type": "object"
+      },
       "SessionSandboxStatusEvent": {
         "description": "Managed-sandbox launch progress for a `host_type=\"managed\"` session.\n\nA managed create returns before its sandbox exists; the Omnigent\nserver emits this event as the background launch pipeline advances\nso the Web UI can show live provisioning progress on the session\npage instead of a silent dead chat: sandbox provision \u2192 repository\nclone \u2192 host startup \u2192 runner connect \u2192 ready, or a terminal\nfailure with the reason.",
         "properties": {
@@ -5062,6 +5599,57 @@
           "pending"
         ],
         "title": "SessionTerminalPendingEvent",
+        "type": "object"
+      },
+      "SessionTerminalStateEvent": {
+        "description": "Terminal lifecycle state emitted during runner reconciliation.",
+        "properties": {
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "sequence_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Sequence Number"
+          },
+          "state": {
+            "enum": [
+              "terminal_unknown",
+              "terminal_starting",
+              "terminal_running",
+              "terminal_detached",
+              "terminal_exited",
+              "terminal_relaunching",
+              "terminal_failed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "terminal_id": {
+            "title": "Terminal Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "session.terminal_state",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "conversation_id",
+          "terminal_id",
+          "state"
+        ],
+        "title": "SessionTerminalStateEvent",
         "type": "object"
       },
       "SessionTodosEvent": {
