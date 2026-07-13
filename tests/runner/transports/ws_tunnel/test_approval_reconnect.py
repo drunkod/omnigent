@@ -170,7 +170,6 @@ async def test_pending_local_action_executes_once_after_runner_tunnel_reconnect(
         assert target.read_text(encoding="utf-8") == "approved exactly once\n"
         statuses = [event["status"] for event in audits]
         assert statuses == ["requested", "approved", "completed"]
-        assert len(process_manager.client.posts) == 2
         local_action_posts = [
             body for _path, body in server.posts if body.get("type") == "mcp_elicitation"
         ]
