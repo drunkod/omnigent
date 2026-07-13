@@ -1,0 +1,453 @@
+name: T12 reconnect acceptance slice
+
+on:
+  push:
+    branches:
+      - feat/mvp-remaining-tracks
+    paths:
+      - .github/workflows/t12-reconnect-slice.yml
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/mvp-remaining-tracks
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install tmux
+        run: sudo apt-get update && sudo apt-get install -y tmux
+      - name: Apply, test, and commit
+        shell: bash
+        run: |
+          set +e
+          LOG=/tmp/t12-reconnect-slice.log
+          (
+            set -euxo pipefail
+            python - <<'PY'
+            from pathlib import Path
+
+            helper = Path("tests/runner/transports/ws_tunnel/helpers.py")
+            text = helper.read_text(encoding="utf-8")
+            text = text.replace(
+                "from omnigent.runner.transports.ws_tunnel.registry import TunnelRegistry\n",
+                "from omnigent.runner.transports.ws_tunnel.registry import RunnerSession, TunnelRegistry\n",
+                1,
+            )
+            old = '''    async def disconnect(self) -> None:
+        """Retire both server and runner state for the active tunnel generation."""
+        session = self.registry.get(self.runner_id)
+        assert session is not None
+        self.registry.deregister(self.runner_id, session=session)
+        await _cancel_ws_channels(self.ws_channels)
+        self.ws_channels.clear()
+'''
+            new = '''    async def disconnect(self) -> RunnerSession:
+        """Retire the active generation and return it for stale-frame tests."""
+        session = self.registry.get(self.runner_id)
+        assert session is not None
+        removed = self.registry.deregister(self.runner_id, session=session)
+        assert removed is session
+        await _cancel_ws_channels(self.ws_channels)
+        self.ws_channels.clear()
+        return session
+'''
+            if old not in text:
+                raise SystemExit("TunnelHarness.disconnect marker missing")
+            helper.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+            conftest = Path("tests/terminal_e2e/conftest.py")
+            text = conftest.read_text(encoding="utf-8")
+            text = text.replace(
+                "from omnigent.runner.transports.ws_tunnel.registry import TunnelRegistry\n",
+                "from omnigent.runner.transports.ws_tunnel.registry import RunnerSession, TunnelRegistry\n",
+                1,
+            )
+            old = '''    async def disconnect_runner(self) -> None:
+        """Drop the active runner generation while leaving tmux alive."""
+        await self.tunnel.disconnect()
+'''
+            new = '''    async def disconnect_runner(self) -> RunnerSession:
+        """Drop the active runner generation while leaving tmux alive."""
+        return await self.tunnel.disconnect()
+'''
+            if old not in text:
+                raise SystemExit("TerminalTunnelFixture.disconnect_runner marker missing")
+            conftest.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+            lifecycle = Path("tests/terminal_e2e/test_lifecycle.py")
+            text = lifecycle.read_text(encoding="utf-8")
+            text = text.replace(
+                "from websockets.exceptions import ConnectionClosed\n\nfrom tests.terminal_e2e.conftest import TerminalTunnelFixture\n",
+                "from websockets.exceptions import ConnectionClosed\n\nfrom omnigent.runner.transports.ws_tunnel.frames import WSCloseFrame\nfrom tests.terminal_e2e.conftest import TerminalTunnelFixture\n",
+                1,
+            )
+            addition = '''
+
+async def test_stale_generation_close_cannot_cover_live_reconnected_terminal(
+    terminal_tunnel: TerminalTunnelFixture,
+    monkeypatch,
+) -> None:
+    """A late close from the retired generation cannot tear down the new attach."""
+
+    class _FixedSecrets:
+        @staticmethod
+        def token_hex(_length: int) -> str:
+            return "deadbeef"
+
+    monkeypatch.setattr("omnigent.server._runner_ws_tunnel.secrets", _FixedSecrets())
+    headers = {"X-Forwarded-Email": "owner@example.com"}
+
+    async with connect(terminal_tunnel.url(), additional_headers=headers) as first:
+        await _receive_until(first, b"T12_READY")
+        retired = await terminal_tunnel.disconnect_runner()
+        closed = await _wait_for_close(first)
+        assert closed.rcvd is not None and closed.rcvd.code == 4503
+
+    terminal_tunnel.reconnect_runner()
+    async with connect(terminal_tunnel.url(), additional_headers=headers) as second:
+        await _receive_until(second, b"T12_READY")
+        current = terminal_tunnel.tunnel_registry.get(terminal_tunnel.runner_id)
+        assert current is not None
+        assert "deadbeef" in current.ws_channels
+
+        delivered = terminal_tunnel.tunnel_registry.route_ws_inbound(
+            terminal_tunnel.runner_id,
+            WSCloseFrame(ch_id="deadbeef", code=4404, reason="stale terminal exit"),
+            session=retired,
+        )
+        assert delivered is False
+
+        await second.send(b"still-live-after-stale-close\\n")
+        output = await _receive_until(second, b"T12_ECHO:still-live-after-stale-close")
+        assert output.count(b"T12_ECHO:still-live-after-stale-close") == 1
+'''
+            if "test_stale_generation_close_cannot_cover_live_reconnected_terminal" in text:
+                raise SystemExit("stale-generation test already exists")
+            lifecycle.write_text(text.rstrip() + addition + "\n", encoding="utf-8")
+
+            approval_test = Path("tests/runner/transports/ws_tunnel/test_approval_reconnect.py")
+            approval_test.write_text('''"""T12 acceptance for runner-local approval across tunnel generations."""
+
+from __future__ import annotations
+
+import asyncio
+from pathlib import Path
+from typing import Any
+
+import httpx
+import pytest
+
+from omnigent.runner import create_runner_app, pending_approvals
+from omnigent.runner.transports.ws_tunnel.frames import HelloFrame
+from omnigent.runner.transports.ws_tunnel.transport import WSTunnelTransport
+from tests.runner.transports.ws_tunnel.helpers import run_tunnel_harness
+
+
+class _ApprovalServerClient:
+    """Capture the runner's elicitation POST and return a stable correlation id."""
+
+    def __init__(self) -> None:
+        self.elicitation_seen = asyncio.Event()
+        self.posts: list[tuple[str, dict[str, Any]]] = []
+
+    async def post(self, path: str, **kwargs: Any) -> httpx.Response:
+        body = kwargs.get("json")
+        assert isinstance(body, dict)
+        self.posts.append((path, body))
+        request = httpx.Request("POST", f"http://server{path}")
+        if body.get("type") == "mcp_elicitation":
+            self.elicitation_seen.set()
+            return httpx.Response(
+                200,
+                json={"elicitation_id": "elicit_t12_reconnect"},
+                request=request,
+            )
+        return httpx.Response(204, request=request)
+
+
+class _HarnessClient:
+    def __init__(self) -> None:
+        self.posts: list[tuple[str, dict[str, Any]]] = []
+
+    async def post(self, path: str, **kwargs: Any) -> httpx.Response:
+        body = kwargs.get("json")
+        assert isinstance(body, dict)
+        self.posts.append((path, body))
+        return httpx.Response(204, request=httpx.Request("POST", f"http://harness{path}"))
+
+
+class _ProcessManager:
+    """Minimal live-harness facade required by the runner control-event route."""
+
+    def __init__(self) -> None:
+        self.client = _HarnessClient()
+
+    def has_active_turn(self, _session_id: str) -> bool:
+        return False
+
+    async def get_client(self, _session_id: str, _harness: str) -> _HarnessClient:
+        return self.client
+
+
+async def _wait_until(predicate, *, timeout: float = 2.0) -> None:
+    async with asyncio.timeout(timeout):
+        while not predicate():
+            await asyncio.sleep(0.01)
+
+
+@pytest.mark.asyncio
+async def test_pending_local_action_executes_once_after_runner_tunnel_reconnect(
+    tmp_path: Path,
+) -> None:
+    """A verdict delivered on the new generation resolves one parked write once."""
+
+    pending_approvals.reset_for_tests()
+    server = _ApprovalServerClient()
+    process_manager = _ProcessManager()
+    runner_app = create_runner_app(  # type: ignore[arg-type]
+        server_client=server,
+        process_manager=process_manager,
+        runner_workspace=tmp_path,
+        per_session_workspace=False,
+    )
+    audits: list[dict[str, object]] = []
+    runner_app.state.local_action_gateway._publish_audit = (  # noqa: SLF001
+        lambda record: audits.append(record.to_event())
+    )
+    workspace = runner_app.state.local_action_gateway._workspaces.advertise(home=tmp_path)[0]  # noqa: SLF001
+    workspace_id = workspace["workspace_id"]
+    assert isinstance(workspace_id, str)
+
+    runner_id = "runner-t12-approval"
+    hello = HelloFrame(
+        runner_version="t12-test",
+        frame_protocol_version=1,
+        harnesses=["test"],
+        envs=["caller_process"],
+        tool_capabilities=["write_file"],
+    )
+    target = tmp_path / "approved-after-reconnect.txt"
+
+    try:
+        async with run_tunnel_harness(runner_app, runner_id=runner_id, hello=hello) as tunnel:
+            old_transport = WSTunnelTransport(tunnel.registry, runner_id)
+            async with httpx.AsyncClient(
+                transport=old_transport,
+                base_url="http://runner",
+            ) as old_client:
+                action_task = asyncio.create_task(
+                    old_client.post(
+                        "/v1/runner/local-actions",
+                        json={
+                            "session_id": "conv_t12_approval",
+                            "workspace_id": workspace_id,
+                            "kind": "write_file",
+                            "path": target.name,
+                            "content": "approved exactly once\\n",
+                            "policy_mode": "manual",
+                        },
+                    )
+                )
+                await asyncio.wait_for(server.elicitation_seen.wait(), timeout=2.0)
+                await _wait_until(lambda: pending_approvals.has_pending("conv_t12_approval"))
+                assert not target.exists()
+
+                await tunnel.disconnect()
+                result = await asyncio.gather(action_task, return_exceptions=True)
+                assert isinstance(result[0], (httpx.TransportError, ConnectionError))
+
+            tunnel.reconnect()
+            new_transport = WSTunnelTransport(tunnel.registry, runner_id)
+            async with httpx.AsyncClient(
+                transport=new_transport,
+                base_url="http://runner",
+            ) as new_client:
+                verdict = {
+                    "type": "approval",
+                    "data": {
+                        "elicitation_id": "elicit_t12_reconnect",
+                        "action": "accept",
+                    },
+                }
+                first = await new_client.post(
+                    "/v1/sessions/conv_t12_approval/events",
+                    json=verdict,
+                )
+                replay = await new_client.post(
+                    "/v1/sessions/conv_t12_approval/events",
+                    json=verdict,
+                )
+                assert first.status_code == 204, first.text
+                assert replay.status_code == 204, replay.text
+
+            await _wait_until(target.exists)
+            await _wait_until(lambda: any(event.get("status") == "completed" for event in audits))
+
+        assert target.read_text(encoding="utf-8") == "approved exactly once\\n"
+        statuses = [event["status"] for event in audits]
+        assert statuses == ["requested", "approved", "completed"]
+        assert len(process_manager.client.posts) == 2
+        local_action_posts = [
+            body
+            for _path, body in server.posts
+            if body.get("type") == "mcp_elicitation"
+        ]
+        assert len(local_action_posts) == 1
+    finally:
+        pending_approvals.reset_for_tests()
+''', encoding="utf-8")
+
+            attach = Path("omnigent/server/routes/terminal_attach.py")
+            text = attach.read_text(encoding="utf-8")
+            old = '''                code = (
+                    ATTACH_CLOSE_RUNNER_OFFLINE
+                    if closed.code == 1006
+'''
+            new = '''                # The tunnel adapter synthesizes 1006 when its owning runner
+                # generation is aborted. Clean terminal exits carry their explicit
+                # 44xx code, so 1006 is intentionally treated as runner loss here.
+                code = (
+                    ATTACH_CLOSE_RUNNER_OFFLINE
+                    if closed.code == 1006
+'''
+            if old not in text:
+                raise SystemExit("terminal attach 1006 mapping marker missing")
+            attach.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+            ledger = Path("designs/TERMINAL_MIRRORING_ACCEPTANCE.md")
+            text = ledger.read_text(encoding="utf-8")
+            text = text.replace(
+                "| Stale lifecycle state cannot cover a connected terminal | Pending | Component coverage exists; no live browser fixture. |",
+                "| Stale lifecycle state cannot cover a connected terminal | Covered | `test_stale_generation_close_cannot_cover_live_reconnected_terminal` |",
+                1,
+            )
+            text = text.replace(
+                "| Reconnect during approval is at most once | Pending | T11 covers approval replay; no combined reconnect test. |",
+                "| Reconnect during approval is at most once | Covered | `test_pending_local_action_executes_once_after_runner_tunnel_reconnect` |",
+                1,
+            )
+            text = text.replace(
+                "| `terminal-e2e-reconnect` | Pending | Runner and browser lifecycle acceptance |",
+                "| `terminal-e2e-reconnect` | Active | Runner generation, stale lifecycle, and approval reconnect acceptance |",
+                1,
+            )
+            ledger.write_text(text, encoding="utf-8")
+
+            workflow = Path(".github/workflows/terminal-e2e.yml")
+            workflow.write_text('''name: Terminal E2E
+
+on:
+  pull_request:
+    paths:
+      - "omnigent/inner/terminal.py"
+      - "omnigent/runner/**"
+      - "omnigent/server/_runner_ws_tunnel.py"
+      - "omnigent/server/routes/terminal_attach.py"
+      - "omnigent/terminals/**"
+      - "tests/runner/transports/ws_tunnel/**"
+      - "tests/terminal_e2e/**"
+      - ".github/workflows/terminal-e2e.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  terminal-e2e-control:
+    name: terminal-e2e-control
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install tmux
+        run: sudo apt-get update && sudo apt-get install -y tmux
+      - run: uv sync --extra dev --frozen
+      - name: Report terminal prerequisites
+        run: |
+          uv run python -c "from omnigent.version import VERSION; print('server/runner version:', VERSION)"
+          tmux -V
+          echo "terminal transport: control"
+      - run: uv run python -m pytest -q tests/terminal_e2e/test_control_attach.py
+
+  terminal-e2e-reconnect:
+    name: terminal-e2e-reconnect
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install tmux
+        run: sudo apt-get update && sudo apt-get install -y tmux
+      - run: uv sync --extra dev --frozen
+      - name: Report reconnect prerequisites
+        run: |
+          uv run python -c "from omnigent.version import VERSION; print('server/runner version:', VERSION)"
+          tmux -V
+          echo "terminal acceptance: reconnect"
+      - run: >-
+          uv run python -m pytest -q
+          tests/terminal_e2e/test_lifecycle.py
+          tests/runner/transports/ws_tunnel/test_approval_reconnect.py
+''', encoding="utf-8")
+            PY
+
+            uv sync --extra dev --frozen
+            uv run ruff format \
+              tests/runner/transports/ws_tunnel/helpers.py \
+              tests/runner/transports/ws_tunnel/test_approval_reconnect.py \
+              tests/terminal_e2e/conftest.py \
+              tests/terminal_e2e/test_lifecycle.py \
+              omnigent/server/routes/terminal_attach.py
+            uv run ruff check \
+              tests/runner/transports/ws_tunnel/helpers.py \
+              tests/runner/transports/ws_tunnel/test_approval_reconnect.py \
+              tests/terminal_e2e/conftest.py \
+              tests/terminal_e2e/test_lifecycle.py \
+              omnigent/server/routes/terminal_attach.py
+            uv run python -m pytest -q \
+              tests/terminal_e2e/test_lifecycle.py \
+              tests/runner/transports/ws_tunnel/test_approval_reconnect.py \
+              tests/runner/transports/ws_tunnel/test_tunnel_e2e.py
+            git diff --check
+          ) >"$LOG" 2>&1
+          STATUS=$?
+          cat "$LOG"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if [ "$STATUS" -ne 0 ]; then
+            git reset --hard HEAD
+            git clean -fd
+            cp "$LOG" .github/t12-reconnect-slice-failure.txt
+            git add .github/t12-reconnect-slice-failure.txt
+            git commit -m "chore(t12): record reconnect slice failure"
+            git push origin HEAD:feat/mvp-remaining-tracks
+            exit "$STATUS"
+          fi
+
+          rm -f \
+            .github/workflows/t12-reconnect-slice.yml \
+            .github/t12-reconnect-slice-failure.txt
+          git add -A
+          git commit -m "test(t12): compose approval and lifecycle reconnect acceptance"
+          git push origin HEAD:feat/mvp-remaining-tracks
