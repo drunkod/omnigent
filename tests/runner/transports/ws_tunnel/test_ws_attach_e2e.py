@@ -19,6 +19,7 @@ import pytest
 from fastapi import FastAPI, WebSocket
 from websockets.exceptions import ConnectionClosed
 
+from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.runner.transports.ws_tunnel.frames import (
     HelloFrame,
     WSCloseFrame,
@@ -133,6 +134,74 @@ async def test_runner_side_close_surfaces_as_connection_closed_with_code() -> No
             assert exc_info.value.rcvd is not None
             assert exc_info.value.rcvd.code == 4242
             assert exc_info.value.rcvd.reason == "goodbye"
+
+
+@pytest.mark.asyncio
+async def test_valid_unadvertised_transport_is_rejected_before_channel_allocation() -> None:
+    """A canonical transport absent from a non-empty hello list fails closed."""
+    registry = TunnelRegistry()
+    ws, peer = LoopbackWebSocket(), LoopbackWebSocket()
+    ws.link(peer)
+    hello = HelloFrame(
+        runner_version="0.1.0",
+        frame_protocol_version=1,
+        harnesses=["test"],
+        envs=["test"],
+        terminal_transports=["control"],
+    )
+    session = registry.register("runner-capability", ws, hello)
+    conn = _TunneledWSConn(
+        registry=registry,
+        session=session,
+        runner_path=(
+            "/v1/sessions/conv/resources/terminals/terminal_x/attach?transport=pty"
+        ),
+    )
+
+    with pytest.raises(OmnigentError) as exc_info:
+        await conn.__aenter__()
+
+    assert exc_info.value.code == ErrorCode.TERMINAL_TRANSPORT_UNSUPPORTED
+    assert session.ws_channels == {}
+    registry.deregister(session.runner_id, session=session)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("advertised", "query"),
+    [
+        ([], "transport=pty"),
+        (["control"], "transport=not-a-real-transport"),
+    ],
+)
+async def test_legacy_or_invalid_transport_query_remains_permissive(
+    advertised: list[str],
+    query: str,
+) -> None:
+    """Rolling upgrades and stray query values preserve the normal attach path."""
+    registry = TunnelRegistry()
+    ws, peer = LoopbackWebSocket(), LoopbackWebSocket()
+    ws.link(peer)
+    hello = HelloFrame(
+        runner_version="0.1.0",
+        frame_protocol_version=1,
+        harnesses=["test"],
+        envs=["test"],
+        terminal_transports=advertised,
+    )
+    session = registry.register("runner-compatible", ws, hello)
+    conn = _TunneledWSConn(
+        registry=registry,
+        session=session,
+        runner_path=f"/v1/sessions/conv/resources/terminals/terminal_x/attach?{query}",
+    )
+
+    await conn.__aenter__()
+    try:
+        assert len(session.ws_channels) == 1
+    finally:
+        await conn.__aexit__(None, None, None)
+        registry.deregister(session.runner_id, session=session)
 
 
 @pytest.mark.asyncio
