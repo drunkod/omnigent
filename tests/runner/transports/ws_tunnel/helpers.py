@@ -78,7 +78,11 @@ class TunnelHarness:
                     return
                 await session.ws.send_text(data)
 
-        self._tasks.append(asyncio.create_task(send_server_frames(), name="tunnel-reconnect-send"))
+        task = asyncio.create_task(
+            send_server_frames(),
+            name="tunnel-reconnect-send",
+        )
+        self._tasks.append(task)
 
 
 @contextlib.asynccontextmanager
@@ -112,7 +116,10 @@ async def run_tunnel_harness(
                 continue
             if isinstance(frame, (WSFrame, WSCloseFrame)):
                 registry.route_ws_inbound(runner_id, frame, session=current)
-            elif isinstance(frame, (ResponseHeadFrame, ResponseBodyFrame, ResponseEndFrame)):
+            elif isinstance(
+                frame,
+                (ResponseHeadFrame, ResponseBodyFrame, ResponseEndFrame),
+            ):
                 registry.route_response_frame(runner_id, frame, session=current)
 
     async def receive_runner_frames() -> None:
