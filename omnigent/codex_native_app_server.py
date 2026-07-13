@@ -206,6 +206,7 @@ def _pin_codex_config_model(codex_home: Path, model: str) -> None:
             import shutil
 
             shutil.copy2(target, config_path)
+            config_path.chmod(config_path.stat().st_mode | 0o200)
     existing = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
     pin_line = f"model = {json.dumps(model)}"
     lines = existing.splitlines()
@@ -253,6 +254,7 @@ def _inject_mcp_server_config(
             import shutil
 
             shutil.copy2(target, config_path)
+            config_path.chmod(config_path.stat().st_mode | 0o200)
     if config_path.exists():
         existing = config_path.read_text(encoding="utf-8")
     else:
