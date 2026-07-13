@@ -23,10 +23,10 @@ fails when tmux is unavailable.
 | Read-only output with no input side effect | Covered | `test_read_only_collaborator_observes_but_cannot_drive_terminal` |
 | Single canonical line of 4 KiB or larger | Not guaranteed | The supported large-paste proof uses bounded lines to respect the host terminal's `MAX_CANON` limit. |
 | PTY transport and unsupported transport close | Pending | No live T12 test. |
-| Ctrl-C interrupts the foreground process | Covered | `test_ctrl_c_interrupts_foreground_process` |
-| ESC, arrows, tab, backspace, and Enter | Covered | `test_control_key_sequences_arrive_byte_exact` |
-| Alternate-screen enter and exit | Covered | `test_alternate_screen_enter_and_exit_bytes_are_forwarded` |
-| Rapid output remains ordered and bounded | Covered | `test_rapid_output_remains_ordered_and_bounded` |
+| Ctrl-C interrupts the foreground process | Implemented; pending CI | `test_ctrl_c_interrupts_foreground_process` |
+| ESC, arrows, tab, backspace, and Enter | Implemented; pending CI | `test_control_key_sequences_arrive_byte_exact` |
+| Alternate-screen enter and exit | Implemented; pending CI | `test_alternate_screen_enter_and_exit_bytes_are_forwarded` |
+| Rapid output remains ordered and bounded | Implemented; pending CI | `test_rapid_output_remains_ordered_and_bounded` |
 
 ## Authorization and lifecycle
 
@@ -38,8 +38,8 @@ fails when tmux is unavailable.
 | Same-runner reconnect avoids duplicate output and input | Covered | `test_same_runner_reconnect_reattaches_without_duplicate_io` |
 | Refresh while offline restores preserved-session state | Pending | Component/store coverage exists; no live browser fixture. |
 | Unsupported transport does not retry-loop | Pending | Component coverage exists; no live T12 test. |
-| Stale lifecycle state cannot cover a connected terminal | Covered | `test_stale_generation_close_cannot_cover_live_reconnected_terminal` |
-| Reconnect during approval is at most once | Covered | `test_pending_local_action_executes_once_after_runner_tunnel_reconnect` |
+| Stale lifecycle state cannot cover a connected terminal | Implemented; pending CI | `test_stale_generation_close_cannot_cover_live_reconnected_terminal` |
+| Reconnect during approval is at most once | Implemented; pending CI | `test_pending_local_action_executes_once_after_runner_tunnel_reconnect` |
 
 ## Required CI gates
 
@@ -47,4 +47,4 @@ fails when tmux is unavailable.
 | --- | --- | --- |
 | `terminal-e2e-control` | Active | Public route, control transport, real tmux |
 | `terminal-e2e-pty` | Pending product decision | Required only if PTY is part of the supported platform contract |
-| `terminal-e2e-reconnect` | Active | Runner generation, stale lifecycle, and approval reconnect acceptance |
+| `terminal-e2e-reconnect` | Configured; pending first PR run | Runner generation, stale lifecycle, and approval reconnect acceptance |
