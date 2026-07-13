@@ -1,296 +1,225 @@
 # 05 — Implementation Checklist
 
-This is the execution checklist derived from the research and codebase review. It is planning only.
+This checklist is the reviewed status source for `feat/mvp-remaining-tracks`.
+A checkmark means the production path is wired and the named acceptance evidence
+exists. Helper-only code, sketches, or unit tests without a production caller do not
+close an item.
 
-## High-level finding
+## Status legend
 
-The codebase already contains most of the infrastructure needed for the MVP:
+- `[x]` complete and evidence-backed.
+- `[ ]` open.
+- `Partial` means useful implementation exists, but the end-to-end contract or stated
+  guarantee is not complete.
 
-- Server/runner split.
-- Persistent runner WebSocket tunnel.
-- Conversation-to-runner routing.
-- Host/runner liveness concepts.
-- Runner-owned harness subprocesses.
-- Runner-owned session resources.
-- tmux terminal registry.
-- PTY and control-mode WebSocket terminal bridges.
-- Native terminal agent launchers.
-- Policy/approval primitives.
-- Permission store and owner/read attach model.
+## P0 — Branch and review setup
 
-The missing work is primarily productization and hardening:
+- [x] Add overview, codebase map, backend plan, UI plan, security plan, diagrams, and
+  implementation checklist.
+- [x] Correct the branch description from planning-only to implementation-in-progress.
+- [ ] Open a draft PR from `feat/mvp-remaining-tracks` to `main`.
+- [ ] Attach CI results and a reviewer-oriented change summary to the PR.
 
-- Pairing a user's local runner to a remote server.
-- Advertising/selecting local workspaces.
-- Persisting workspace binding per session.
-- Routing side-effectful local file/shell actions to the runner with approval gates.
-- Exposing this as a coherent UI flow.
-- Adding terminal parity and reconnect tests.
+## P1 — Design records
 
-## P0 — Planning PR already represented by this branch
+- [ ] Add `designs/REMOTE_LOCAL_RUNNER.md` with the canonical discovery/create API.
+- [ ] Add `designs/LOCAL_RUNNER_PERMISSIONS.md` with the selected shell security mode,
+  audit schema, approval ownership, and single-/multi-replica support statement.
+- [ ] Add `designs/TERMINAL_MIRRORING_ACCEPTANCE.md` with real byte/lifecycle criteria.
+- [ ] Add API examples for runner discovery, workspace selection, session creation,
+  local actions, and approval events.
+- [ ] Record the persistence decision: `runner_id` on the conversation row plus opaque
+  workspace/policy labels; no raw local path for local-runner mode.
 
-- [x] Create planning branch.
-- [x] Add MVP overview.
-- [x] Map existing codebase modules.
-- [x] Add backend/server/runner task plan.
-- [x] Add terminal/UI task plan.
-- [x] Add permissions/security/test plan.
-- [x] Add implementation checklist.
-- [ ] Open PR from `planning/mvp-remote-runner-mirroring` to `main` for review.
-
-## P1 — Design docs
-
-- [ ] Add `designs/REMOTE_LOCAL_RUNNER.md`.
-- [ ] Add `designs/LOCAL_RUNNER_PERMISSIONS.md`.
-- [ ] Add `designs/TERMINAL_MIRRORING_ACCEPTANCE.md`.
-- [ ] Add API model examples for runner, workspace, session creation, local actions.
-- [ ] Add migration decision: labels vs DB columns for workspace binding.
+P1 may be drafted during T10, but it is final only after T10 contracts stop changing.
 
 ## P2 — Runner capability protocol
 
 - [x] Extend `HelloFrame` with optional capability fields.
-- [x] Update frame encode/decode tests.
-- [x] Update tunnel registry to retain capability metadata.
-- [x] Update runner tunnel route to expose capability errors.
-- [x] Add compatibility tests for old/new runner/server combinations.
+- [x] Encode/decode optional fields leniently.
+- [x] Retain capability metadata in the tunnel session.
+- [x] Add old/new compatibility tests.
+- [ ] Expose a canonical owner-scoped runner discovery response containing
+  `runner_id`, online state, harnesses, terminal transports, and opaque workspaces.
 
-Target files:
-
-- `omnigent/runner/transports/ws_tunnel/frames.py`
-- `omnigent/runner/transports/ws_tunnel/registry.py`
-- `omnigent/server/routes/runner_tunnel.py`
-- `tests/runner/test_ws_tunnel_*`
+The final row moved to T10 step 01 because the current web API remains hosts-shaped.
 
 ## P3 — Local runner CLI and pairing
 
-- [x] Decide whether to extend existing host/connect command or add `omni runner connect`.
-- [x] Store runner id and pairing auth in existing `~/.omnigent` state pattern.
-- [x] Add `omni runner status`.
-- [x] Add `omni runner disconnect` or equivalent stop flow.
-- [x] Show tmux, shell, git, Node, harness CLI readiness.
+- [x] Extend the existing `omnigent host` flow rather than add a second daemon model.
+- [x] Persist daemon identity/pairing state in the existing config pattern.
+- [x] Add status and stop/disconnect flows.
+- [x] Add workspace add/remove persistence.
+- [ ] Show one unified readiness view for tmux, shell, git, Node, and each advertised
+  harness CLI.
 
-Target files:
-
-- `omnigent/cli.py`
-- `omnigent/host/local_server.py`
-- `omnigent/runner/_entry.py`
-- `tests/cli/*`
-- `tests/host/*`
+Current evidence probes tmux/git/node and separately advertises configured harnesses;
+shell and a unified readiness contract remain open.
 
 ## P4 — Workspace registry
 
-- [x] Add runner-side approved workspace model.
-- [x] Add workspace list/validate endpoints.
-- [x] Canonicalize and enforce workspace paths.
-- [x] Add symlink escape tests.
-- [x] Return project metadata: git root/status, available shells, harness readiness.
+- [x] Add the runner-side approved-workspace model.
+- [x] Derive stable opaque workspace IDs.
+- [x] Canonicalize roots and reject unknown IDs, absolute operation paths, traversal,
+  and symlink escapes.
+- [x] Seed the registry from host-approved environment state.
+- [ ] Return bounded project metadata required by the UI: git status summary, shells,
+  harness readiness, and missing/degraded state.
 
-Target files:
+## P5 — Canonical session binding
 
-- `omnigent/runner/app.py`
-- `omnigent/runner/resource_registry.py`
-- new candidate: `omnigent/runner/workspaces.py`
-- `tests/runner/test_workspaces.py`
+- [x] Define execution-mode and workspace label keys.
+- [x] Implement helper-level ownership, workspace, and harness validation.
+- [ ] Add owner-scoped runner discovery to the public server API.
+- [ ] Accept `runner_id + workspace_id` on public session creation.
+- [ ] Reject `runner_id` combined with raw `workspace` or `host_id`.
+- [ ] Call `validate_local_runner_binding` before conversation creation.
+- [ ] Persist `runner_id` on the conversation and opaque workspace/policy labels.
+- [ ] Expose the binding in the session snapshot.
+- [ ] Preserve the binding across child/fork/resume/reconnect paths.
+- [ ] Add route-level integration tests for owner, foreign runner, unknown workspace,
+  unsupported harness, feature flag, and inheritance.
 
-## P5 — Session binding
+Tracked sequentially in `tasks/T10-canonical-contract/step-01-canonical-session-binding.md`.
+The existing helper tests do not close these route items.
 
-- [x] Add `execution_mode` concept if not already present.
-- [x] Persist selected `runner_id` and `workspace_id` or equivalent labels.
-- [x] Validate caller owns runner/workspace.
-- [x] Validate selected harness is supported by runner.
-- [x] Ensure session snapshot exposes binding to UI.
-- [x] Define fork/resume semantics.
+## P6 — Native terminal launch in the selected workspace
 
-Target files:
-
-- `omnigent/server/routes/sessions.py`
-- `omnigent/stores/conversation_store/*`
-- `omnigent/entities/*`
-- DB migrations if columns are added
-- `tests/server/integration/test_remote_local_runner_sessions.py`
-
-## P6 — Native terminal launch in selected workspace
-
-- [x] Make selected session workspace win over default temp workspace.
-- [x] Launch Codex-native in selected workspace.
-- [x] Launch one additional native terminal in selected workspace.
-- [x] Publish terminal resource event.
-- [x] Confirm terminal attach works through runner tunnel.
-- [x] Add fallback/unsupported status for other harnesses.
-
-Target files:
-
-- `omnigent/runner/app.py`
-- `omnigent/runner/resource_registry.py`
-- native modules such as `codex_native*`, `claude_native*`, `cursor_native*`
-- `tests/runner/test_*native*`
+- [x] Existing host/raw-path launch can start native terminals in the selected host
+  directory.
+- [x] Codex-native and at least one additional native harness have workspace launch
+  coverage.
+- [x] Terminal resources publish and attach through the runner tunnel.
+- [x] Unsupported/degraded terminal status is surfaced.
+- [ ] Revalidate all launch/reconnect paths using the canonical `workspace_id` binding
+  after T10 step 01.
 
 ## P7 — Local actions gateway
 
-- [x] Inventory all existing file/shell tools and their execution location.
-- [x] Add runner-local action gateway.
-- [x] Implement read/list/search.
-- [x] Implement `write_file` with diff preview.
-- [ ] Implement `apply_patch` with diff preview.
-- [x] Implement shell command execution with cwd/env enforcement.
-- [x] Implement git status/diff helpers.
-- [x] Stream/truncate outputs safely.
+- [x] Inventory existing file/shell execution paths.
+- [x] Add a runner-local action gateway.
+- [x] Implement workspace-contained `read_file`, `list_dir`, and `write_file`.
+- [x] Add write diff preview and stale-content conflict detection.
+- [x] Bound shell duration and captured output; strip runner auth from the child env.
+- [ ] Freeze the shell security contract and implement the stated boundary.
+- [x] Keep `search_files` off the gateway capability contract until it has
+  the gateway audit/policy path; it remains an explicit filesystem route.
+- [x] Keep `git_status` and `git_diff` off the gateway capability contract
+  until they converge on a fixed-argv, authorized read-only path.
+- [ ] Implement `apply_patch` with preview and race-safe write semantics before
+  advertising it.
+- [ ] Add request-size limits and re-resolve/no-follow protections for writes.
 
-Target files:
+Approval alone does not contain an arbitrary shell command. T10 steps 02 and 04 own
+these blockers.
 
-- new candidate: `omnigent/runner/local_actions.py`
-- new candidate: `omnigent/runner/workspace_policy.py`
-- `omnigent/tools/local.py`
-- `omnigent/runtime/workflow.py`
-- `tests/runner/test_local_actions.py`
+## P8 — Permission, policy, and audit integration
 
-## P8 — Permission and policy integration
+- [x] Add manual, assisted, and auto policy values with fail-closed fallback.
+- [x] Ask-gate side-effectful actions in manual mode.
+- [x] Enforce owner-only local-action approval in the server route for a single
+  process.
+- [x] Enforce read-only versus interactive terminal attach permissions before proxy.
+- [x] Publish local-action lifecycle events and persist terminal outcomes by
+  `action_id`.
+- [ ] Match preset descriptions to actual shell behavior after T10 step 02.
+- [ ] Make persisted audit data allowlisted, bounded, and secret-safe by value, not
+  merely by exact key removal.
+- [ ] Prove logs/history omit bearer tokens, auth headers, full commands, file
+  contents, output, and absolute home paths.
+- [ ] State single-replica approval support for alpha or move pending approval
+  ownership to a shared store.
 
-- [x] Add local runner policy presets: manual, assisted, auto.
-- [x] Ask-gate every side-effectful action in manual mode.
-- [x] Block workspace escapes in all modes.
-- [x] Add approval event model for local actions.
-- [x] Ensure approvals are owner-only for MVP.
-- [ ] Add session history audit records.
+`tests/server/test_local_action_persistence.py` proves persistence mechanics, not the
+full payload-free guarantee.
 
-Evidence: presets are covered by the policy catalog, resolver, session-create
-route validation, and inherited-runner API test. Owner-only approval is covered
-by the tagged elicitation gate and cross-session/auth-off regression tests.
-Manual ask-gating and workspace containment are covered by
-`tests/runner/test_local_actions.py`. Local-action approvals use the tagged
-`mcp_elicitation` event shape; durable session history remains open.
+## P9 — Runner UX
 
-Target files:
+- [x] Add the feature capability probe and runner status presentation.
+- [x] Add terminal transport/reconnect state and offline recovery copy.
+- [ ] Build the runner/workspace picker against the canonical owner-scoped discovery
+  model from T10 step 01.
+- [ ] Send `runner_id + workspace_id + local_runner_policy`, never a path-label
+  round-trip.
+- [ ] Show harness/workspace incompatibility and degraded readiness.
+- [ ] Complete the capability dashboard with truthful T10 step 04 data.
 
-- `omnigent/policies/*`
-- `omnigent/runner/pending_approvals.py`
-- `omnigent/stores/permission_store/*`
-- `omnigent/server/routes/terminal_attach.py`
-- `tests/server/integration/test_remote_local_runner_permissions.py`
+Tracked in `tasks/T09-runner-ux/`; blocked by T10 steps 01 and 04.
 
-## P9 — UI flow
+## P10 — Terminal parity and reconnect acceptance
 
-- [x] Add runner status panel.
-- [ ] Add workspace picker in new session flow.
-- [ ] Add local/cloud execution mode indicator.
-- [x] Add terminal transport/reconnect status.
-- [ ] Add approval card for local shell/write action.
-- [ ] Add diff preview before write/apply-patch.
-- [x] Add offline/reconnect recovery copy.
+Existing unit/route coverage:
 
-Target files:
+- [x] Control/PTY close-code mapping and fallback behavior.
+- [x] Read-only and non-owner interactive attach authorization.
+- [x] UI lifecycle state for runner offline/reconnected, terminal detached/exited,
+  retry, and refresh recovery.
 
-- `web/src/*`
-- `web/electron/*` later for helper UX
-- `tests/e2e_ui/*`
+Real end-to-end coverage still open:
 
-## P10 — Terminal parity and reconnect tests
+- [ ] Build a real server + runner + tmux + browser fixture.
+- [ ] Test resize propagation.
+- [ ] Test multiline/large paste and UTF-8.
+- [ ] Test Ctrl-C, ESC, arrows, tab, and alternate-screen transitions.
+- [ ] Test disconnect/reconnect during active output and after browser refresh.
+- [ ] Distinguish runner offline, terminal exited, transport unsupported, and
+  permission denial at the live WebSocket boundary.
 
-- [x] Test control-mode attach.
-- [x] Test PTY attach fallback.
-- [ ] Test resize.
-- [ ] Test paste.
-- [ ] Test Ctrl-C and ESC sequences.
-- [ ] Test read-only attach.
-- [ ] Test non-owner denial for interactive attach.
-- [x] Test read-only attach.
-- [x] Test runner disconnect/reconnect.
-- [x] Test terminal exited vs runner offline state.
-
-Target files:
-
-- `tests/runner/test_terminal_attach_tunnel.py`
-- `tests/e2e_ui/terminal/*`
-- `tests/server/integration/*`
+Tracked in `tasks/T12-terminal-parity-e2e.md`.
 
 ## P11 — Observability
 
-- [ ] Add structured logs for runner connect/disconnect.
-- [ ] Add metrics for local action decisions.
-- [ ] Add metrics for terminal attach transport and close codes.
-- [ ] Add diagnostics endpoint for runner capabilities.
-- [ ] Ensure logs do not leak secrets or full file contents.
-
-Target files:
-
-- `omnigent/server/performance_metrics.py`
-- `omnigent/runtime/telemetry.py`
-- `omnigent/runner/*`
+- [x] Emit `omnigent.local_action.total` with bounded kind/status/policy labels.
+- [x] Emit `omnigent.approval.decision_total` with bounded decision labels.
+- [ ] Add structured runner connect/disconnect/reconnect logs.
+- [ ] Add terminal attach transport and close-code metrics.
+- [ ] Add workspace validation and capability mismatch metrics.
+- [ ] Add a diagnostics endpoint or admin projection for live runner capabilities.
+- [ ] Add log-capture tests enforcing the T10 audit/log secrecy rules.
 
 ## P12 — Documentation and rollout
 
-- [ ] Add user docs: pairing local runner with remote server.
-- [ ] Add admin docs: enabling/disabling feature.
-- [ ] Add security docs: permission modes and local action logs.
-- [ ] Add troubleshooting docs: runner offline, tmux missing, harness missing.
-- [ ] Add alpha feature flag.
-- [ ] Add manual QA script to docs.
+- [x] Feature flag is off by default and surfaced as top-level
+  `remote_local_runner` in `/v1/info`.
+- [ ] Add user pairing and workspace-selection documentation.
+- [ ] Add admin enable/disable, single-replica limitation, and recovery documentation.
+- [ ] Add security documentation for policy modes, shell mode, approvals, audit data,
+  and retention.
+- [ ] Add troubleshooting for runner offline, tmux/sandbox missing, harness missing,
+  capability mismatch, and reconnect.
+- [ ] Add a manual QA script covering two users, denial, reconnect, and secret checks.
+- [ ] Map dev/alpha/beta gates to named CI jobs and branch protection.
+- [ ] Add release notes only after the alpha gate is green.
 
-Target files:
+## Remaining dependency order
 
-- `docs/remote-local-runner.md`
-- `README.md` short mention after beta, not immediately
-- release notes when feature is behind flag
+### Stage 1 — sequential blockers
 
-## Suggested first implementation PR after this planning branch
+1. **T10-01:** canonical owner-scoped runner discovery and `runner_id + workspace_id`
+   session binding.
+2. **T10-02:** shell security decision and implementation/documentation.
+3. **T10-03:** allowlisted audit schema, value redaction, limits, and race hardening.
+4. **T10-04:** capability truthfulness and gateway convergence.
 
-Title:
+### Stage 2 — parallel after Stage 1
 
-```text
-feat(runner): advertise local runner capabilities and workspace roots
-```
+- **T09:** runner/workspace picker and capability dashboard.
+- **T11:** approval cards, write diff presentation, and approval-flow E2E.
+- **T12:** real terminal parity and reconnect E2E.
 
-Scope:
+Each track is sequential internally, but the three tracks can run in parallel.
 
-- Extend runner hello capabilities with optional fields.
-- Add runner capability model tests.
-- Add workspace root config/validation in runner only.
-- Do not touch UI yet.
-- Do not enable shell/write actions yet.
+### Stage 3 — release preparation
 
-Why this first:
+1. Complete P11 observability.
+2. Finalize P1 design records from the implemented contracts.
+3. Complete P12 docs, manual QA, CI jobs, and rollout gates.
+4. Open/update the draft PR with evidence links.
 
-It creates the data contract needed by server and UI without changing high-risk execution behavior.
+## Recommended remaining PRs
 
-## Suggested second implementation PR
-
-Title:
-
-```text
-feat(sessions): create runner-bound sessions with workspace metadata
-```
-
-Scope:
-
-- Add session binding to selected runner/workspace.
-- Add validation via runner route.
-- Add server integration tests.
-- No local shell/write actions yet.
-
-## Suggested third implementation PR
-
-Title:
-
-```text
-feat(terminal): attach native terminal sessions through local runner workspace
-```
-
-Scope:
-
-- Launch one native terminal in selected workspace.
-- Attach via existing terminal resource WebSocket.
-- Add terminal parity tests.
-
-## Suggested fourth implementation PR
-
-Title:
-
-```text
-feat(runner): add permissioned local action gateway
-```
-
-Scope:
-
-- Read/list/search first.
-- Then write/apply-patch/shell behind manual approval.
-- Add security tests before UI automation.
+1. `feat(sessions): add canonical local-runner discovery and binding`
+2. `feat(runner): freeze shell and audit security contracts`
+3. `feat(runner): converge local read capabilities`
+4. Parallel runner UX, approval UI, and terminal E2E PRs
+5. Observability and release-documentation PR

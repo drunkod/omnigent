@@ -68,6 +68,7 @@ export interface ServerInfo {
    * (``OMNIGENT_SMART_ROUTING=1`` + ``llm:`` config). Hidden by default.
    */
   smart_routing_enabled: boolean;
+  remote_local_runner: boolean;
 }
 
 /** Sentinel used when the probe fails — accounts is off, no login URL. */
@@ -80,6 +81,7 @@ const _OFF: ServerInfo = {
   sandbox_provider: null,
   server_version: null,
   smart_routing_enabled: false,
+  remote_local_runner: false,
 };
 
 let _cached: ServerInfo | null = null;
@@ -114,6 +116,7 @@ export async function resolveServerInfo(): Promise<ServerInfo> {
             typeof data.sandbox_provider === "string" ? data.sandbox_provider : null,
           server_version: typeof data.server_version === "string" ? data.server_version : null,
           smart_routing_enabled: data.smart_routing_enabled === true,
+          remote_local_runner: data.remote_local_runner === true,
         };
         return _cached;
       }

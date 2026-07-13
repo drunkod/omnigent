@@ -205,6 +205,11 @@ class RunnerRouter:
         """
         return self._registry.runner_owner(runner_id)
 
+    @property
+    def binding_registry(self) -> TunnelRegistry:
+        """Expose the live registry to route-level binding validators."""
+        return self._registry
+
     async def aclose(self) -> None:
         """
         Close cached runner clients.

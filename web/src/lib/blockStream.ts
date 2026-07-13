@@ -853,6 +853,7 @@ function* processEvent(state: ReducerState, event: StreamEvent): Generator<AnyBl
         phase: event.phase,
         policyName: event.policyName,
         contentPreview: event.contentPreview,
+        localAction: event.localAction,
         requestedSchema: event.requestedSchema,
         url: event.url,
         status: "pending",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import httpx
 import pytest
 
 from omnigent.errors import OmnigentError
@@ -88,4 +89,62 @@ async def test_auth_disabled_ownerless_session_can_approve() -> None:
         user_id=None,
         permission_store=_PermissionStore(None),
     )
+    assert elicitation_id not in _local_action_elicitations
+
+
+@pytest.mark.asyncio
+async def test_local_action_denial_forwards_decline_to_runner(monkeypatch) -> None:
+    elicitation_id = "elicit_local_denied"
+    forwarded: list[dict[str, object]] = []
+    _local_action_elicitations[elicitation_id] = "conv_test"
+
+    async def capture_forward(_session_id, data, _runner_router) -> None:
+        forwarded.append(data)
+
+    monkeypatch.setattr(
+        "omnigent.server.routes.sessions._forward_approval_to_runner",
+        capture_forward,
+    )
+    try:
+        await _resolve_elicitation(
+            "conv_test",
+            {"elicitation_id": elicitation_id, "action": "decline"},
+            None,
+            user_id="alice",
+            permission_store=_PermissionStore("alice"),
+        )
+    finally:
+        _local_action_elicitations.pop(elicitation_id, None)
+
+    assert forwarded == [{"elicitation_id": elicitation_id, "action": "decline"}]
+
+
+@pytest.mark.asyncio
+async def test_runner_disconnect_consumes_resolution_and_requires_fresh_action(
+    monkeypatch,
+) -> None:
+    """A failed forward clears the stale prompt instead of replaying execution."""
+    elicitation_id = "elicit_runner_disconnected"
+    _local_action_elicitations[elicitation_id] = "conv_test"
+
+    class _DisconnectedClient:
+        async def post(self, *_args, **_kwargs) -> None:
+            raise httpx.ConnectError("runner disconnected")
+
+    async def disconnected_client(*_args, **_kwargs) -> _DisconnectedClient:
+        return _DisconnectedClient()
+
+    monkeypatch.setattr(
+        "omnigent.server.routes.sessions._get_runner_client",
+        disconnected_client,
+    )
+
+    await _resolve_elicitation(
+        "conv_test",
+        {"elicitation_id": elicitation_id, "action": "accept"},
+        object(),  # type: ignore[arg-type]
+        user_id="alice",
+        permission_store=_PermissionStore("alice"),
+    )
+
     assert elicitation_id not in _local_action_elicitations

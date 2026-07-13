@@ -183,7 +183,7 @@ def validate_local_runner_binding(
             "and retry",
             code=ErrorCode.RUNNER_UNAVAILABLE,
         )
-    if user_id is not None and session.owner is not None and session.owner != user_id:
+    if user_id is not None and session.owner != user_id:
         raise OmnigentError("runner belongs to another user", code=ErrorCode.FORBIDDEN)
     if harness is not None and not _runner_supports_harness(session.hello, harness):
         raise OmnigentError(

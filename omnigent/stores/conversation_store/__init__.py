@@ -465,6 +465,14 @@ class ConversationStore(ABC):
         """
         ...
 
+    def upsert_local_action(
+        self,
+        conversation_id: str,
+        item: NewConversationItem,
+    ) -> ConversationItem:
+        """Upsert a terminal local-action audit item by ``action_id``."""
+        raise NotImplementedError
+
     @abstractmethod
     def list_conversations(
         self,

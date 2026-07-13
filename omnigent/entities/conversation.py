@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # Attachment path markers the native executors prepend to prompt text
 # ("[Attached: /tmp/.../x.png]" from claude-native's _content_to_text,
@@ -567,6 +567,30 @@ class SlashCommandData(BaseModel):
     output: str | None = None
 
 
+class LocalActionData(BaseModel):
+    """Sanitized audit payload for one runner-local action lifecycle."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    action_id: str
+    status: str
+    session_id: str | None = None
+    runner_id: str | None = None
+    workspace_id: str | None = None
+    kind: str | None = None
+    requested_by: str | None = None
+    policy_mode: str | None = None
+    risk_flags: list[str] = Field(default_factory=list)
+    approval_id: str | None = None
+    cwd: str = "."
+    path_summary: list[str] = Field(default_factory=list)
+    command_summary: str | None = None
+    started_at: float | None = None
+    finished_at: float | None = None
+    exit_code: int | None = None
+    output_truncated: bool = False
+
+
 ItemData = (
     MessageData
     | FunctionCallData
@@ -579,6 +603,7 @@ ItemData = (
     | RoutingDecisionData
     | SlashCommandData
     | TerminalCommandData
+    | LocalActionData
 )
 
 ITEM_TYPE_TO_DATA_CLS: dict[str, type[BaseModel]] = {
@@ -593,6 +618,7 @@ ITEM_TYPE_TO_DATA_CLS: dict[str, type[BaseModel]] = {
     "routing_decision": RoutingDecisionData,
     "slash_command": SlashCommandData,
     "terminal_command": TerminalCommandData,
+    "local_action": LocalActionData,
 }
 
 # Item types that are metadata / lifecycle events — not content
@@ -606,6 +632,7 @@ NON_CONTENT_ITEM_TYPES: frozenset[str] = frozenset(
         "routing_decision",
         "slash_command",
         "terminal_command",
+        "local_action",
     }
 )
 

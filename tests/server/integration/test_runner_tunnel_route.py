@@ -203,6 +203,19 @@ async def _send_hello(
         frame_protocol_version=1,
         harnesses=["claude-sdk"],
         envs=["os_sandbox"],
+        os_name="darwin",
+        arch="arm64",
+        workspace_roots=[
+            {
+                "workspace_id": "ws_123",
+                "display_name": "Omnigent",
+                "path_label": "~/src/omnigent",
+                "root": "/Users/alice/src/omnigent",
+                "capabilities": ["read", "write", "shell", 42],
+            }
+        ],
+        terminal_transports=["control", "pty"],
+        tool_capabilities=["read_file", "write_file", "run_shell"],
     )
     await communicator.send_input(
         {"type": "websocket.receive", "text": encode_frame(hello)},
@@ -374,6 +387,19 @@ async def test_ws_tunnel_list_runners_reports_online_harnesses(app: FastAPI) -> 
                 "runner_id": _RUNNER_ID,
                 "online": True,
                 "harnesses": ["claude-sdk"],
+                "runner_version": "0.1.0-test",
+                "os": "darwin",
+                "arch": "arm64",
+                "terminal_transports": ["control", "pty"],
+                "tool_capabilities": ["read_file", "write_file", "run_shell"],
+                "workspaces": [
+                    {
+                        "workspace_id": "ws_123",
+                        "display_name": "Omnigent",
+                        "path_label": "~/src/omnigent",
+                        "capabilities": ["read", "write", "shell"],
+                    }
+                ],
             }
         ]
     }

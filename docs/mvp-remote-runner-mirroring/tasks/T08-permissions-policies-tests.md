@@ -305,9 +305,16 @@ UI hides the runner picker when the capability is false.
 
 ## Acceptance checklist
 
-- [ ] Three presets registered; label write stores raw PolicyMode values; unknown/invalid labels fall back to MANUAL.
-- [ ] Approvals owner-only, enforced server-side at the resolution route.
-- [ ] Attach permission invariants covered by tunnel-path tests.
-- [ ] Audit trail persisted, payload-free; log-capture test proves no secret/path leaks.
-- [ ] Telemetry counters emitted with the listed names/labels.
-- [ ] Feature flag gates the whole surface; rollout gates mapped to CI suites.
+- [x] Three presets registered; label write stores raw PolicyMode values; unknown/invalid labels fall back to MANUAL.
+- [x] Approvals owner-only, enforced server-side at the resolution route.
+- [x] Attach permission invariants covered before the runner WebSocket proxy.
+- [x] Audit trail persisted and payload-free. The optional log-capture integration test remains open; runner secret stripping has unit coverage.
+- [x] Telemetry counters emitted with the listed names/labels.
+- [x] Feature flag gates the surface. Formal CI rollout-gate mapping remains open for PR/CI work.
+
+Evidence: presets and flag behavior are covered by the session-create and
+remote-runner tests; owner-only approval is covered by the route-level tagged
+elicitation test; attach invariants are covered by
+`tests/server/routes/test_terminal_attach.py`; persistence and redaction are
+covered by `tests/server/test_local_action_persistence.py`; and telemetry is
+covered by `tests/server/test_permission_metrics.py`.

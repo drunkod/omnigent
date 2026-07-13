@@ -48,12 +48,14 @@ import {
   castAskUserQuestionPayload,
   parseAskUserQuestionPreview,
 } from "@/lib/askUserQuestion";
+import type { LocalActionApproval } from "@/lib/localActionApproval";
 import { formatPreview } from "@/lib/previewFormat";
 import type { RenderItem } from "@/lib/renderItems";
 import type { RememberScope } from "@/lib/types";
 import { useChatStore } from "@/store/chatStore";
 import { AskUserQuestionForm, type AskUserQuestionAnswers } from "./AskUserQuestionForm";
 import { ExitPlanModeReview } from "./ExitPlanModeReview";
+import { LocalActionApprovalDetails } from "./LocalActionApprovalCard";
 
 /**
  * Extract the answer-option labels from an AskUserQuestion-shaped
@@ -91,6 +93,7 @@ interface ApprovalCardProps {
   phase: string;
   policyName: string;
   contentPreview: string;
+  localAction?: LocalActionApproval | null;
   requestedSchema: Record<string, unknown>;
   /**
    * Standalone approval page URL when the elicitation uses URL mode.
@@ -164,6 +167,7 @@ export function ApprovalCard({
   phase,
   policyName,
   contentPreview,
+  localAction,
   requestedSchema,
   url,
   status,
@@ -241,6 +245,12 @@ export function ApprovalCard({
   const isAskUserQuestion = askPayload !== null;
   const isMultiChoice = optionLabels.length > 0;
   const isCodexCommandApproval = codexCommand !== null && codexCommand !== undefined;
+  const localActionLabel =
+    localAction?.kind === "write_file"
+      ? "Write file"
+      : localAction?.kind === "run_shell"
+        ? "Run shell command"
+        : null;
   // External URL: the elicitation points to a third-party page (OAuth,
   // external MCP server, etc.) — show a link. Our own /approve/...
   // paths are handled inline with approve/reject buttons.
@@ -260,7 +270,7 @@ export function ApprovalCard({
   // approvals get a dedicated command render below, so showing the
   // transport JSON would expose unrelated ids and duplicate details.
   const formattedPreview =
-    isAskUserQuestion || isExitPlanMode || isMultiChoice || isCodexCommandApproval
+    localAction || isAskUserQuestion || isExitPlanMode || isMultiChoice || isCodexCommandApproval
       ? ""
       : formatPreview(contentPreview);
   const execPolicyAmendment =
@@ -428,6 +438,8 @@ export function ApprovalCard({
                 </span>
               )}
             </>
+          ) : localAction ? (
+            <span>{localActionLabel} request resolved.</span>
           ) : (
             <span>{message}</span>
           )}
@@ -474,7 +486,7 @@ export function ApprovalCard({
               ? askUserQuestionTitle
               : isMultiChoice
                 ? "Choose an option"
-                : "Approval required"}
+                : (localActionLabel ?? "Approval required")}
         {policyName && !isAskUserQuestion && !isExitPlanMode && (
           <span className="text-muted-foreground text-xs">· {policyName}</span>
         )}
@@ -516,7 +528,8 @@ export function ApprovalCard({
           </>
         ) : (
           <>
-            <span>{message}</span>
+            <span>{localActionLabel ? `${localActionLabel} requires approval.` : message}</span>
+            {localAction && <LocalActionApprovalDetails approval={localAction} />}
             {formattedPreview && (
               <pre className="max-h-64 overflow-y-auto rounded bg-muted px-2 py-1 font-mono text-xs whitespace-pre-wrap break-words">
                 {formattedPreview}
@@ -575,6 +588,7 @@ export function ElicitationCard({
       phase={item.phase}
       policyName={item.policyName}
       contentPreview={item.contentPreview}
+      localAction={item.localAction}
       requestedSchema={item.requestedSchema}
       url={item.url}
       status={item.status}

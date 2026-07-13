@@ -12,6 +12,8 @@ import asyncio
 import contextlib
 import difflib
 import os
+import shlex
+import shutil
 import signal
 import time
 import uuid
@@ -37,6 +39,8 @@ from omnigent.runner.workspace_registry import (
 _MAX_READ_BYTES = 2 * 1024 * 1024
 _MAX_OUTPUT_BYTES = 256 * 1024
 _SHELL_TIMEOUT_S = 600.0
+_MAX_DIFF_PREVIEW_CHARS = 64_000
+_MAX_COMMAND_PREVIEW_CHARS = 2_000
 _ENV_ALLOWLIST = frozenset({"PATH", "HOME", "LANG", "LC_ALL", "TERM", "TMPDIR", "USER", "SHELL"})
 
 AuditPublisher = Callable[["AuditRecord"], None]
@@ -102,6 +106,25 @@ def truncate_output(data: bytes) -> tuple[str, bool]:
     return data.decode("utf-8", errors="replace"), truncated
 
 
+def safe_shell_command_preview(command: str) -> str:
+    """Return a bounded command summary that never includes arguments.
+
+    Shell arguments commonly contain tokens, headers, inline environment
+    values, or private paths. The approval card therefore shows only the
+    executable basename and an explicit hidden-arguments marker.
+    """
+
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        return "Command preview unavailable (unparseable input)."
+    if not parts:
+        return "Command preview unavailable."
+    executable = Path(parts[0]).name or "command"
+    preview = executable if len(parts) == 1 else f"{executable} [arguments hidden]"
+    return preview[:_MAX_COMMAND_PREVIEW_CHARS]
+
+
 def subprocess_env(source: dict[str, str] | None = None) -> dict[str, str]:
     """Return the allowlisted environment for local shell actions.
 
@@ -124,6 +147,7 @@ class LocalActionGateway:
         runner_id: str,
         publish_audit: AuditPublisher,
         request_approval: PayloadApprovalRequester,
+        strict_shell: bool = False,
     ) -> None:
         """Initialize the gateway.
 
@@ -139,6 +163,12 @@ class LocalActionGateway:
         self._runner_id = runner_id
         self._publish_audit = publish_audit
         self._request_approval = request_approval
+        self._strict_shell = strict_shell
+        if strict_shell and shutil.which("bwrap") is None:
+            raise OmnigentError(
+                "strict local shell requires the bwrap sandbox",
+                code=ErrorCode.INVALID_INPUT,
+            )
         self._write_locks: dict[str, asyncio.Lock] = {}
 
     def _write_lock(self, workspace_id: str) -> asyncio.Lock:
@@ -305,7 +335,12 @@ class LocalActionGateway:
             )
         )
         record.command_summary = f"write {path} ({len(content.encode())} bytes)"
-        await self._gate(record, verdict, diff_preview=diff_preview[:64_000])
+        await self._gate(
+            record,
+            verdict,
+            diff_preview=diff_preview[:_MAX_DIFF_PREVIEW_CHARS],
+            diff_truncated=len(diff_preview) > _MAX_DIFF_PREVIEW_CHARS,
+        )
         async with self._write_lock(workspace_id):
             # The approved diff was computed from `before`; if the file
             # changed while approval was pending the preview is stale —
@@ -344,21 +379,65 @@ class LocalActionGateway:
         record = self._new_record(
             session_id=session_id, workspace_id=workspace_id, kind="run_shell", mode=mode
         )
-        record.command_summary = command[:400]
+        command_preview = safe_shell_command_preview(command)
+        record.command_summary = command_preview
         record.cwd = cwd
-        await self._gate(record, classify_action("run_shell", mode=mode, command=command, cwd=cwd))
+        await self._gate(
+            record,
+            classify_action("run_shell", mode=mode, command=command, cwd=cwd),
+            command_preview=command_preview,
+            shell_guarantee="strict_workspace" if self._strict_shell else "trusted_machine",
+        )
         resolved_cwd = self._resolve_or_audit(record, cwd)
         record.started_at = time.time()
         record.status = "running"
         self._publish_audit(record)
-        proc = await asyncio.create_subprocess_shell(
-            command,
-            cwd=str(resolved_cwd),
-            env=subprocess_env(),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            start_new_session=True,
-        )
+        env = subprocess_env()
+        if self._strict_shell:
+            proc = await asyncio.create_subprocess_exec(
+                "bwrap",
+                "--die-with-parent",
+                "--unshare-net",
+                "--ro-bind",
+                "/usr",
+                "/usr",
+                "--ro-bind",
+                "/bin",
+                "/bin",
+                "--ro-bind",
+                "/lib",
+                "/lib",
+                "--proc",
+                "/proc",
+                "--dev",
+                "/dev",
+                "--bind",
+                str(resolved_cwd),
+                "/workspace",
+                "--chdir",
+                "/workspace",
+                "--setenv",
+                "HOME",
+                "/workspace",
+                "--",
+                "/bin/sh",
+                "-lc",
+                command,
+                cwd=str(resolved_cwd),
+                env=env,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                start_new_session=True,
+            )
+        else:
+            proc = await asyncio.create_subprocess_shell(
+                command,
+                cwd=str(resolved_cwd),
+                env=env,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                start_new_session=True,
+            )
         try:
             stdout, stderr = await asyncio.wait_for(proc.communicate(), _SHELL_TIMEOUT_S)
         except asyncio.TimeoutError as exc:

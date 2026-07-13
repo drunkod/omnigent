@@ -44,6 +44,7 @@ from fastapi import FastAPI
 from omnigent.runtime import get_caps, session_stream
 from omnigent.runtime.agent_cache import AgentCache
 from omnigent.runtime.caps import RuntimeCaps
+from omnigent.server._elicitation_registry import _local_action_elicitations
 from omnigent.server.app import create_app
 from omnigent.spec.types import FunctionPolicySpec, FunctionRef
 from omnigent.stores.agent_store.sqlalchemy_store import SqlAlchemyAgentStore
@@ -1357,6 +1358,138 @@ async def test_resolve_url_cross_user_forbidden(
     # Non-owner is denied (403 forbidden, or 404 to avoid leaking
     # existence — both are acceptable refusals).
     assert resp.status_code in (403, 404), resp.text
+
+
+async def test_tagged_local_action_gate_survives_wrong_session_route(
+    auth_client: httpx.AsyncClient,
+    db_uri: str,
+) -> None:
+    """A wrong-session approval cannot consume another session's tag."""
+    from omnigent.server.auth import LEVEL_EDIT
+    from omnigent.stores.permission_store.sqlalchemy_store import SqlAlchemyPermissionStore
+
+    agent = await create_test_agent(auth_client, user="alice@example.com")
+    bob_agent = await create_test_agent(auth_client, user="bob@example.com")
+    session_a = await _create_session(auth_client, agent["id"], user="alice@example.com")
+    session_b = await _create_session(auth_client, bob_agent["id"], user="bob@example.com")
+    SqlAlchemyPermissionStore(db_uri).grant("bob@example.com", session_a, LEVEL_EDIT)
+    elicitation_id = "elicit_route_local_action"
+    _local_action_elicitations[elicitation_id] = session_a
+    try:
+        wrong_session = await auth_client.post(
+            f"/v1/sessions/{session_b}/elicitations/{elicitation_id}/resolve",
+            json={"action": "accept"},
+            headers={"X-Forwarded-Email": "bob@example.com"},
+        )
+        assert wrong_session.status_code == 202, wrong_session.text
+        assert _local_action_elicitations[elicitation_id] == session_a
+
+        collaborator = await auth_client.post(
+            f"/v1/sessions/{session_a}/elicitations/{elicitation_id}/resolve",
+            json={"action": "accept"},
+            headers={"X-Forwarded-Email": "bob@example.com"},
+        )
+        assert collaborator.status_code == 403, collaborator.text
+    finally:
+        _local_action_elicitations.pop(elicitation_id, None)
+
+
+async def test_nested_local_action_owner_resolves_after_collaborator_denial(
+    auth_client: httpx.AsyncClient,
+    db_uri: str,
+) -> None:
+    """The typed runner payload stays pending until its owner resolves it."""
+    from omnigent.runtime import pending_elicitations
+    from omnigent.server.auth import LEVEL_EDIT
+
+    agent = await create_test_agent(auth_client, user="alice@example.com")
+    session_id = await _create_session(
+        auth_client,
+        agent["id"],
+        user="alice@example.com",
+    )
+    SqlAlchemyPermissionStore(db_uri).grant("bob@example.com", session_id, LEVEL_EDIT)
+    subscribed = asyncio.Event()
+    drain = asyncio.create_task(_drain_until_elicitation_event(session_id, subscribed=subscribed))
+    try:
+        await subscribed.wait()
+        publish = await auth_client.post(
+            f"/v1/sessions/{session_id}/events",
+            json={
+                "type": "mcp_elicitation",
+                "data": {
+                    "message": "Approve local action: write_file",
+                    "requestedSchema": {"type": "object"},
+                    "local_action": {
+                        "version": 1,
+                        "action_id": "act_route_write",
+                        "kind": "write_file",
+                        "policy_mode": "manual",
+                        "cwd": ".",
+                        "path_summary": ["approved.txt"],
+                        "diff_preview": "--- a/approved.txt\n+++ b/approved.txt",
+                        "diff_truncated": False,
+                        "risk_flags": ["writes_files"],
+                    },
+                },
+            },
+            headers={"X-Forwarded-Email": "alice@example.com"},
+        )
+        assert publish.status_code == 202, publish.text
+        elicitation_id = publish.json()["elicitation_id"]
+        event = await drain
+        assert event["params"]["local_action"] == {
+            "version": 1,
+            "action_id": "act_route_write",
+            "kind": "write_file",
+            "policy_mode": "manual",
+            "cwd": ".",
+            "path_summary": ["approved.txt"],
+            "diff_preview": "--- a/approved.txt\n+++ b/approved.txt",
+            "diff_truncated": False,
+            "risk_flags": ["writes_files"],
+            "workspace_label": None,
+            "command_preview": None,
+            "shell_guarantee": None,
+            "expires_at": None,
+        }
+        assert "kind" not in event["params"]
+        assert (
+            "content_preview" not in event["params"] or event["params"]["content_preview"] is None
+        )
+
+        collaborator = await auth_client.post(
+            f"/v1/sessions/{session_id}/elicitations/{elicitation_id}/resolve",
+            json={"action": "accept"},
+            headers={"X-Forwarded-Email": "bob@example.com"},
+        )
+        assert collaborator.status_code == 403, collaborator.text
+        assert _local_action_elicitations[elicitation_id] == session_id
+        assert pending_elicitations.count_for(session_id) == 1
+
+        owner = await auth_client.post(
+            f"/v1/sessions/{session_id}/elicitations/{elicitation_id}/resolve",
+            json={"action": "accept"},
+            headers={"X-Forwarded-Email": "alice@example.com"},
+        )
+        assert owner.status_code == 202, owner.text
+        assert elicitation_id not in _local_action_elicitations
+        assert pending_elicitations.count_for(session_id) == 0
+
+        replay = await auth_client.post(
+            f"/v1/sessions/{session_id}/elicitations/{elicitation_id}/resolve",
+            json={"action": "accept"},
+            headers={"X-Forwarded-Email": "alice@example.com"},
+        )
+        assert replay.status_code == 202, replay.text
+        assert pending_elicitations.count_for(session_id) == 0
+    finally:
+        if not drain.done():
+            drain.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await drain
+        _local_action_elicitations.clear()
+        pending_elicitations.reset_for_tests()
 
 
 # ── GET /sessions/{id}/elicitations/{eid} (approval page) ────

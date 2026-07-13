@@ -81,6 +81,7 @@ import {
   nativeWrapperLabelsForAgent,
 } from "@/lib/nativeCodingAgents";
 import { useHosts, type Host } from "@/hooks/useHosts";
+import { useLocalRunners } from "@/hooks/useLocalRunners";
 import {
   controlHost,
   getHostIdentity,
@@ -1809,6 +1810,8 @@ export function NewChatLandingScreen() {
   // config can actually serve a managed launch advertise it. "loading"
   // fails closed (option hidden) until the boot probe resolves.
   const info = useServerInfo();
+  const localRunnerFeatureEnabled = info !== "loading" && info.remote_local_runner;
+  const { data: localRunners } = useLocalRunners(localRunnerFeatureEnabled);
   const managedSandboxesEnabled = info !== "loading" && info.managed_sandboxes_enabled;
   const smartRoutingEnabled = info !== "loading" && info.smart_routing_enabled;
   // Provider-named label for the sandbox option (e.g. "Modal Sandbox"),
@@ -1834,6 +1837,8 @@ export function NewChatLandingScreen() {
   const [selectedHostId, setSelectedHostId] = useState<string | null>(
     () => landingDraft?.selectedHostId ?? null,
   );
+  const [selectedRunnerId, setSelectedRunnerId] = useState<string | null>(null);
+  const [selectedRunnerWorkspaceId, setSelectedRunnerWorkspaceId] = useState<string | null>(null);
   // True when the user picked the sandbox option instead of a connected
   // host — the server provisions a sandbox host at create time
   // (host_type: "managed"), so no host_id or workspace is sent.
@@ -2028,7 +2033,7 @@ export function NewChatLandingScreen() {
   // already in state (or restored from the in-memory draft) is never
   // overridden.
   useEffect(() => {
-    if (sandboxSelected) return;
+    if (sandboxSelected || selectedRunnerId !== null) return;
     if (selectedHostId !== null) return;
 
     // Read the persisted pick once, as a mount-time seed — deliberately NOT a
@@ -2066,7 +2071,15 @@ export function NewChatLandingScreen() {
     }
     const firstOnline = (hosts ?? []).find((h) => h.status === "online");
     if (firstOnline) setSelectedHostId(firstOnline.host_id);
-  }, [hosts, hostsLoading, selectedHostId, sandboxSelected, managedSandboxesEnabled, info]);
+  }, [
+    hosts,
+    hostsLoading,
+    selectedHostId,
+    selectedRunnerId,
+    sandboxSelected,
+    managedSandboxesEnabled,
+    info,
+  ]);
 
   // Fall back to the host's home directory when it has no recorded recents, so
   // the working-directory field is pre-filled and the user can send in one
@@ -2188,6 +2201,12 @@ export function NewChatLandingScreen() {
   // not intercept them — no skills menu, no slash_command routing.
   const isNativeTerminalAgent = isNativeCodingAgent(selectedAgent);
   const selectedHost = allHosts.find((h) => h.host_id === selectedHostId);
+  const selectedRunner = localRunners?.find((runner) => runner.runner_id === selectedRunnerId);
+  const selectedRunnerWorkspace = selectedRunner?.workspaces.find(
+    (workspace) => workspace.workspace_id === selectedRunnerWorkspaceId,
+  );
+  const localRunnerSelected = selectedRunnerId !== null;
+  const selectedRunnerHarness = pickedHarness ?? selectedAgent?.harness ?? null;
   // Warn-only readiness signal for the agent picker: only meaningful when
   // a connected host is selected (a sandbox provisions its own tooling).
   // Selection stays allowed — the host re-checks at launch and the create
@@ -2467,7 +2486,11 @@ export function NewChatLandingScreen() {
   const canSubmit =
     message.trim().length > 0 &&
     selectedAgent != null &&
-    (sandboxSelected ? sandboxRepoValid : !!selectedHostId && workspaceValid) &&
+    (sandboxSelected
+      ? sandboxRepoValid
+      : localRunnerSelected
+        ? selectedRunnerWorkspaceId !== null && selectedRunner?.online === true
+        : !!selectedHostId && workspaceValid) &&
     !creating;
 
   // Why submit is disabled, surfaced as the button's tooltip. Checked in the
@@ -2478,7 +2501,10 @@ export function NewChatLandingScreen() {
     ? null
     : sandboxSelected && !sandboxRepoValid
       ? "Please enter a valid repository URL"
-      : !sandboxSelected && (!selectedHostId || !workspaceValid)
+      : !sandboxSelected &&
+          (localRunnerSelected
+            ? selectedRunnerWorkspaceId === null
+            : !selectedHostId || !workspaceValid)
         ? "Please choose a host and working directory"
         : message.trim().length === 0
           ? "Enter a message to get started"
@@ -2492,7 +2518,11 @@ export function NewChatLandingScreen() {
     ? "Connecting…"
     : sandboxSelected
       ? sandboxLabel
-      : (selectedHost?.name ?? (onlineHosts.length === 0 ? "No hosts" : "Select host"));
+      : localRunnerSelected
+        ? selectedRunner?.runner_version
+          ? `Runner ${selectedRunner.runner_version}`
+          : "Local runner"
+        : (selectedHost?.name ?? (onlineHosts.length === 0 ? "No hosts" : "Select host"));
   // The chip shows just the branch (the "(existing)" distinction lives in the
   // popover's warning; appending it here only gets clipped by the chip's cap).
   const worktreeLabel = branchName.trim() || "No worktree";
@@ -2548,6 +2578,8 @@ export function NewChatLandingScreen() {
     // has selected (e.g. the auto-picked first online host) is exactly the
     // one they're most likely to click in the menu.
     if (hostId === selectedHostId) return;
+    setSelectedRunnerId(null);
+    setSelectedRunnerWorkspaceId(null);
     setSandboxSelected(false);
     setSelectedHostId(hostId);
     // Workspace is host-specific — clear it and let the seeding effect run for
@@ -2565,7 +2597,19 @@ export function NewChatLandingScreen() {
     // Mirror selectHost: a managed session's host and workspace are both
     // server-chosen, so clear any prior host pick and its workspace.
     setSandboxSelected(true);
+    setSelectedRunnerId(null);
+    setSelectedRunnerWorkspaceId(null);
     setSelectedHostId(null);
+    setWorkspace("");
+    seededHostRef.current = null;
+  }
+
+  function selectLocalRunner(runnerId: string) {
+    const runner = localRunners?.find((item) => item.runner_id === runnerId);
+    setSandboxSelected(false);
+    setSelectedHostId(null);
+    setSelectedRunnerId(runnerId);
+    setSelectedRunnerWorkspaceId(runner?.workspaces[0]?.workspace_id ?? null);
     setWorkspace("");
     seededHostRef.current = null;
   }
@@ -2619,7 +2663,13 @@ export function NewChatLandingScreen() {
         // same way the fork-resume path does.
         const bundle = await buildAgentBundle(pendingAgent);
         const metadata: Record<string, unknown> = {};
-        if (workspaceTrimmed) metadata.workspace = workspaceTrimmed;
+        if (localRunnerSelected) {
+          metadata.runner_id = selectedRunnerId;
+          metadata.workspace_id = selectedRunnerWorkspaceId;
+          metadata.local_runner_policy = "manual";
+        } else if (workspaceTrimmed) {
+          metadata.workspace = workspaceTrimmed;
+        }
         data = await createBundledSession(
           bundle,
           metadata as Parameters<typeof createBundledSession>[1],
@@ -2651,18 +2701,25 @@ export function NewChatLandingScreen() {
                   host_type: "managed",
                   workspace: composeSandboxWorkspace(sandboxRepoUrl, sandboxRepoBranch),
                 }
-              : {
-                  host_id: selectedHostId,
-                  workspace: workspaceTrimmed,
-                  // Create a new worktree, or bind an existing one
-                  // (`existing_worktree` records the branch for the sidebar +
-                  // delete flow without creating anything), or neither.
-                  git: shouldCreateWorktree
-                    ? { branch_name: trimmedBranch, base_branch: baseBranch.trim() || undefined }
-                    : startInExistingWorktree
-                      ? { branch_name: trimmedBranch, existing_worktree: true }
-                      : undefined,
-                }),
+              : localRunnerSelected
+                ? {
+                    runner_id: selectedRunnerId,
+                    workspace_id: selectedRunnerWorkspaceId,
+                    execution_mode: "local_runner",
+                    local_runner_policy: "manual",
+                  }
+                : {
+                    host_id: selectedHostId,
+                    workspace: workspaceTrimmed,
+                    // Create a new worktree, or bind an existing one
+                    // (`existing_worktree` records the branch for the sidebar +
+                    // delete flow without creating anything), or neither.
+                    git: shouldCreateWorktree
+                      ? { branch_name: trimmedBranch, base_branch: baseBranch.trim() || undefined }
+                      : startInExistingWorktree
+                        ? { branch_name: trimmedBranch, existing_worktree: true }
+                        : undefined,
+                  }),
             // Native terminal agents open terminal-first: `omnigent.ui:
             // terminal` tells the UI to render the terminal wrapper, and
             // `omnigent.wrapper` selects which CLI bridge the runner launches.
@@ -3233,6 +3290,39 @@ export function NewChatLandingScreen() {
                       <DropdownMenuSeparator />
                     </>
                   )}
+                  {localRunnerFeatureEnabled && (localRunners?.length ?? 0) > 0 && (
+                    <>
+                      {localRunners?.map((runner) => (
+                        <DropdownMenuItem
+                          key={runner.runner_id}
+                          onSelect={() => selectLocalRunner(runner.runner_id)}
+                          disabled={
+                            !runner.online ||
+                            runner.workspaces.length === 0 ||
+                            (selectedRunnerHarness !== null &&
+                              !runner.harnesses.includes(selectedRunnerHarness))
+                          }
+                          data-testid={`new-chat-landing-runner-${runner.runner_id}`}
+                          data-active={runner.runner_id === selectedRunnerId ? "true" : undefined}
+                          className="text-xs data-[active=true]:bg-accent/60"
+                        >
+                          <MonitorIcon className="size-4 shrink-0 text-muted-foreground" />
+                          <span className="flex min-w-0 flex-col">
+                            <span className="truncate">Local runner</span>
+                            <span className="truncate text-[11px] text-muted-foreground">
+                              {!runner.online
+                                ? "offline"
+                                : selectedRunnerHarness !== null &&
+                                    !runner.harnesses.includes(selectedRunnerHarness)
+                                  ? `missing ${selectedRunnerHarness}`
+                                  : `${runner.workspaces.length} workspace(s)`}
+                            </span>
+                          </span>
+                        </DropdownMenuItem>
+                      ))}
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
                   {allHosts.length === 0 && !showConnectThisMachine && (
                     <div className="px-2 py-1.5 text-xs text-muted-foreground">
                       No hosts connected yet.
@@ -3401,7 +3491,7 @@ export function NewChatLandingScreen() {
                 banner inside the browser on the occupied folder. Hidden for
                 sandbox sessions — the repository chip above replaces it (the
                 server creates the directory inside the sandbox). */}
-              {!sandboxSelected && (
+              {!sandboxSelected && !localRunnerSelected && (
                 <Popover open={workspacePopoverOpen} onOpenChange={setWorkspacePopoverOpen}>
                   <PopoverTrigger asChild>{workspaceChip}</PopoverTrigger>
                   {/* Cap to the viewport so the 420px browser can't overflow a
@@ -3432,9 +3522,54 @@ export function NewChatLandingScreen() {
                 </Popover>
               )}
 
+              {localRunnerSelected && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex h-6 items-center gap-1 rounded-full px-2.5 text-13 font-normal text-muted-foreground transition-colors hover:text-foreground"
+                      data-testid="new-chat-landing-runner-workspace-chip"
+                    >
+                      <FolderIcon className="size-4 shrink-0" />
+                      <span className="hidden max-w-40 truncate text-foreground sm:block">
+                        {selectedRunnerWorkspace?.display_name ??
+                          selectedRunnerWorkspace?.path_label ??
+                          "Select workspace"}
+                      </span>
+                      <ChevronDownIcon className="size-3.5 shrink-0 opacity-60" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="min-w-56">
+                    {(selectedRunner?.workspaces ?? []).map((workspaceOption) => (
+                      <DropdownMenuItem
+                        key={workspaceOption.workspace_id}
+                        onSelect={() => setSelectedRunnerWorkspaceId(workspaceOption.workspace_id)}
+                        data-active={
+                          workspaceOption.workspace_id === selectedRunnerWorkspaceId
+                            ? "true"
+                            : undefined
+                        }
+                        className="text-xs data-[active=true]:bg-accent/60"
+                      >
+                        <span className="flex min-w-0 flex-col">
+                          <span className="truncate">
+                            {workspaceOption.display_name ??
+                              workspaceOption.path_label ??
+                              "Workspace"}
+                          </span>
+                          <span className="truncate text-[11px] text-muted-foreground">
+                            {workspaceOption.capabilities.join(", ") || "No capabilities reported"}
+                          </span>
+                        </span>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+
               {/* Git worktree chip — hidden for sandbox sessions (worktree
                 creation requires a caller-supplied host_id). */}
-              {!sandboxSelected && (
+              {!sandboxSelected && !localRunnerSelected && (
                 <Popover open={worktreePopoverOpen} onOpenChange={setWorktreePopoverOpen}>
                   <PopoverTrigger asChild>
                     <button
