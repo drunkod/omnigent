@@ -7,6 +7,7 @@ import asyncio
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed
 
+from omnigent.runner.transports.ws_tunnel.frames import WSCloseFrame
 from tests.terminal_e2e.conftest import TerminalTunnelFixture
 
 
@@ -90,3 +91,42 @@ async def test_same_runner_reconnect_reattaches_without_duplicate_io(
         await second.send(b"after-reconnect\n")
         after = await _receive_until(second, b"T12_ECHO:after-reconnect")
         assert after.count(b"T12_ECHO:after-reconnect") == 1
+
+
+async def test_stale_generation_close_cannot_cover_live_reconnected_terminal(
+    terminal_tunnel: TerminalTunnelFixture,
+    monkeypatch,
+) -> None:
+    """A late close from the retired generation cannot tear down the new attach."""
+
+    class _FixedSecrets:
+        @staticmethod
+        def token_hex(_length: int) -> str:
+            return "deadbeef"
+
+    monkeypatch.setattr("omnigent.server._runner_ws_tunnel.secrets", _FixedSecrets())
+    headers = {"X-Forwarded-Email": "owner@example.com"}
+
+    async with connect(terminal_tunnel.url(), additional_headers=headers) as first:
+        await _receive_until(first, b"T12_READY")
+        retired = await terminal_tunnel.disconnect_runner()
+        closed = await _wait_for_close(first)
+        assert closed.rcvd is not None and closed.rcvd.code == 4503
+
+    terminal_tunnel.reconnect_runner()
+    async with connect(terminal_tunnel.url(), additional_headers=headers) as second:
+        await _receive_until(second, b"T12_READY")
+        current = terminal_tunnel.tunnel_registry.get(terminal_tunnel.runner_id)
+        assert current is not None
+        assert "deadbeef" in current.ws_channels
+
+        delivered = terminal_tunnel.tunnel_registry.route_ws_inbound(
+            terminal_tunnel.runner_id,
+            WSCloseFrame(ch_id="deadbeef", code=4404, reason="stale terminal exit"),
+            session=retired,
+        )
+        assert delivered is False
+
+        await second.send(b"still-live-after-stale-close\n")
+        output = await _receive_until(second, b"T12_ECHO:still-live-after-stale-close")
+        assert output.count(b"T12_ECHO:still-live-after-stale-close") == 1
