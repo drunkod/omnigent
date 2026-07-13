@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useResizableColumn } from "@/hooks/useResizableColumn";
 import { inventoryTerminals, terminalTabKey, useTerminals } from "@/hooks/useTerminals";
 import { useTerminalFirst } from "./TerminalFirstContext";
+import { useRetainedActiveTerminal } from "./useRetainedActiveTerminal";
 import { useTerminalStatuses } from "./useTerminalStatuses";
 
 // Only the terminal the user actually selects opens a WebSocket (via
@@ -29,8 +30,11 @@ export function useTerminalSplit(conversationId: string) {
     conversationId,
   );
 
-  const activeTerminal =
-    activeKey !== null ? (terminals.find((t) => terminalTabKey(t) === activeKey) ?? null) : null;
+  const { activeTerminal, isExitedTombstone } = useRetainedActiveTerminal(
+    conversationId,
+    terminals,
+    activeKey,
+  );
 
   const {
     width: listWidth,
@@ -42,8 +46,10 @@ export function useTerminalSplit(conversationId: string) {
   // auto-select — null is the intentional "no terminal selected" state.
   useEffect(() => {
     if (activeKey === null) return;
-    if (!terminals.some((t) => terminalTabKey(t) === activeKey)) setActiveKey(null);
-  }, [terminals, activeKey]);
+    if (!terminals.some((t) => terminalTabKey(t) === activeKey) && !isExitedTombstone) {
+      setActiveKey(null);
+    }
+  }, [terminals, activeKey, isExitedTombstone]);
 
   return {
     terminals,

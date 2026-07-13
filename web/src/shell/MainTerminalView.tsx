@@ -19,6 +19,7 @@ import { TerminalView } from "@/components/blocks/TerminalView";
 import { AGENT_TERMINAL_IDS, terminalTabKey, useTerminals } from "@/hooks/useTerminals";
 import { useTerminalFirst } from "./TerminalFirstContext";
 import { TerminalStatusBadge } from "./terminalStatus";
+import { useRetainedActiveTerminal } from "./useRetainedActiveTerminal";
 import { useTerminalStatuses } from "./useTerminalStatuses";
 
 interface MainTerminalViewProps {
@@ -67,6 +68,11 @@ export function MainTerminalView({
   // with the initial "" in the validity closure, and its
   // terminals[0] fallback would win).
   const [activeKey, setActiveKey] = useState(initialTerminalKey || "");
+  const { activeTerminal, isExitedTombstone } = useRetainedActiveTerminal(
+    conversationId,
+    terminals,
+    activeKey,
+  );
   const { getStatus, setTerminalConnectionState, markTerminalActive } = useTerminalStatuses(
     terminals,
     conversationId,
@@ -93,10 +99,10 @@ export function MainTerminalView({
   useEffect(() => {
     if (terminals.length === 0) return;
     const stillValid = terminals.some((t) => terminalTabKey(t) === activeKey);
-    if (!stillValid) setActiveKey(terminalTabKey(agentTerminals[0] ?? terminals[0]));
-  }, [terminals, agentTerminals, activeKey]);
-
-  const activeTerminal = terminals.find((t) => terminalTabKey(t) === activeKey) ?? null;
+    if (!stillValid && !isExitedTombstone) {
+      setActiveKey(terminalTabKey(agentTerminals[0] ?? terminals[0]));
+    }
+  }, [terminals, agentTerminals, activeKey, isExitedTombstone]);
   // A user shell opened from the rail takes over the pane chrome-free:
   // a single header row naming the shell plus a close X — no agent tab
   // (the shell is not the agent). The Chat/Terminal pill is hidden in
@@ -131,7 +137,7 @@ export function MainTerminalView({
       className="main-terminal-view flex min-h-0 flex-1 flex-col px-3 pt-14 pb-1.5"
     >
       <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card p-3 shadow-sm">
-        {terminals.length === 0 ? (
+        {terminals.length === 0 && activeTerminal === null ? (
           <div className="flex flex-1 items-center justify-center text-muted-foreground text-sm">
             No terminals available.
           </div>

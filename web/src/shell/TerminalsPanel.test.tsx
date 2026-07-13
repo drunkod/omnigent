@@ -1,26 +1,36 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type TerminalInfo, useTerminals } from "@/hooks/useTerminals";
+import { useTerminalLifecycleStore } from "@/store/terminalLifecycleStore";
 import { TerminalsPanel } from "./TerminalsPanel";
 
-vi.mock("@/components/blocks/TerminalView", () => ({
-  TerminalView: ({
-    sessionId,
-    terminalId,
-    readOnly,
-  }: {
-    sessionId: string;
-    terminalId: string;
-    readOnly?: boolean;
-  }) => (
-    <div
-      data-testid="terminal-view"
-      data-session-id={sessionId}
-      data-terminal-id={terminalId}
-      data-read-only={String(readOnly ?? false)}
-    />
-  ),
-}));
+vi.mock("@/components/blocks/TerminalView", async () => {
+  const { selectTerminalState, useTerminalLifecycleStore } =
+    await import("@/store/terminalLifecycleStore");
+  return {
+    TerminalView: ({
+      sessionId,
+      terminalId,
+      readOnly,
+    }: {
+      sessionId: string;
+      terminalId: string;
+      readOnly?: boolean;
+    }) => {
+      const terminalState = useTerminalLifecycleStore(selectTerminalState(sessionId, terminalId));
+      return (
+        <div
+          data-testid="terminal-view"
+          data-session-id={sessionId}
+          data-terminal-id={terminalId}
+          data-read-only={String(readOnly ?? false)}
+        >
+          {terminalState === "terminal_exited" ? "Terminal exited." : null}
+        </div>
+      );
+    },
+  };
+});
 
 vi.mock("@/hooks/useTerminals", async (importOriginal) => ({
   // Keep the real module (inventoryTerminals etc.) — only the
@@ -82,6 +92,7 @@ function renderPanel({
 beforeEach(() => {
   vi.useFakeTimers();
   useTerminalsMock.mockReset();
+  useTerminalLifecycleStore.setState({ byConversation: {} });
 });
 
 afterEach(() => {
@@ -185,5 +196,43 @@ describe("TerminalsPanel navigation", () => {
       "data-terminal-id",
       "terminal_main",
     );
+  });
+
+  it("retains an exited active panel after removing its inventory row", () => {
+    const terminalA = makeTerminal("terminal_main", "main", "s1");
+    const terminalB = makeTerminal("terminal_worker", "worker", "s2");
+    const view = renderPanel({
+      initialTerminalKey: "terminal:terminal_main",
+      terminals: [terminalA, terminalB],
+    });
+    act(() => {
+      vi.advanceTimersByTime(180);
+    });
+
+    act(() => {
+      useTerminalLifecycleStore.getState().applyTerminalState({
+        type: "session_terminal_state",
+        conversationId: "conv_terminal",
+        terminalId: terminalA.id,
+        state: "terminal_exited",
+      });
+    });
+    useTerminalList([terminalB]);
+    view.rerender(
+      <TerminalsPanel
+        open
+        conversationId="conv_terminal"
+        initialTerminalKey="terminal:terminal_main"
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /main/i })).toBeNull();
+    expect(screen.getByText("Terminal exited.")).toBeInTheDocument();
+    expect(screen.getByTestId("terminal-view")).toHaveAttribute("data-terminal-id", terminalA.id);
+
+    fireEvent.click(screen.getByRole("button", { name: /worker/i }));
+    expect(screen.getByTestId("terminal-view")).toHaveAttribute("data-terminal-id", terminalB.id);
+    expect(screen.queryByText("Terminal exited.")).toBeNull();
   });
 });
