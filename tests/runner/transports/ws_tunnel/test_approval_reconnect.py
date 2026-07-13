@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -45,7 +46,8 @@ class _HarnessClient:
         body = kwargs.get("json")
         assert isinstance(body, dict)
         self.posts.append((path, body))
-        return httpx.Response(204, request=httpx.Request("POST", f"http://harness{path}"))
+        request = httpx.Request("POST", f"http://harness{path}")
+        return httpx.Response(204, request=request)
 
 
 class _ProcessManager:
@@ -61,7 +63,7 @@ class _ProcessManager:
         return self.client
 
 
-async def _wait_until(predicate, *, timeout: float = 2.0) -> None:
+async def _wait_until(predicate: Callable[[], bool], *, timeout: float = 2.0) -> None:
     async with asyncio.timeout(timeout):
         while not predicate():
             await asyncio.sleep(0.01)
@@ -86,7 +88,9 @@ async def test_pending_local_action_executes_once_after_runner_tunnel_reconnect(
     runner_app.state.local_action_gateway._publish_audit = (  # noqa: SLF001
         lambda record: audits.append(record.to_event())
     )
-    workspace = runner_app.state.local_action_gateway._workspaces.advertise(home=tmp_path)[0]  # noqa: SLF001
+    workspace = (  # noqa: SLF001
+        runner_app.state.local_action_gateway._workspaces.advertise(home=tmp_path)[0]
+    )
     workspace_id = workspace["workspace_id"]
     assert isinstance(workspace_id, str)
 
@@ -101,7 +105,11 @@ async def test_pending_local_action_executes_once_after_runner_tunnel_reconnect(
     target = tmp_path / "approved-after-reconnect.txt"
 
     try:
-        async with run_tunnel_harness(runner_app, runner_id=runner_id, hello=hello) as tunnel:
+        async with run_tunnel_harness(
+            runner_app,
+            runner_id=runner_id,
+            hello=hello,
+        ) as tunnel:
             old_transport = WSTunnelTransport(tunnel.registry, runner_id)
             async with httpx.AsyncClient(
                 transport=old_transport,
@@ -121,7 +129,9 @@ async def test_pending_local_action_executes_once_after_runner_tunnel_reconnect(
                     )
                 )
                 await asyncio.wait_for(server.elicitation_seen.wait(), timeout=2.0)
-                await _wait_until(lambda: pending_approvals.has_pending("conv_t12_approval"))
+                await _wait_until(
+                    lambda: pending_approvals.has_pending("conv_t12_approval")
+                )
                 assert not target.exists()
 
                 await tunnel.disconnect()
@@ -153,7 +163,9 @@ async def test_pending_local_action_executes_once_after_runner_tunnel_reconnect(
                 assert replay.status_code == 204, replay.text
 
             await _wait_until(target.exists)
-            await _wait_until(lambda: any(event.get("status") == "completed" for event in audits))
+            await _wait_until(
+                lambda: any(event.get("status") == "completed" for event in audits)
+            )
 
         assert target.read_text(encoding="utf-8") == "approved exactly once\n"
         statuses = [event["status"] for event in audits]
