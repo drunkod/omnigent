@@ -76,6 +76,7 @@ jobs:
           uv run python -m pytest -q
           tests/terminal_e2e/test_lifecycle.py
           tests/runner/transports/ws_tunnel/test_approval_reconnect.py
+          tests/runner/transports/ws_tunnel/test_ws_attach_e2e.py
       - run: >-
           npx vitest run
           src/components/blocks/TerminalView.test.tsx
