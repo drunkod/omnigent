@@ -23,10 +23,10 @@ fails when tmux is unavailable.
 | Read-only output with no input side effect | Covered | `test_read_only_collaborator_observes_but_cannot_drive_terminal` |
 | Single canonical line of 4 KiB or larger | Not guaranteed | The supported large-paste proof uses bounded lines to respect the host terminal's `MAX_CANON` limit. |
 | PTY transport and unsupported transport close | Pending | No live T12 test. |
-| Ctrl-C interrupts the foreground process | Pending | No live T12 test. |
-| ESC, arrows, tab, backspace, and Enter | Pending | No live T12 test. |
-| Alternate-screen enter and exit | Pending | No live T12 test. |
-| Rapid output remains ordered and bounded | Pending | No live T12 test. |
+| Ctrl-C interrupts the foreground process | Covered | `test_ctrl_c_interrupts_foreground_process` |
+| ESC, arrows, tab, backspace, and Enter | Covered | `test_control_key_sequences_arrive_byte_exact` |
+| Alternate-screen enter and exit | Covered | `test_alternate_screen_enter_and_exit_bytes_are_forwarded` |
+| Rapid output remains ordered and bounded | Covered | `test_rapid_output_remains_ordered_and_bounded` |
 
 ## Authorization and lifecycle
 
