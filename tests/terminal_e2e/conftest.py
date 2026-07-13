@@ -125,21 +125,47 @@ async def terminal_tunnel(tmp_path: Path) -> AsyncIterator[TerminalTunnelFixture
     terminal_id = "terminal_probe_main"
     terminal_registry = TerminalRegistry()
     script = textwrap.dedent(
-        """
+        r'''
         import os
         import signal
         import sys
+        import termios
+        import tty
 
         def report_size(*_args):
             size = os.get_terminal_size(sys.stdout.fileno())
             print(f"T12_SIZE:{size.columns}x{size.lines}", flush=True)
 
+        def report_raw_bytes():
+            fd = sys.stdin.fileno()
+            previous = termios.tcgetattr(fd)
+            payload = bytearray()
+            try:
+                tty.setraw(fd)
+                print("T12_RAW_READY", flush=True)
+                while b"\x04" not in payload:
+                    payload.extend(os.read(fd, 64))
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, previous)
+            raw = bytes(payload).split(b"\x04", 1)[0]
+            print("T12_RAW_HEX:" + raw.hex(), flush=True)
+
         signal.signal(signal.SIGWINCH, report_size)
         print("T12_READY", flush=True)
         for line in sys.stdin:
-            sys.stdout.write("T12_ECHO:" + line)
-            sys.stdout.flush()
-        """
+            command = line.rstrip("\r\n")
+            if command == "T12_RAW":
+                report_raw_bytes()
+            elif command == "T12_ALTSCREEN":
+                sys.stdout.write("\x1b[?1049hT12_ALT_ENTER\x1b[?1049lT12_ALT_EXIT\n")
+                sys.stdout.flush()
+            elif command == "T12_BURST":
+                for index in range(256):
+                    print(f"T12_BURST:{index:04d}:" + "x" * 128, flush=True)
+            else:
+                sys.stdout.write("T12_ECHO:" + line)
+                sys.stdout.flush()
+        '''
     )
     await terminal_registry.launch(
         session_id,
