@@ -1179,7 +1179,7 @@ export function AppShell() {
                     <WorkspacePanel
                       conversationId={conversationId}
                       width={inlinePanelWidth}
-                      inert={inlinePanelWidth === 0}
+                      inert={inlinePanelWidth === 0 || undefined}
                       handleProps={inlinePanelHandleProps}
                       rightRailTab={rightRailTab}
                       onRightRailTabChange={handleRightRailTabChange}

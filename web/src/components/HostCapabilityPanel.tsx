@@ -1,15 +1,22 @@
 import { useLocalRunners } from "@/hooks/useLocalRunners";
 import type { LocalRunnerSummary } from "@/lib/remoteRunner";
 
+export function runnerDisplayLabel(runner: LocalRunnerSummary): string {
+  const workspace = runner.workspaces[0];
+  const workspaceLabel = workspace?.display_name ?? workspace?.path_label;
+  return workspaceLabel ? `${workspaceLabel} runner` : "Local runner";
+}
+
 function RunnerCard({ runner }: { runner: LocalRunnerSummary }) {
+  const runnerLabel = runnerDisplayLabel(runner);
   return (
-    <section className="rounded border p-3" aria-label={`Runner ${runner.runner_id}`}>
+    <section className="rounded border p-3" aria-label={runnerLabel}>
       <header className="flex items-center gap-2">
         <span
           className={`size-2 rounded-full ${runner.online ? "bg-emerald-500" : "bg-muted-foreground"}`}
           aria-label={runner.online ? "online" : "offline"}
         />
-        <strong>{runner.runner_id}</strong>
+        <strong>{runnerLabel}</strong>
         <span className="text-xs text-muted-foreground">
           {runner.online ? "online" : "offline"}
         </span>

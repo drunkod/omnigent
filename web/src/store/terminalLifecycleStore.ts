@@ -20,6 +20,7 @@ interface TerminalLifecycleStore {
   byConversation: Record<string, ConversationLifecycle>;
   applyRunnerState: (event: SessionRunnerStateEvent) => void;
   applyTerminalState: (event: SessionTerminalStateEvent) => void;
+  confirmRunnerAttached: (conversationId: string) => void;
   clearConversation: (conversationId: string) => void;
 }
 
@@ -66,6 +67,24 @@ export const useTerminalLifecycleStore = create<TerminalLifecycleStore>((set) =>
               ...previous.terminalStateById,
               [event.terminalId]: event.state,
             },
+          },
+        },
+      };
+    }),
+
+  // A live terminal attach proves a reconnect completed even when the runner
+  // does not re-emit a terminal-state event.
+  confirmRunnerAttached: (conversationId) =>
+    set((state) => {
+      const previous = state.byConversation[conversationId];
+      if (!previous || previous.runnerState !== "runner_reconnected") return state;
+      return {
+        byConversation: {
+          ...state.byConversation,
+          [conversationId]: {
+            ...previous,
+            runnerState: "online",
+            lastStateAt: Date.now(),
           },
         },
       };

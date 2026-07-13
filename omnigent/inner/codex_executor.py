@@ -732,6 +732,7 @@ def _populate_codex_home_config(target_dir: Path, source_dir: Path) -> None:
         if dest_path.exists() or dest_path.is_symlink():
             continue
         shutil.copy2(source_file, dest_path)
+        dest_path.chmod(dest_path.stat().st_mode | 0o200)
 
 
 def _databricks_codex_base_url(host: str) -> str:

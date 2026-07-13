@@ -47,6 +47,48 @@ describe("terminal lifecycle store", () => {
     expect(selectRunnerState("c1")(useTerminalLifecycleStore.getState())).toBe("online");
   });
 
+  it("ends reconciling on a confirmed attach without a terminal-state frame", () => {
+    // Reproduces the live deadlock: after a runner reconnect the bridge
+    // reaches "connected" but the runner re-attaches an already-running
+    // terminal without re-emitting a terminal-state event. A confirmed attach
+    // must return the conversation to "online" on its own.
+    const store = useTerminalLifecycleStore.getState();
+    store.applyRunnerState({
+      type: "session_runner_state",
+      conversationId: "c1",
+      runnerId: "r1",
+      state: "runner_reconnected",
+    });
+    expect(selectRunnerState("c1")(useTerminalLifecycleStore.getState())).toBe(
+      "runner_reconnected",
+    );
+
+    store.confirmRunnerAttached("c1");
+
+    expect(selectRunnerState("c1")(useTerminalLifecycleStore.getState())).toBe("online");
+  });
+
+  it("never overrides an authoritative runner_offline on a confirmed attach", () => {
+    const store = useTerminalLifecycleStore.getState();
+    store.applyRunnerState({
+      type: "session_runner_state",
+      conversationId: "c1",
+      runnerId: "r1",
+      state: "runner_offline",
+    });
+
+    store.confirmRunnerAttached("c1");
+
+    expect(selectRunnerState("c1")(useTerminalLifecycleStore.getState())).toBe("runner_offline");
+  });
+
+  it("is a no-op for an unknown conversation on a confirmed attach", () => {
+    const store = useTerminalLifecycleStore.getState();
+    store.confirmRunnerAttached("unknown");
+
+    expect(useTerminalLifecycleStore.getState().byConversation).toEqual({});
+  });
+
   it("clears a conversation without affecting another conversation", () => {
     const store = useTerminalLifecycleStore.getState();
     store.applyRunnerState({
