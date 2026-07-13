@@ -69,6 +69,24 @@ async def test_terminal_exit_closes_attach_as_terminal_exited(
     assert terminal_tunnel.tunnel_registry.get(terminal_tunnel.runner_id) is not None
 
 
+async def test_unsupported_transport_closes_without_disturbing_runner_or_tmux(
+    terminal_tunnel: TerminalTunnelFixture,
+) -> None:
+    """An unsupported attach transport reports 4406 without killing session state."""
+    async with connect(
+        terminal_tunnel.url(transport="unsupported"),
+        additional_headers={"X-Forwarded-Email": "owner@example.com"},
+    ) as conn:
+        closed = await _wait_for_close(conn)
+
+    assert closed.rcvd is not None
+    assert closed.rcvd.code == 4406
+    assert terminal_tunnel.tunnel_registry.get(terminal_tunnel.runner_id) is not None
+    entries = terminal_tunnel.terminal_registry.list_for_conversation(terminal_tunnel.session_id)
+    assert len(entries) == 1
+    assert await entries[0].instance.is_alive()
+
+
 async def test_same_runner_reconnect_reattaches_without_duplicate_io(
     terminal_tunnel: TerminalTunnelFixture,
 ) -> None:
