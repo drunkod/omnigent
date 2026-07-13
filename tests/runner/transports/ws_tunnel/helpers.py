@@ -15,7 +15,7 @@ from omnigent.runner.transports.ws_tunnel.frames import (
     WSFrame,
     decode_frame,
 )
-from omnigent.runner.transports.ws_tunnel.registry import TunnelRegistry
+from omnigent.runner.transports.ws_tunnel.registry import RunnerSession, TunnelRegistry
 from omnigent.runner.transports.ws_tunnel.serve import (
     _cancel_ws_channels,
     _handle_tunnel_frame,
@@ -54,13 +54,15 @@ class TunnelHarness:
     _tasks: list[asyncio.Task[None]]
     _dispatch_tasks: dict[str, asyncio.Task[None]]
 
-    async def disconnect(self) -> None:
-        """Retire both server and runner state for the active tunnel generation."""
+    async def disconnect(self) -> RunnerSession:
+        """Retire the active generation and return it for stale-frame tests."""
         session = self.registry.get(self.runner_id)
         assert session is not None
-        self.registry.deregister(self.runner_id, session=session)
+        removed = self.registry.deregister(self.runner_id, session=session)
+        assert removed is session
         await _cancel_ws_channels(self.ws_channels)
         self.ws_channels.clear()
+        return session
 
     def reconnect(self) -> None:
         """Register a new server-side generation on the existing runner transport."""
