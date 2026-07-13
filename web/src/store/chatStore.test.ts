@@ -7251,7 +7251,11 @@ describe("chatStore — elicitations across stream drops and re-publishes", () =
 
   /** Raw `pending_elicitations` snapshot entry for one parked prompt —
    *  the shape the server's in-memory index serves on GET /v1/sessions/{id}. */
-  function pendingElicitationRaw(id: string, message: string): Record<string, unknown> {
+  function pendingElicitationRaw(
+    id: string,
+    message: string,
+    localAction?: Record<string, unknown>,
+  ): Record<string, unknown> {
     return {
       type: "response.elicitation_request",
       elicitation_id: id,
@@ -7262,12 +7266,17 @@ describe("chatStore — elicitations across stream drops and re-publishes", () =
         phase: "tool_call_approval",
         policy_name: "test_policy",
         content_preview: "",
+        ...(localAction !== undefined ? { local_action: localAction } : {}),
       },
     };
   }
 
   /** The live SSE frame for the same prompt. */
-  function elicitationReqFrame(id: string, message: string): string {
+  function elicitationReqFrame(
+    id: string,
+    message: string,
+    localAction?: Record<string, unknown>,
+  ): string {
     return sse("response.elicitation_request", {
       elicitation_id: id,
       params: {
@@ -7276,6 +7285,7 @@ describe("chatStore — elicitations across stream drops and re-publishes", () =
         phase: "tool_call_approval",
         policy_name: "test_policy",
         content_preview: "",
+        ...(localAction !== undefined ? { local_action: localAction } : {}),
       },
     });
   }
@@ -7443,6 +7453,47 @@ describe("chatStore — elicitations across stream drops and re-publishes", () =
     expect(cards[0]!.message).toBe("Approve once?");
 
     await abortLoop(sinks, controller, loop);
+  });
+
+  it("keeps one typed local-action card across live delivery and snapshot recovery", async () => {
+    const localAction = {
+      version: 1,
+      kind: "run_shell",
+      policy_mode: "manual",
+      cwd: ".",
+      path_summary: [],
+      command_preview: "printf [arguments hidden]",
+      diff_truncated: false,
+      risk_flags: ["shell"],
+      shell_guarantee: "trusted_machine",
+    };
+    seedSession("conv_typed", []);
+    seedSession("conv_other", []);
+    seedPendingElicitations("conv_typed", [
+      pendingElicitationRaw("elic_typed", "Approve local action", localAction),
+    ]);
+    const { sinks, loop } = await openLoop("conv_typed");
+
+    sinks[0]!.push(elicitationReqFrame("elic_typed", "Approve local action", localAction));
+    await drainAsync();
+    expect(elicitationCards()).toHaveLength(1);
+    expect(elicitationCards()[0]!.localAction).toMatchObject({
+      kind: "run_shell",
+      policyMode: "manual",
+      commandPreview: "printf [arguments hidden]",
+      shellGuarantee: "trusted_machine",
+    });
+
+    await closeLoop(sinks, loop);
+    await useChatStore.getState().switchTo("conv_other");
+    await useChatStore.getState().switchTo("conv_typed");
+
+    expect(elicitationCards()).toHaveLength(1);
+    expect(elicitationCards()[0]!.localAction).toMatchObject({
+      kind: "run_shell",
+      policyMode: "manual",
+      commandPreview: "printf [arguments hidden]",
+    });
   });
 
   it("revives an auto-resolved card when its prompt re-parks with the same id", async () => {

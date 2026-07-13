@@ -664,8 +664,12 @@ describe("response.elicitation_request (FLAT envelope)", () => {
     });
 
     expect((out[0] as ElicitationRequest).localAction).toEqual({
+      version: 1,
       kind: "run_shell",
       policyMode: "manual",
+      pathSummary: [],
+      riskFlags: [],
+      diffTruncated: false,
     });
   });
 
