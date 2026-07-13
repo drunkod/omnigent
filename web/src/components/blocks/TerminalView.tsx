@@ -158,6 +158,7 @@ export function TerminalView({
       lifecycleTerminalState === "terminal_starting" ||
       lifecycleTerminalState === "terminal_relaunching",
   );
+  const reconnectAttachPendingRef = useRef(false);
   const { resolvedTheme } = useTheme();
   // Terminal theme is independent of the app theme: "auto" follows the app's
   // resolved appearance, while "light"/"dark" pin the terminal. Reading the
@@ -380,13 +381,22 @@ export function TerminalView({
     }
   }, [dismissedLifecycleState, state.kind]);
 
-  // A connected bridge proves the runner recovered even if no new terminal
-  // lifecycle frame arrives.
+  // Runner-state delivery can race the old bridge's close. Always redial once
+  // before treating a connected bridge as proof of recovery.
   useEffect(() => {
-    if (state.kind === "connected" && runnerState === "runner_reconnected") {
+    if (runnerState !== "runner_reconnected") {
+      reconnectAttachPendingRef.current = false;
+      return;
+    }
+    if (!reconnectAttachPendingRef.current) {
+      reconnectAttachPendingRef.current = true;
+      reattach();
+      return;
+    }
+    if (state.kind === "connected") {
       useTerminalLifecycleStore.getState().confirmRunnerAttached(sessionId);
     }
-  }, [state.kind, runnerState, sessionId]);
+  }, [runnerState, state.kind, sessionId, reattach]);
 
   useEffect(() => {
     sessionRef.current?.setInputEnabled(
