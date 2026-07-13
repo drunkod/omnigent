@@ -10,6 +10,14 @@ on:
       - "omnigent/terminals/**"
       - "tests/runner/transports/ws_tunnel/**"
       - "tests/terminal_e2e/**"
+      - "web/src/components/blocks/TerminalSession.ts"
+      - "web/src/components/blocks/TerminalView.tsx"
+      - "web/src/components/blocks/TerminalView*.test.tsx"
+      - "web/src/lib/remoteRunner.ts"
+      - "web/src/lib/remoteRunner.test.ts"
+      - "web/src/store/terminalLifecycleStore.ts"
+      - "web/package.json"
+      - "web/package-lock.json"
       - ".github/workflows/terminal-e2e.yml"
 
 permissions:
@@ -48,15 +56,29 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
       - name: Install tmux
         run: sudo apt-get update && sudo apt-get install -y tmux
       - run: uv sync --extra dev --frozen
+      - run: npm ci
+        working-directory: web
       - name: Report reconnect prerequisites
         run: |
           uv run python -c "from omnigent.version import VERSION; print('server/runner version:', VERSION)"
           tmux -V
-          echo "terminal acceptance: reconnect"
+          node --version
+          echo "terminal acceptance: reconnect and browser recovery"
       - run: >-
           uv run python -m pytest -q
           tests/terminal_e2e/test_lifecycle.py
           tests/runner/transports/ws_tunnel/test_approval_reconnect.py
+      - run: >-
+          npx vitest run
+          src/components/blocks/TerminalView.test.tsx
+          src/components/blocks/TerminalView.refresh.test.tsx
+          src/lib/remoteRunner.test.ts
+        working-directory: web
