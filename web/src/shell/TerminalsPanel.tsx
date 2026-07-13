@@ -130,10 +130,11 @@ export function TerminalsPanel({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  // Auto-close when there's nothing left to view.
+  // Keep an exited active terminal visible as a tombstone even after its row
+  // leaves the inventory; otherwise close when there is nothing left to view.
   useEffect(() => {
-    if (open && terminals.length === 0) onClose();
-  }, [open, terminals.length, onClose]);
+    if (open && terminals.length === 0 && activeTerminal === null) onClose();
+  }, [open, terminals.length, activeTerminal, onClose]);
 
   useEffect(() => {
     if (ref.current) {

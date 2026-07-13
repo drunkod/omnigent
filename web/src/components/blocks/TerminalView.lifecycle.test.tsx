@@ -53,6 +53,28 @@ async function renderAndAttach(transport?: "control" | "pty") {
 }
 
 describe("TerminalView lifecycle recovery", () => {
+  it("shows an exited terminal without starting a reconnect loop", async () => {
+    await renderAndAttach("control");
+    act(() => terminalSessionMock.instances[0].onState({ kind: "connected" }));
+
+    act(() => {
+      useTerminalLifecycleStore.getState().applyTerminalState({
+        type: "session_terminal_state",
+        conversationId: "conv_abc",
+        terminalId: "terminal_bash_s1",
+        state: "terminal_exited",
+      });
+      terminalSessionMock.instances[0].onState({
+        kind: "lifecycle",
+        state: "terminal_exited",
+      });
+    });
+
+    expect(await screen.findByText("Terminal exited.")).toBeInTheDocument();
+    expect(terminalSessionMock.instances).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: /retry|attach/i })).toBeNull();
+  });
+
   it("requires a fresh attach when reconnect arrives before the old bridge closes", async () => {
     await renderAndAttach("control");
     act(() => terminalSessionMock.instances[0].onState({ kind: "connected" }));

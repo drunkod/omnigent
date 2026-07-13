@@ -1,6 +1,7 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type TerminalInfo, useTerminals } from "@/hooks/useTerminals";
+import { useTerminalLifecycleStore } from "@/store/terminalLifecycleStore";
 import { MainTerminalView } from "./MainTerminalView";
 import type { TerminalFirstContextValue } from "./TerminalFirstContext";
 import { TerminalFirstContextProvider } from "./TerminalFirstContext";
@@ -104,6 +105,7 @@ function renderView({
 
 beforeEach(() => {
   useTerminalsMock.mockReset();
+  useTerminalLifecycleStore.setState({ byConversation: {} });
 });
 
 afterEach(cleanup);
@@ -174,6 +176,47 @@ describe("MainTerminalView — terminal-first SDK sessions", () => {
     // hidden in shell view — ConnectionIndicator gates on isShellView).
     fireEvent.click(screen.getByRole("button", { name: "Close shell" }));
     expect(setView).toHaveBeenCalledWith("chat");
+  });
+
+  it("keeps an exited rail shell mounted after inventory deletion", () => {
+    const view = renderView({
+      terminals: [REPL_TERMINAL, BASH_SHELL],
+      initialTerminalKey: "terminal:terminal_bash_s1",
+    });
+
+    act(() => {
+      useTerminalLifecycleStore.getState().applyTerminalState({
+        type: "session_terminal_state",
+        conversationId: "conv_sdk",
+        terminalId: BASH_SHELL.id,
+        state: "terminal_exited",
+      });
+    });
+    useTerminalsMock.mockReturnValue({ terminals: [REPL_TERMINAL], isLoading: false, error: null });
+    view.rerender(
+      <TerminalFirstContextProvider value={makeCtx(false)}>
+        <MainTerminalView
+          conversationId="conv_sdk"
+          initialTerminalKey="terminal:terminal_bash_s1"
+        />
+      </TerminalFirstContextProvider>,
+    );
+
+    expect(screen.getByTestId("terminal-view")).toHaveAttribute("data-terminal-id", BASH_SHELL.id);
+    expect(screen.getByText("bash")).toBeInTheDocument();
+
+    view.rerender(
+      <TerminalFirstContextProvider value={makeCtx(false)}>
+        <MainTerminalView
+          conversationId="conv_sdk"
+          initialTerminalKey="terminal:terminal_tui_main"
+        />
+      </TerminalFirstContextProvider>,
+    );
+    expect(screen.getByTestId("terminal-view")).toHaveAttribute(
+      "data-terminal-id",
+      REPL_TERMINAL.id,
+    );
   });
 });
 
