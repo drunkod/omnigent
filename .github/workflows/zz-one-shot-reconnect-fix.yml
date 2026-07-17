@@ -1,0 +1,103 @@
+name: One-shot reconnect architecture fix
+
+on:
+  push:
+    branches:
+      - agent/reconnect-architecture-fix
+
+permissions:
+  contents: write
+
+jobs:
+  apply-test-commit:
+    if: github.event.head_commit.message == 'chore(ci): stage reconnect architecture fix'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      OMNIGENT_SKIP_WEB_UI: "true"
+      UV_INDEX_URL: https://pypi.org/simple
+      PIP_INDEX_URL: https://pypi.org/simple
+      NPM_CONFIG_REGISTRY: https://registry.npmjs.org/
+    steps:
+      - name: Check out exact branch head
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: agent/reconnect-architecture-fix
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version-file: .python-version
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3
+        with:
+          enable-cache: true
+
+      - name: Set up Node.js
+        uses: ./.github/actions/setup-node
+
+      - name: Decode and apply reviewed patch
+        run: |
+          base64 --decode .github/scripts/apply_reconnect_fix.py.gz.b64 | gzip -d > /tmp/apply_reconnect_fix.py
+          python /tmp/apply_reconnect_fix.py
+
+      - name: Install backend dependencies
+        run: uv sync --locked --extra all --extra dev
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci --legacy-peer-deps
+
+      - name: Format and lint changed sources
+        run: |
+          uv run ruff format omnigent/server/app.py omnigent/server/schemas.py omnigent/entities/terminal_state.py tests/server/test_schemas.py
+          uv run ruff check --fix omnigent/server/app.py omnigent/server/schemas.py omnigent/entities/terminal_state.py tests/server/test_schemas.py
+          npm --prefix web exec -- prettier --write \
+            src/lib/events.ts \
+            src/lib/sse.ts \
+            src/lib/sessionEvents.test.ts \
+            src/store/terminalLifecycleStore.ts \
+            src/store/terminalLifecycleStore.test.ts \
+            src/components/blocks/TerminalView.tsx \
+            src/components/blocks/TerminalView.lifecycle.test.tsx \
+            src/shell/terminalStatus.tsx \
+            src/shell/usePersistentActiveKey.ts \
+            src/shell/usePersistentActiveKey.test.tsx \
+            src/shell/useTerminalSplit.ts \
+            src/shell/MainTerminalView.tsx \
+            src/shell/MainTerminalView.test.tsx \
+            src/shell/TerminalsPanel.test.tsx
+
+      - name: Run focused server tests
+        run: uv run pytest -q tests/server/test_schemas.py tests/server/test_stream_events.py
+
+      - name: Run focused web tests
+        working-directory: web
+        run: |
+          npx vitest run \
+            src/lib/sessionEvents.test.ts \
+            src/store/terminalLifecycleStore.test.ts \
+            src/components/blocks/TerminalView.lifecycle.test.tsx \
+            src/components/blocks/TerminalView.test.tsx \
+            src/shell/usePersistentActiveKey.test.tsx \
+            src/shell/MainTerminalView.test.tsx \
+            src/shell/TerminalsPanel.test.tsx
+          npm run type-check
+          npm run format:check
+
+      - name: Verify diff and remove one-shot machinery
+        run: |
+          rm -f .github/workflows/zz-one-shot-reconnect-fix.yml
+          rm -f .github/scripts/apply_reconnect_fix.py.gz.b64
+          git diff --check
+          git status --short
+
+      - name: Commit tested reconnect fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(terminals): settle reconnect recovery deterministically"
+          git push origin HEAD:agent/reconnect-architecture-fix
