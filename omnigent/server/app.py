@@ -2225,6 +2225,13 @@ def create_app(
                     terminal_count,
                     conv.id,
                 )
+                from omnigent.server import _runner_state_registry
+
+                _runner_state_registry.complete_reconciliation(
+                    conv.id,
+                    runner_id,
+                    terminal_count=terminal_count,
+                )
             except Exception:
                 _logger.exception(
                     "Failed to reconcile terminals for session %s on reconnect",

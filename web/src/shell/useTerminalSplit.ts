@@ -37,7 +37,10 @@ export function useTerminalSplit(conversationId: string) {
       ),
     [allTerminals, terminalFirstCtx?.isTerminalFirst],
   );
-  const [activeKey, setActiveKey] = usePersistentActiveKey(conversationId);
+  const [activeKey, setActiveKey] = usePersistentActiveKey(
+    conversationId,
+    "rail",
+  );
   const runnerState = useTerminalLifecycleStore(
     selectRunnerState(conversationId),
   );

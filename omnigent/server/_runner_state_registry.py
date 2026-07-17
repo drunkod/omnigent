@@ -28,6 +28,20 @@ def _cancel_settle_handle(session_id: str) -> None:
         handle.cancel()
 
 
+def _publish_completion_marker(session_id: str) -> None:
+    from omnigent.runtime import session_stream
+
+    session_stream.publish(
+        session_id,
+        {
+            "type": "session.terminal_state",
+            "conversation_id": session_id,
+            "terminal_id": _RECONNECT_SENTINEL_TERMINAL_ID,
+            "state": "terminal_unknown",
+        },
+    )
+
+
 def _settle_if_still_reconnecting(
     session_id: str,
     runner_id: str,
@@ -51,17 +65,27 @@ def _settle_if_still_reconnecting(
     # clients through the existing reducer contract (any terminal-state frame
     # ends reconciliation) without widening the public SSE schema.
     _last_runner_state.pop(session_id, None)
-    from omnigent.runtime import session_stream
+    _publish_completion_marker(session_id)
 
-    session_stream.publish(
-        session_id,
-        {
-            "type": "session.terminal_state",
-            "conversation_id": session_id,
-            "terminal_id": _RECONNECT_SENTINEL_TERMINAL_ID,
-            "state": "terminal_unknown",
-        },
-    )
+
+def complete_reconciliation(
+    session_id: str,
+    runner_id: str,
+    *,
+    terminal_count: int,
+) -> None:
+    """Clear a completed reconnect without disturbing a newer runner edge."""
+    entry = _last_runner_state.get(session_id)
+    if entry is None:
+        return
+    event, _ = entry
+    if event.get("state") != "runner_reconnected" or event.get("runner_id") != runner_id:
+        return
+
+    _cancel_settle_handle(session_id)
+    _last_runner_state.pop(session_id, None)
+    if terminal_count == 0:
+        _publish_completion_marker(session_id)
 
 
 def record(session_id: str, event: dict[str, object]) -> None:

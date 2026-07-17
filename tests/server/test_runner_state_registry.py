@@ -82,7 +82,7 @@ async def test_reconnect_deadline_publishes_completion_marker(
             "state": "runner_reconnected",
         },
     )
-    await asyncio.sleep(0)
+    await asyncio.sleep(0.001)
 
     assert _runner_state_registry.snapshot("conv_1") is None
     assert published == [
@@ -96,6 +96,100 @@ async def test_reconnect_deadline_publishes_completion_marker(
             },
         )
     ]
+
+
+@pytest.mark.asyncio
+async def test_successful_reconciliation_cancels_deadline_without_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    published: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        session_stream,
+        "publish",
+        lambda session_id, event: published.append((session_id, event)),
+    )
+
+    _runner_state_registry.record(
+        "conv_1",
+        {
+            "type": "session.runner_state",
+            "conversation_id": "conv_1",
+            "runner_id": "runner_1",
+            "state": "runner_reconnected",
+        },
+    )
+    _runner_state_registry.complete_reconciliation("conv_1", "runner_1", terminal_count=1)
+
+    assert _runner_state_registry.snapshot("conv_1") is None
+    assert published == []
+    assert "conv_1" not in _runner_state_registry._reconnect_settle_handles
+
+
+def test_empty_reconciliation_publishes_completion_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    published: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        session_stream,
+        "publish",
+        lambda session_id, event: published.append((session_id, event)),
+    )
+
+    _runner_state_registry.record(
+        "conv_1",
+        {
+            "type": "session.runner_state",
+            "conversation_id": "conv_1",
+            "runner_id": "runner_1",
+            "state": "runner_reconnected",
+        },
+    )
+    _runner_state_registry.complete_reconciliation("conv_1", "runner_1", terminal_count=0)
+
+    assert _runner_state_registry.snapshot("conv_1") is None
+    assert published == [
+        (
+            "conv_1",
+            {
+                "type": "session.terminal_state",
+                "conversation_id": "conv_1",
+                "terminal_id": "__runner_reconcile__",
+                "state": "terminal_unknown",
+            },
+        )
+    ]
+
+
+def test_reconciliation_completion_preserves_newer_runner_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    published: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        session_stream,
+        "publish",
+        lambda session_id, event: published.append((session_id, event)),
+    )
+    _runner_state_registry.record(
+        "conv_1",
+        {
+            "type": "session.runner_state",
+            "conversation_id": "conv_1",
+            "runner_id": "runner_1",
+            "state": "runner_reconnected",
+        },
+    )
+    offline = {
+        "type": "session.runner_state",
+        "conversation_id": "conv_1",
+        "runner_id": "runner_1",
+        "state": "runner_offline",
+    }
+    _runner_state_registry.record("conv_1", offline)
+
+    _runner_state_registry.complete_reconciliation("conv_1", "runner_1", terminal_count=0)
+
+    assert _runner_state_registry.snapshot("conv_1") == offline
+    assert published == []
 
 
 @pytest.mark.asyncio

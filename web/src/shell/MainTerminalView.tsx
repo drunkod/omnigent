@@ -75,6 +75,7 @@ export function MainTerminalView({
   // explicit rail target remains the fallback when no stored value exists.
   const [activeKey, setActiveKey] = usePersistentActiveKey(
     conversationId,
+    "main",
     initialTerminalKey || "",
   );
   const runnerState = useTerminalLifecycleStore(
