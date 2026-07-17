@@ -73,8 +73,7 @@ Still required before ready-for-review:
 
 1. capture a typed shell approval accepted exactly once;
 2. capture a typed write approval rejected with the file absent;
-3. update the PR description to current commit/check status;
-4. request review and merge before PR #3 is retargeted.
+3. request review and merge before PR #3 is retargeted.
 
 ### PR #3: terminal mirroring
 
