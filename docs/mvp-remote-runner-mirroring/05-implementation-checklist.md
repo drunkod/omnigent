@@ -1,225 +1,188 @@
 # 05 — Implementation Checklist
 
-This checklist is the reviewed status source for `feat/mvp-remaining-tracks`.
-A checkmark means the production path is wired and the named acceptance evidence
-exists. Helper-only code, sketches, or unit tests without a production caller do not
-close an item.
+Status reviewed on 2026-07-17 against the active stacked pull requests:
 
-## Status legend
+- PR #2, `feat/mvp-runner-binding-approvals` at `2dbe4b85` before this status refresh;
+- PR #3, `feat/mvp-terminal-mirroring`, whose product-code baseline is `a8a696bc`;
+- the legacy `feat/mvp-remaining-tracks` branch at `900b936a`.
 
-- `[x]` complete and evidence-backed.
-- `[ ]` open.
-- `Partial` means useful implementation exists, but the end-to-end contract or stated
-  guarantee is not complete.
+This file is the status source of truth for the active PR stack. The legacy branch is
+retained only for comparison and must not override evidence in PR #2 or PR #3.
+A checkmark means the production path is wired and the named acceptance evidence exists.
+`Partial` means useful implementation exists but the complete product guarantee is not
+closed.
 
 ## P0 — Branch and review setup
 
-- [x] Add overview, codebase map, backend plan, UI plan, security plan, diagrams, and
-  implementation checklist.
-- [x] Correct the branch description from planning-only to implementation-in-progress.
-- [ ] Open a draft PR from `feat/mvp-remaining-tracks` to `main`.
-- [ ] Attach CI results and a reviewer-oriented change summary to the PR.
+- [x] PR #2 and PR #3 are open as a mergeable draft stack.
+- [x] Current automated checks are green on both active heads; Windows-native is an
+  intentional skip.
+- [x] Inline review findings raised on the two PRs have implementation follow-ups.
+- [ ] Attach final current-head browser evidence for the remaining Demo rows.
+- [ ] Update draft status, request reviewers, and merge PR #2 before retargeting PR #3.
+- [ ] Review unique commits on `feat/mvp-remaining-tracks`, cherry-pick only intentional
+  survivors, then archive or delete that legacy branch. Do not merge it wholesale.
 
 ## P1 — Design records
 
-- [ ] Add `designs/REMOTE_LOCAL_RUNNER.md` with the canonical discovery/create API.
-- [ ] Add `designs/LOCAL_RUNNER_PERMISSIONS.md` with the selected shell security mode,
-  audit schema, approval ownership, and single-/multi-replica support statement.
-- [ ] Add `designs/TERMINAL_MIRRORING_ACCEPTANCE.md` with real byte/lifecycle criteria.
+- [ ] Add `designs/REMOTE_LOCAL_RUNNER.md` with the implemented discovery/create API,
+  persistence model, compatibility boundary, and supported harness scope.
+- [ ] Add `designs/LOCAL_RUNNER_PERMISSIONS.md` with the selected shell default,
+  trusted-machine behavior, audit schema, approval ownership, and replica limitation.
+- [x] Add `designs/TERMINAL_MIRRORING_ACCEPTANCE.md` with executable byte and lifecycle
+  evidence.
 - [ ] Add API examples for runner discovery, workspace selection, session creation,
-  local actions, and approval events.
-- [ ] Record the persistence decision: `runner_id` on the conversation row plus opaque
-  workspace/policy labels; no raw local path for local-runner mode.
+  local actions, approvals, and terminal recovery.
 
-P1 may be drafted during T10, but it is final only after T10 contracts stop changing.
+P1 is final only after the shell default and alpha support statements are frozen.
 
-## P2 — Runner capability protocol
+## P2 — Runner capability protocol and discovery
 
-- [x] Extend `HelloFrame` with optional capability fields.
-- [x] Encode/decode optional fields leniently.
-- [x] Retain capability metadata in the tunnel session.
-- [x] Add old/new compatibility tests.
-- [ ] Expose a canonical owner-scoped runner discovery response containing
-  `runner_id`, online state, harnesses, terminal transports, and opaque workspaces.
-
-The final row moved to T10 step 01 because the current web API remains hosts-shaped.
+- [x] Extend `HelloFrame` with optional capability fields and compatibility tests.
+- [x] Retain runner capability metadata in the active tunnel session.
+- [x] Expose owner-scoped `GET /v1/runners` discovery.
+- [x] Return opaque workspace IDs plus display-only metadata; do not return raw roots.
+- [x] Return harness, transport, tool-capability, version, OS, and architecture data.
+- [x] Hide foreign runners from listing and status lookup.
 
 ## P3 — Local runner CLI and pairing
 
-- [x] Extend the existing `omnigent host` flow rather than add a second daemon model.
-- [x] Persist daemon identity/pairing state in the existing config pattern.
-- [x] Add status and stop/disconnect flows.
-- [x] Add workspace add/remove persistence.
-- [ ] Show one unified readiness view for tmux, shell, git, Node, and each advertised
-  harness CLI.
-
-Current evidence probes tmux/git/node and separately advertises configured harnesses;
-shell and a unified readiness contract remain open.
+- [x] Reuse the existing `omnigent host` daemon model.
+- [x] Persist runner identity/pairing state and workspace registration.
+- [x] Provide status and stop/disconnect flows.
+- Partial: tmux/git/Node and configured harness signals exist, but one unified readiness
+  contract including shell and per-harness launch readiness remains open.
 
 ## P4 — Workspace registry
 
-- [x] Add the runner-side approved-workspace model.
-- [x] Derive stable opaque workspace IDs.
+- [x] Add runner-side approved workspaces with stable opaque IDs.
 - [x] Canonicalize roots and reject unknown IDs, absolute operation paths, traversal,
-  and symlink escapes.
-- [x] Seed the registry from host-approved environment state.
-- [ ] Return bounded project metadata required by the UI: git status summary, shells,
-  harness readiness, and missing/degraded state.
+  and normal symlink escapes during resolution.
+- [x] Seed and advertise display-only workspace summaries.
+- [ ] Return bounded project metadata needed by the picker: git summary, shell state,
+  per-harness readiness, and missing/degraded reasons.
 
 ## P5 — Canonical session binding
 
-- [x] Define execution-mode and workspace label keys.
-- [x] Implement helper-level ownership, workspace, and harness validation.
-- [ ] Add owner-scoped runner discovery to the public server API.
-- [ ] Accept `runner_id + workspace_id` on public session creation.
-- [ ] Reject `runner_id` combined with raw `workspace` or `host_id`.
-- [ ] Call `validate_local_runner_binding` before conversation creation.
-- [ ] Persist `runner_id` on the conversation and opaque workspace/policy labels.
-- [ ] Expose the binding in the session snapshot.
-- [ ] Preserve the binding across child/fork/resume/reconnect paths.
-- [ ] Add route-level integration tests for owner, foreign runner, unknown workspace,
-  unsupported harness, feature flag, and inheritance.
+- [x] Define execution-mode, workspace, and policy label keys.
+- [x] Accept `runner_id + workspace_id` in JSON and multipart session creation.
+- [x] Reject `runner_id` mixed with `host_id` or a raw `workspace` path.
+- [x] Call `validate_local_runner_binding` from both public create paths.
+- [x] Validate owner, online state, workspace membership, and harness compatibility.
+- [x] Persist `runner_id` on the conversation and opaque workspace/policy labels.
+- [x] Surface opaque binding data in create/session projections used by the web client.
+- Partial: parent/child runner affinity and local-runner labels are inherited in the
+  implementation; a final route-level matrix should explicitly cover fork, resume,
+  reconnect, feature-flag denial, and foreign/unknown binding failures together.
 
-Tracked sequentially in `tasks/T10-canonical-contract/step-01-canonical-session-binding.md`.
-The existing helper tests do not close these route items.
+The canonical binding is implemented. Do not open another PR whose main purpose is to
+add runner discovery or `runner_id + workspace_id` creation.
 
 ## P6 — Native terminal launch in the selected workspace
 
-- [x] Existing host/raw-path launch can start native terminals in the selected host
-  directory.
-- [x] Codex-native and at least one additional native harness have workspace launch
-  coverage.
-- [x] Terminal resources publish and attach through the runner tunnel.
-- [x] Unsupported/degraded terminal status is surfaced.
-- [ ] Revalidate all launch/reconnect paths using the canonical `workspace_id` binding
-  after T10 step 01.
+- [x] Launch supported native terminals through the runner tunnel.
+- [x] Publish and attach terminal resources through the authenticated public route.
+- [x] Cover Codex-native plus at least one additional native harness in workspace launch
+  tests.
+- [x] Filter native harness advertisement when runner/workspace prerequisites are not
+  truthful.
+- Partial: finish the route-level canonical-binding matrix for every harness claimed by
+  the MVP. Do not claim Gemini-native support without launch and reconnect evidence.
 
 ## P7 — Local actions gateway
 
-- [x] Inventory existing file/shell execution paths.
-- [x] Add a runner-local action gateway.
-- [x] Implement workspace-contained `read_file`, `list_dir`, and `write_file`.
+- [x] Implement workspace-contained `read_file`, `list_dir`, `write_file`, and
+  `run_shell`.
 - [x] Add write diff preview and stale-content conflict detection.
-- [x] Bound shell duration and captured output; strip runner auth from the child env.
-- [ ] Freeze the shell security contract and implement the stated boundary.
-- [x] Keep `search_files` off the gateway capability contract until it has
-  the gateway audit/policy path; it remains an explicit filesystem route.
-- [x] Keep `git_status` and `git_diff` off the gateway capability contract
-  until they converge on a fixed-argv, authorized read-only path.
-- [ ] Implement `apply_patch` with preview and race-safe write semantics before
-  advertising it.
-- [ ] Add request-size limits and re-resolve/no-follow protections for writes.
-
-Approval alone does not contain an arbitrary shell command. T10 steps 02 and 04 own
-these blockers.
+- [x] Bound reads, command previews, diff previews, shell output, and shell duration.
+- [x] Strip runner authentication secrets from child environments.
+- [x] Implement strict Bubblewrap mode and truthful trusted-machine fallback labeling.
+- [x] Keep `search_files`, `git_status`, `git_diff`, and `apply_patch` outside the
+  advertised gateway capability contract.
+- Partial: select and document the supported/default shell guarantee and align all
+  preset and approval copy with it.
+- [ ] Add a maximum write payload/request size and a bounded `list_dir` result.
+- [ ] Re-resolve securely after approval and use no-follow, race-safe, atomic write
+  semantics with symlink-swap regression tests.
+- [ ] Implement `apply_patch` only if it receives the same preview, authorization,
+  race-safety, and audit guarantees; otherwise keep it unadvertised.
 
 ## P8 — Permission, policy, and audit integration
 
 - [x] Add manual, assisted, and auto policy values with fail-closed fallback.
-- [x] Ask-gate side-effectful actions in manual mode.
-- [x] Enforce owner-only local-action approval in the server route for a single
-  process.
-- [x] Enforce read-only versus interactive terminal attach permissions before proxy.
-- [x] Publish local-action lifecycle events and persist terminal outcomes by
+- [x] Ask-gate side-effectful actions and enforce owner-only resolution.
+- [x] Enforce read-only versus interactive terminal permissions before proxying.
+- [x] Publish local-action lifecycle events and upsert terminal outcomes by exact
   `action_id`.
-- [ ] Match preset descriptions to actual shell behavior after T10 step 02.
-- [ ] Make persisted audit data allowlisted, bounded, and secret-safe by value, not
-  merely by exact key removal.
-- [ ] Prove logs/history omit bearer tokens, auth headers, full commands, file
-  contents, output, and absolute home paths.
-- [ ] State single-replica approval support for alpha or move pending approval
-  ownership to a shared store.
-
-`tests/server/test_local_action_persistence.py` proves persistence mechanics, not the
-full payload-free guarantee.
+- [x] Persist an explicit allowlist with bounded value redaction.
+- [x] Exclude write content, diff preview, stdout/stderr, tokens, absolute home paths,
+  and raw command arguments from persisted history.
+- [x] Persist `command_summary` as only the redacted executable token, capped at 80
+  characters.
+- [ ] Add log-capture tests proving server/runner logs omit bearer tokens, auth headers,
+  full commands, file contents, output, and absolute home paths.
+- [ ] State single-replica approval support for alpha or move pending approvals to a
+  shared store.
 
 ## P9 — Runner UX
 
-- [x] Add the feature capability probe and runner status presentation.
-- [x] Add terminal transport/reconnect state and offline recovery copy.
-- [ ] Build the runner/workspace picker against the canonical owner-scoped discovery
-  model from T10 step 01.
-- [ ] Send `runner_id + workspace_id + local_runner_policy`, never a path-label
-  round-trip.
-- [ ] Show harness/workspace incompatibility and degraded readiness.
-- [ ] Complete the capability dashboard with truthful T10 step 04 data.
-
-Tracked in `tasks/T09-runner-ux/`; blocked by T10 steps 01 and 04.
+- [x] Fetch and type the canonical owner-scoped runner response.
+- [x] Provide a runner/workspace picker using opaque IDs.
+- [x] Submit `runner_id + workspace_id + local_runner_policy` without a raw path.
+- [x] Disable obvious offline, empty-workspace, and harness-incompatible choices.
+- [x] Show runner status and basic capability information.
+- Partial: add bounded project metadata, unified readiness, and richer degraded-state
+  explanations.
 
 ## P10 — Terminal parity and reconnect acceptance
 
-Existing unit/route coverage:
-
-- [x] Control/PTY close-code mapping and fallback behavior.
-- [x] Read-only and non-owner interactive attach authorization.
-- [x] UI lifecycle state for runner offline/reconnected, terminal detached/exited,
-  retry, and refresh recovery.
-
-Real end-to-end coverage still open:
-
-- [ ] Build a real server + runner + tmux + browser fixture.
-- [ ] Test resize propagation.
-- [ ] Test multiline/large paste and UTF-8.
-- [ ] Test Ctrl-C, ESC, arrows, tab, and alternate-screen transitions.
-- [ ] Test disconnect/reconnect during active output and after browser refresh.
-- [ ] Distinguish runner offline, terminal exited, transport unsupported, and
-  permission denial at the live WebSocket boundary.
-
-Tracked in `tasks/T12-terminal-parity-e2e.md`.
+- [x] Build a live authenticated public WebSocket fixture crossing server, multiplexed
+  runner tunnel, runner attach route, and a real tmux pane.
+- [x] Test input/output, initial capture, resize, multiline paste, UTF-8, control keys,
+  Ctrl-C, alternate screen, and rapid ordered output.
+- [x] Test read-only observation, interactive denial, runner-offline versus terminal
+  exit, unsupported transport, reconnect, duplicate-I/O prevention, and stale-generation
+  rejection.
+- [x] Add server and browser-side bounded reconciliation settlement.
+- [x] Preserve independent main and rail terminal selections and retain exited state.
+- [ ] Add a real browser page-reload/SSE-bootstrap test while offline, followed by
+  recovery on the same session.
+- [ ] Decide whether PTY parity is a supported product contract; add its gate only if it
+  remains supported.
+- [ ] Capture final current-head browser evidence for automatic reconnect and the
+  distinct terminal-exited state.
 
 ## P11 — Observability
 
-- [x] Emit `omnigent.local_action.total` with bounded kind/status/policy labels.
-- [x] Emit `omnigent.approval.decision_total` with bounded decision labels.
+- [x] Emit bounded local-action and approval-decision metrics.
 - [ ] Add structured runner connect/disconnect/reconnect logs.
 - [ ] Add terminal attach transport and close-code metrics.
-- [ ] Add workspace validation and capability mismatch metrics.
-- [ ] Add a diagnostics endpoint or admin projection for live runner capabilities.
-- [ ] Add log-capture tests enforcing the T10 audit/log secrecy rules.
+- [ ] Add workspace validation and capability-mismatch metrics.
+- [ ] Add a diagnostics/admin projection for live runner readiness.
+- [ ] Add log-secrecy capture tests.
 
 ## P12 — Documentation and rollout
 
-- [x] Feature flag is off by default and surfaced as top-level
-  `remote_local_runner` in `/v1/info`.
-- [ ] Add user pairing and workspace-selection documentation.
-- [ ] Add admin enable/disable, single-replica limitation, and recovery documentation.
-- [ ] Add security documentation for policy modes, shell mode, approvals, audit data,
-  and retention.
-- [ ] Add troubleshooting for runner offline, tmux/sandbox missing, harness missing,
+- [x] Keep the feature flag off by default and expose it in `/v1/info`.
+- [x] Add named local-action and terminal E2E workflow gates.
+- [ ] Add user pairing/workspace-selection documentation.
+- [ ] Add admin enablement, replica limitation, recovery, and retention documentation.
+- [ ] Add security documentation for policy modes and both shell guarantees.
+- [ ] Add troubleshooting for runner offline, tmux/Bubblewrap missing, harness mismatch,
   capability mismatch, and reconnect.
-- [ ] Add a manual QA script covering two users, denial, reconnect, and secret checks.
-- [ ] Map dev/alpha/beta gates to named CI jobs and branch protection.
-- [ ] Add release notes only after the alpha gate is green.
+- [ ] Add a manual QA script covering two users, denial, reconnect, reload, and secret
+  checks.
+- [ ] Map dev/alpha/beta gates to branch protection and publish release notes only after
+  the alpha gate is green.
 
-## Remaining dependency order
+## Actual remaining order
 
-### Stage 1 — sequential blockers
-
-1. **T10-01:** canonical owner-scoped runner discovery and `runner_id + workspace_id`
-   session binding.
-2. **T10-02:** shell security decision and implementation/documentation.
-3. **T10-03:** allowlisted audit schema, value redaction, limits, and race hardening.
-4. **T10-04:** capability truthfulness and gateway convergence.
-
-### Stage 2 — parallel after Stage 1
-
-- **T09:** runner/workspace picker and capability dashboard.
-- **T11:** approval cards, write diff presentation, and approval-flow E2E.
-- **T12:** real terminal parity and reconnect E2E.
-
-Each track is sequential internally, but the three tracks can run in parallel.
-
-### Stage 3 — release preparation
-
-1. Complete P11 observability.
-2. Finalize P1 design records from the implemented contracts.
-3. Complete P12 docs, manual QA, CI jobs, and rollout gates.
-4. Open/update the draft PR with evidence links.
-
-## Recommended remaining PRs
-
-1. `feat(sessions): add canonical local-runner discovery and binding`
-2. `feat(runner): freeze shell and audit security contracts`
-3. `feat(runner): converge local read capabilities`
-4. Parallel runner UX, approval UI, and terminal E2E PRs
-5. Observability and release-documentation PR
+1. Finish the current-head browser evidence and promote/merge PR #2, then retarget and
+   promote PR #3.
+2. `fix(local-actions): harden race-safe bounded workspace writes`.
+3. Freeze the shell default and permission/audit support statements; update product copy
+   and design records.
+4. Add the literal browser reload/SSE acceptance case.
+5. Complete readiness UX, observability, log-secrecy tests, and release documentation.
+6. Reconcile and retire `feat/mvp-remaining-tracks` after intentionally preserving any
+   unique non-overlapping fixes.

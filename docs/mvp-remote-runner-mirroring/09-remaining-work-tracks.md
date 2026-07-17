@@ -1,129 +1,181 @@
 # Remaining work — dependency tracks
 
-Status reviewed after `0f3e5ce3`. T01–T08 contain substantial implementation, but
-the remaining work cannot start from the old hosts/raw-path assumptions. T10 is the
-sequential critical path. After T10, three product tracks can run in parallel.
+Status reviewed on 2026-07-17 against active PR #2 and PR #3. The old assumption that
+T10-01 through T10-04 are wholly open is no longer true: canonical discovery/binding,
+the picker, strict/trusted shell mechanisms, secret-safe audit persistence, truthful
+gateway advertisement, and real tmux terminal acceptance are substantially implemented.
+
+The remaining work is now a hardening, acceptance, and release-preparation program.
+
+## Current branch model
+
+- `feat/mvp-runner-binding-approvals` is PR #2 and owns canonical runner binding,
+  local-action policy/audit, and approval UI.
+- `feat/mvp-terminal-mirroring` is PR #3, stacked on PR #2, and owns terminal parity,
+  lifecycle, reconnect, and terminal selection state.
+- `feat/mvp-remaining-tracks` exists at `900b936a` but has diverged substantially from
+  the active stack. It is a legacy comparison branch, not a status source or merge
+  target. Review unique commits, cherry-pick intentional survivors, then retire it.
 
 ## Dependency graph
 
 ```mermaid
 flowchart LR
-    subgraph stage1 ["Stage 1 · Canonical contracts — sequential"]
-        A1["T10-01\nowner-scoped runner discovery\n+ runner_id/workspace_id create"]
-        A2["T10-02\nshell security contract"]
-        A3["T10-03\nallowlisted secret-safe audit"]
-        A4["T10-04\ncapability truthfulness"]
-        A1 --> A2 --> A3 --> A4
+    subgraph merge ["Current PR completion"]
+        M1["PR #2\nmanual approval evidence\nreview + merge"]
+        M2["PR #3\ncurrent reconnect/exit evidence\nretarget + merge"]
+        M1 --> M2
     end
 
-    subgraph stage2 ["Stage 2 · Parallel product tracks"]
-        B1["T09\nrunner UX + workspace picker"]
-        B2["T11\napproval cards + diff + E2E"]
-        B3["T12\nreal terminal parity E2E"]
+    subgraph security ["Security closure"]
+        S1["Race-safe bounded writes\nrequest/list limits\nno-follow + atomic replace"]
+        S2["Freeze shell default\nstrict vs trusted copy\nplatform contract"]
+        S3["Log secrecy tests\nsingle-replica statement"]
+        S1 --> S2 --> S3
     end
 
-    subgraph stage3 ["Stage 3 · Release preparation"]
-        C1["P11\nobservability completion"]
-        C2["P1\nfinal design records"]
-        C3["P12\nuser/admin/security docs\nmanual QA + CI gates"]
-        C1 --> C3
-        C2 --> C3
+    subgraph acceptance ["Acceptance closure"]
+        A1["Real browser reload\nSSE bootstrap offline/recovery"]
+        A2["Readiness/degraded UX\nbounded project metadata"]
     end
 
-    A4 --> B1
-    A4 --> B2
-    A4 --> B3
-    B1 --> C3
-    B2 --> C3
-    B3 --> C3
+    subgraph release ["Release preparation"]
+        R1["Observability\nlogs, metrics, diagnostics"]
+        R2["Design + user/admin/security docs"]
+        R3["Manual QA + branch gates\nalpha release notes"]
+        R1 --> R3
+        R2 --> R3
+    end
+
+    M2 --> S1
+    M2 --> A1
+    S3 --> R2
+    A1 --> R3
+    A2 --> R3
 ```
 
-## Stage 1 — strict order
+## Track 1 — finish and merge the active stack
 
-### T10-01: canonical discovery and session binding
+### PR #2: runner binding and approvals
 
-Freeze one owner-scoped public read model for live local runners and workspaces. The
-recommended shape is a dedicated `/v1/runners` projection; extending `/v1/hosts` is
-acceptable only if it returns an explicit `runner_id` and opaque workspaces without
-exposing local absolute roots.
+Already delivered:
 
-Then wire public session creation to `runner_id + workspace_id`. Keep the existing
-`host_id + workspace` launch flow separate. No picker work should land before this
-contract and its route tests are stable.
+- owner-scoped `/v1/runners` with opaque workspace summaries;
+- `runner_id + workspace_id` JSON and multipart creation;
+- mixed host/raw-path contract rejection;
+- owner/workspace/harness validation and persisted runner affinity;
+- runner/workspace picker using opaque IDs;
+- local actions, policy modes, owner approval, typed cards, exact-`action_id`
+  persistence, and secret-safe history;
+- strict Bubblewrap execution mode plus truthful trusted-machine labeling.
 
-### T10-02: shell security
+Still required before ready-for-review:
 
-Choose and implement one truthful guarantee:
+1. capture a typed shell approval accepted exactly once;
+2. capture a typed write approval rejected with the file absent;
+3. update the PR description to current commit/check status;
+4. request review and merge before PR #3 is retargeted.
 
-- strict workspace mode backed by an OS sandbox; or
-- trusted-machine shell access after owner approval, with all containment claims
-  removed.
+### PR #3: terminal mirroring
 
-Approval is not a sandbox. The decision changes policy copy, acceptance tests, audit
-requirements, and user/admin documentation, so it must precede those tasks.
+Already delivered:
 
-### T10-03: audit schema freeze
+- authenticated public terminal attachment through the runner tunnel;
+- real tmux byte/input/lifecycle acceptance and active CI gates;
+- fresh-generation reconnect, stale-frame rejection, bounded server/client settlement;
+- runner-offline, terminal-exited, detached, and unsupported-transport distinctions;
+- independent main/rail persisted selection and exited-terminal retention.
 
-Persist only an allowlisted bounded terminal-outcome schema. Remove raw command
-summaries and absolute paths, add value-level redaction/log-capture tests, request
-limits, and race-safe revalidation.
+Still required before ready-for-review:
 
-### T10-04: capability truthfulness
+1. capture automatic reconnect on the current product-code baseline;
+2. capture the distinct terminal-exited state while the runner remains online;
+3. after PR #2 merges, retarget to `mvp-v0` and verify the terminal-only diff;
+4. request review and merge.
 
-Every advertised action must have one documented authorization, workspace, audit, and
-bounded-output path. Converge search/git reads on the gateway or remove them from that
-capability advertisement. Keep `apply_patch` unadvertised until implemented.
+## Track 2 — race-safe bounded workspace writes
 
-## Stage 2 — parallel tracks
+This is the next technical PR after the active stack:
 
-### T09: runner UX
+`fix(local-actions): harden race-safe bounded workspace writes`
 
-Depends on T10-01 for types and create payload and on T10-04 for truthful capability
-copy. Internal order:
+Required scope:
 
-1. fetch and type the canonical runner discovery response;
-2. workspace/policy picker using opaque IDs;
-3. capability and degraded-readiness dashboard.
+1. bound write content/request size before diff generation and approval;
+2. bound `list_dir` entries and serialized result size;
+3. after approval, securely re-resolve from the workspace root;
+4. use directory-FD/no-follow traversal where supported;
+5. write a sibling temporary file with safe creation flags, fsync as appropriate, and
+   atomically replace the approved target;
+6. preserve stale-content conflict detection;
+7. add symlink-swap, parent-replacement, create-vs-replace, oversized-request, and
+   approval-wait race regressions;
+8. document platform behavior where equivalent no-follow primitives differ.
 
-### T11: approval UI
+## Track 3 — shell and audit contract freeze
 
-Depends on T10-02 and T10-03. Internal order:
+The mechanisms exist; the product promise is not yet final.
 
-1. normalize live local-action approval state;
-2. shell/write cards with safe command category and live diff preview;
-3. owner approve/deny E2E, including denial leaves files unchanged.
+1. Choose the supported/default alpha shell mode:
+   - strict workspace mode when Bubblewrap is present; or
+   - trusted-machine execution after owner approval.
+2. State platform availability and fail-fast/fallback behavior.
+3. Align presets, capability copy, approval cards, and documentation with the actual
+   `shell_guarantee` value.
+4. Add server and runner log-capture tests for tokens, headers, full commands, paths,
+   file contents, diffs, and output.
+5. State single-replica approval support for alpha or move pending approval ownership to
+   shared storage.
 
-`apply_patch` UI remains conditional on a real backend action.
+Persisted local-action history already uses an allowlist, value redaction, bounded
+fields, relative paths, and an argument-free executable-only `command_summary`.
 
-### T12: terminal parity E2E
+## Track 4 — browser reload acceptance
 
-May begin its fixture after T10-01 and run independently from T09/T11. Internal order:
+The real tmux/server/runner/WebSocket fixture is active. The missing live case is a
+literal browser page reload with SSE bootstrap:
 
-1. real server + runner + tmux + browser fixture;
-2. byte/input parity tests;
-3. active-output reconnect, browser refresh, and terminal/runner failure-state tests.
+1. connect to a terminal and select independent main/rail targets;
+2. take the runner offline;
+3. reload the page while offline;
+4. verify preserved-session state and restored selections;
+5. reconnect the runner and verify automatic bounded settlement;
+6. verify input returns to the intended terminal without selecting a row manually.
 
-## Work that may overlap
+PTY parity remains conditional on a product decision. Do not add a PTY gate merely to
+match an old planning document.
 
-- Draft P1 design records while implementing T10, but finalize them only after the
-  contracts land.
-- Add P11 instrumentation alongside the production changes that create each signal.
-- Build the T12 fixture while T10-02/03 are being completed, provided it uses the
-  canonical T10-01 session API.
+## Track 5 — readiness UX and observability
+
+These can proceed after the binding and security contracts are stable:
+
+- bounded git/project summary and shell inventory;
+- explicit per-harness readiness and degraded reasons;
+- one unified runner readiness projection;
+- structured runner connect/disconnect/reconnect logs;
+- terminal attach transport and close-code metrics;
+- workspace-validation and capability-mismatch metrics;
+- diagnostics/admin projection for current runner readiness.
+
+## Track 6 — design, documentation, and rollout
+
+1. Add `designs/REMOTE_LOCAL_RUNNER.md`.
+2. Add `designs/LOCAL_RUNNER_PERMISSIONS.md`.
+3. Keep `designs/TERMINAL_MIRRORING_ACCEPTANCE.md` mapped to executable evidence.
+4. Add user pairing/workspace-selection, admin enablement/recovery, security, retention,
+   and troubleshooting documentation.
+5. Add a manual QA script for two users, approval denial, reconnect, browser reload,
+   and secret checks.
+6. Map dev/alpha/beta requirements to named branch-protection jobs.
+7. Publish release notes only after the alpha gate is green.
 
 ## Solo execution order
 
-1. T10-01 canonical discovery and session binding.
-2. T10-02 shell decision and enforcement/documentation.
-3. T10-03 audit schema and secret tests.
-4. T10-04 capability convergence.
-5. Start T12 fixture.
-6. Implement T09 picker and T11 approval cards in either order.
-7. Finish T12 parity/reconnect cases.
-8. Complete P11, finalize P1, then P12 docs/manual QA/CI gates.
-
-## Release rule
-
-P12 is last because it describes the actual supported contract. Do not publish a
-workspace-containment claim, multi-replica approval claim, or beta readiness statement
-until the corresponding acceptance tests and CI jobs exist.
+1. Finish manual evidence and merge PR #2.
+2. Retarget, revalidate, and merge PR #3.
+3. Implement race-safe bounded writes.
+4. Freeze shell and audit support statements and add log-secrecy tests.
+5. Add the real browser reload acceptance case.
+6. Complete readiness UX and observability.
+7. Finalize design records, product docs, manual QA, and rollout gates.
+8. Reconcile and retire `feat/mvp-remaining-tracks` without merging it wholesale.

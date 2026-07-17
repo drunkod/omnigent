@@ -1,12 +1,20 @@
-# Remote AI Terminal Runner with Local Machine Mirroring — MVP Planning
+# Remote AI Terminal Runner with Local Machine Mirroring — MVP
 
-Status: implementation in progress. This branch now contains runtime changes across
-runner, server, policies, CLI, web UI, tests, and a DB migration. Review it as an
-implementation branch, not as planning-only documentation.
+Status: implementation and acceptance in progress.
 
-`05-implementation-checklist.md` is the status source of truth. The detailed task
-files contain implementation sketches and must not override the checklist when they
-drift from current code.
+The active implementation is split across two stacked draft pull requests:
+
+- PR #2: canonical local-runner binding, runner/workspace UX, local actions,
+  permissions, approvals, and audit persistence;
+- PR #3: terminal transport parity, lifecycle, reconnect, and terminal selection state.
+
+`05-implementation-checklist.md` is the current status source of truth for this active
+stack. `09-remaining-work-tracks.md` defines the remaining dependency order. Detailed
+task files are historical plans and must not override current production evidence.
+
+The branch `feat/mvp-remaining-tracks` still exists, but it has diverged from the active
+stack and is no longer the status authority. Do not merge it wholesale. Review unique
+commits, cherry-pick intentional survivors, then archive or delete it.
 
 ## Purpose
 
@@ -16,12 +24,48 @@ remote/local development workflows:
 - the AI harness may run remotely;
 - an approved project workspace and OS tools may remain on a trusted local machine;
 - the browser presents one coherent chat, terminal, and files experience;
-- terminal behavior should remain native rather than being approximated by a fake
-  command console;
+- terminal behavior remains native rather than becoming a fake command console;
 - every local side effect follows an explicit, documented permission boundary.
 
 The project does not target restriction evasion, geofencing bypass, sanctions
 avoidance, account-policy circumvention, or provider ToS bypass.
+
+## Current delivered baseline
+
+The active stack substantially delivers:
+
+- owner-scoped `GET /v1/runners` discovery with opaque workspaces;
+- public session creation using `runner_id + workspace_id` without a raw path;
+- ownership, workspace, harness, feature-flag, and mixed-contract validation;
+- persisted runner affinity and opaque execution/workspace/policy labels;
+- a runner/workspace picker that submits the canonical contract;
+- local read/list/write/shell actions with policy evaluation and owner approval;
+- typed shell/write approval cards and exact-`action_id` outcome persistence;
+- allowlisted, bounded, value-redacted audit history with no command arguments,
+  file contents, output, or absolute home paths;
+- strict Bubblewrap shell execution plus truthful trusted-machine labeling;
+- truthful gateway capability advertisement;
+- authenticated terminal attachment through the multiplexed runner tunnel;
+- real tmux acceptance for resize, paste, UTF-8, control keys, Ctrl-C,
+  alternate-screen behavior, rapid output, permissions, reconnect, and lifecycle;
+- bounded reconnect settlement, stale-generation rejection, persisted independent
+  terminal selections, and retained terminal-exited state;
+- local-action and terminal E2E CI gates.
+
+## Remaining MVP closure
+
+The remaining work is narrower than the original T10/T09/T11/T12 plan:
+
+1. Finish current-head browser evidence and merge PR #2, then PR #3.
+2. Harden workspace writes against approval-window path races and oversized requests.
+3. Freeze and document the supported/default shell guarantee and replica limitation.
+4. Add log-capture secrecy tests.
+5. Add a literal browser reload/SSE-bootstrap acceptance case while offline and after
+   recovery.
+6. Add bounded project/readiness metadata and richer degraded-state UX.
+7. Complete structured reconnect/attach observability, diagnostics, design records,
+   user/admin/security documentation, manual QA, and rollout gates.
+8. Reconcile and retire the legacy `feat/mvp-remaining-tracks` branch.
 
 ## MVP success criteria
 
@@ -31,96 +75,35 @@ The MVP is successful when a user can:
 - select an opaque runner/workspace binding without sending a local absolute path to
   the server;
 - start a supported native session bound to that runner and workspace;
-- see and control the terminal through the existing attach path;
+- see and control the terminal through the authenticated attach path;
 - review local writes and shell actions before execution when policy requires it;
-- understand the shell security guarantee selected in T10 step 02;
-- reconnect without losing the persisted runner/workspace binding;
-- inspect a bounded, secret-safe audit history;
-- complete the supported flow with the feature flag off by default and CI/manual QA
-  gates documented.
+- understand whether shell execution is strict-workspace or trusted-machine;
+- reconnect and reload without losing the persisted binding or intended terminal;
+- inspect bounded, secret-safe audit history;
+- complete the supported flow with the feature flag off by default and named CI/manual
+  QA gates documented.
 
-## Current architectural decision point
-
-Two contracts currently coexist:
-
-1. the existing host-launch API uses `host_id` plus a raw `workspace` path; and
-2. the new local-runner helpers use opaque `runner_id` plus `workspace_id`.
-
-The local-runner product must use the second contract. T10 step 01 freezes the public
-create and discovery APIs and keeps the existing host-launch path separate.
-
-Shell approval is not equivalent to filesystem containment. T10 step 02 must either
-introduce a real OS sandbox for strict workspace mode or explicitly document a
-trusted-machine shell mode. No later UI or rollout task may claim stronger isolation
-than the selected implementation provides.
-
-## Planning files
+## Planning and status files
 
 - `01-codebase-map.md` — existing modules and reuse points.
-- `02-server-runner-work-plan.md` — backend, runner, host, workspace, and tunnel work.
-- `03-terminal-mirroring-ui-plan.md` — terminal parity and UI surfaces.
-- `04-permissions-security-tests.md` — permission boundaries, tests, telemetry, and
-  rollout gates.
-- `05-implementation-checklist.md` — reviewed status and remaining order.
+- `02-server-runner-work-plan.md` — backend and runner plan.
+- `03-terminal-mirroring-ui-plan.md` — terminal and UI surfaces.
+- `04-permissions-security-tests.md` — permission boundaries and rollout gates.
+- `05-implementation-checklist.md` — current evidence-backed status.
 - `06-architecture-diagrams.md` — system and sequence diagrams.
 - `07-ui-ux-codebase-files.md` — UX-to-code mapping.
 - `08-ui-terminal-runtime-diagrams.md` — terminal runtime diagrams.
-- `09-remaining-work-tracks.md` — dependency graph for work still open.
+- `09-remaining-work-tracks.md` — actual remaining dependency order.
+- `mvp-status-report-terminal-mirroring.md` — verified narrative status for PR #3.
 
-## Task packs
+## Immediate next technical PR
 
-Implemented or substantially landed:
-
-- `tasks/T01-hello-capabilities.md`
-- `tasks/T02-runner-workspaces.md`
-- `tasks/T03-cli-pairing.md`
-- `tasks/T04-session-binding.md` — helper layer landed; public route wiring reopened
-  under T10.
-- `tasks/T05-local-actions-gateway.md` — core gateway landed; shell/audit/capability
-  hardening reopened under T10.
-- `tasks/T06-reconnect-lifecycle.md`
-- `tasks/T06b-lifecycle-polish/`
-- `tasks/T07/`
-- `tasks/T08/` — presets, owner gate, persistence mechanics, and two permission
-  metrics landed; audit secrecy and broader rollout gates remain open.
-
-Remaining task packs:
-
-- `tasks/T10-canonical-contract/` — **sequential critical path**:
-  1. canonical runner/workspace discovery and session binding;
-  2. shell security contract;
-  3. allowlisted secret-safe audit schema;
-  4. capability truthfulness and gateway convergence.
-- `tasks/T09-runner-ux/` — runner/workspace picker and capability UI, after T10 step
-  01 and step 04 freeze the API.
-- `tasks/T11-approval-ui.md` — approval cards, diff presentation, and approval-flow
-  E2E, after T10 steps 02–03.
-- `tasks/T12-terminal-parity-e2e.md` — real terminal fixture and byte/lifecycle parity
-  coverage; may start after T10 step 01 and run in parallel with T09/T11.
-
-## Remaining implementation order
+After the current stack is promoted and merged:
 
 ```text
-T10-01 canonical discovery + session binding
-  → T10-02 shell security decision/implementation
-  → T10-03 audit schema freeze
-  → T10-04 capability truthfulness
-  → [T09 runner UX || T11 approval UI || T12 terminal parity E2E]
-  → P11 observability completion
-  → P1 final design records + P12 user/admin/security docs and CI rollout gates
+fix(local-actions): harden race-safe bounded workspace writes
 ```
 
-T10 is sequential. After it is complete, T09, T11, and T12 can proceed in parallel.
-Within each task pack, its listed steps remain sequential.
-
-## Suggested remaining PR sequence
-
-1. `feat(sessions): add canonical local-runner discovery and workspace binding`
-2. `feat(runner): freeze shell security and local-action audit contracts`
-3. `feat(runner): converge advertised search and git capabilities`
-4. Parallel PRs for runner UX, approval UI, and terminal E2E coverage
-5. `chore(observability): complete runner and terminal metrics`
-6. `docs(remote-runner): add design records, operations guide, QA, and rollout gates`
-
-Do not build the workspace picker against a raw path round-trip, and do not mark a
-security item complete solely because an approval dialog exists.
+It should add write/request and directory-list limits, final secure re-resolution,
+no-follow traversal/opening, atomic replacement, and symlink/approval-window race
+regressions before additional local write capabilities are advertised.
