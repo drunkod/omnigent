@@ -1,0 +1,57 @@
+from __future__ import annotations
+
+from unittest.mock import patch
+
+from omnigent.server import _runner_state_registry
+
+
+def setup_function() -> None:
+    _runner_state_registry.reset_for_tests()
+
+
+def teardown_function() -> None:
+    _runner_state_registry.reset_for_tests()
+
+
+def test_stable_runner_state_remains_replayable() -> None:
+    event = {
+        "type": "session.runner_state",
+        "conversation_id": "conv_1",
+        "runner_id": "runner_1",
+        "state": "runner_offline",
+    }
+    with patch.object(_runner_state_registry.time, "monotonic", return_value=10.0):
+        _runner_state_registry.record("conv_1", event)
+    with patch.object(_runner_state_registry.time, "monotonic", return_value=1000.0):
+        assert _runner_state_registry.snapshot("conv_1") == event
+
+
+def test_transient_reconnected_state_expires_from_replay() -> None:
+    event = {
+        "type": "session.runner_state",
+        "conversation_id": "conv_1",
+        "runner_id": "runner_1",
+        "state": "runner_reconnected",
+    }
+    with patch.object(_runner_state_registry.time, "monotonic", return_value=10.0):
+        _runner_state_registry.record("conv_1", event)
+    with patch.object(
+        _runner_state_registry.time,
+        "monotonic",
+        return_value=10.0 + _runner_state_registry._RECONNECT_REPLAY_TTL_SECONDS,
+    ):
+        assert _runner_state_registry.snapshot("conv_1") is None
+        assert _runner_state_registry.snapshot("conv_1") is None
+
+
+def test_recent_reconnected_state_is_still_replayable() -> None:
+    event = {
+        "type": "session.runner_state",
+        "conversation_id": "conv_1",
+        "runner_id": "runner_1",
+        "state": "runner_reconnected",
+    }
+    with patch.object(_runner_state_registry.time, "monotonic", return_value=10.0):
+        _runner_state_registry.record("conv_1", event)
+    with patch.object(_runner_state_registry.time, "monotonic", return_value=20.0):
+        assert _runner_state_registry.snapshot("conv_1") == event
