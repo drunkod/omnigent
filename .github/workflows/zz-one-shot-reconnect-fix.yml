@@ -4,13 +4,17 @@ on:
   push:
     branches:
       - agent/reconnect-architecture-fix
+  pull_request:
+    branches:
+      - feat/mvp-terminal-mirroring
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: write
 
 jobs:
   apply-test-commit:
-    if: github.event.head_commit.message == 'chore(ci): stage reconnect architecture fix'
+    if: github.event_name == 'pull_request' || github.event.head_commit.message == 'chore(ci): stage reconnect architecture fix'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
