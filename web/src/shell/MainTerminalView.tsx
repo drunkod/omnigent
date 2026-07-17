@@ -14,11 +14,20 @@
 // shells are enumerated and created in the rail's Shells tab.
 
 import { TerminalIcon, XIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { TerminalView } from "@/components/blocks/TerminalView";
-import { AGENT_TERMINAL_IDS, terminalTabKey, useTerminals } from "@/hooks/useTerminals";
+import {
+  AGENT_TERMINAL_IDS,
+  terminalTabKey,
+  useTerminals,
+} from "@/hooks/useTerminals";
+import {
+  selectRunnerState,
+  useTerminalLifecycleStore,
+} from "@/store/terminalLifecycleStore";
 import { useTerminalFirst } from "./TerminalFirstContext";
 import { TerminalStatusBadge } from "./terminalStatus";
+import { usePersistentActiveKey } from "./usePersistentActiveKey";
 import { useRetainedActiveTerminal } from "./useRetainedActiveTerminal";
 import { useTerminalStatuses } from "./useTerminalStatuses";
 
@@ -54,7 +63,7 @@ export function MainTerminalView({
   readOnly = false,
   onSurfaceElement,
 }: MainTerminalViewProps) {
-  const { terminals } = useTerminals(conversationId);
+  const { terminals, isLoading } = useTerminals(conversationId);
   const terminalFirstCtx = useTerminalFirst();
   // The agent's own terminal (SDK REPL / native vendor pane) — the
   // auto-selection target and the pane the pill's Terminal view shows.
@@ -62,21 +71,22 @@ export function MainTerminalView({
     () => terminals.filter((t) => AGENT_TERMINAL_IDS.has(t.id)),
     [terminals],
   );
-  // Seed from the explicit target so the mount-time validity effect
-  // below sees the requested key already in place — a separate
-  // set-on-mount effect would race it (both fire in the same commit
-  // with the initial "" in the validity closure, and its
-  // terminals[0] fallback would win).
-  const [activeKey, setActiveKey] = useState(initialTerminalKey || "");
+  // Restore the last selected terminal for this conversation on reload. An
+  // explicit rail target remains the fallback when no stored value exists.
+  const [activeKey, setActiveKey] = usePersistentActiveKey(
+    conversationId,
+    initialTerminalKey || "",
+  );
+  const runnerState = useTerminalLifecycleStore(
+    selectRunnerState(conversationId),
+  );
   const { activeTerminal, isExitedTombstone } = useRetainedActiveTerminal(
     conversationId,
     terminals,
     activeKey,
   );
-  const { getStatus, setTerminalConnectionState, markTerminalActive } = useTerminalStatuses(
-    terminals,
-    conversationId,
-  );
+  const { getStatus, setTerminalConnectionState, markTerminalActive } =
+    useTerminalStatuses(terminals, conversationId);
   // No manual keyboard padding here: this view is flow content inside the
   // app-shell, which useIOSViewportLock sizes to the visual viewport, so the
   // terminal already sits above the keyboard. (Fixed overlays like the mobile
@@ -84,25 +94,29 @@ export function MainTerminalView({
 
   // Honor a retarget while already open (a rail shell click can point
   // an open view at a different terminal); the validity effect below
-  // corrects unknown / closed keys to the first terminal once the
-  // list is loaded.
+  // corrects unknown / closed keys to the first terminal once terminals load.
   useEffect(() => {
     if (initialTerminalKey) setActiveKey(initialTerminalKey);
-  }, [initialTerminalKey]);
+  }, [initialTerminalKey, setActiveKey]);
 
-  // Auto-select on mount / when the active terminal disappears. The
-  // fallback prefers the agent's own terminal so a closed shell drops
-  // back to it, not an arbitrary sibling shell. While the list is
-  // still loading (length 0), leave a pending explicit key in place
-  // instead of resetting it — the empty state renders off
-  // `activeTerminal === null` regardless.
+  // Auto-select only after the online inventory is authoritative. A browser
+  // reload during an outage used to observe an empty list and overwrite the
+  // persisted shell key with the agent REPL before reconnect completed.
   useEffect(() => {
-    if (terminals.length === 0) return;
+    if (isLoading || terminals.length === 0 || runnerState !== "online") return;
     const stillValid = terminals.some((t) => terminalTabKey(t) === activeKey);
     if (!stillValid && !isExitedTombstone) {
       setActiveKey(terminalTabKey(agentTerminals[0] ?? terminals[0]));
     }
-  }, [terminals, agentTerminals, activeKey, isExitedTombstone]);
+  }, [
+    terminals,
+    agentTerminals,
+    activeKey,
+    isExitedTombstone,
+    isLoading,
+    runnerState,
+    setActiveKey,
+  ]);
   // A user shell opened from the rail takes over the pane chrome-free:
   // a single header row naming the shell plus a close X — no agent tab
   // (the shell is not the agent). The Chat/Terminal pill is hidden in
@@ -148,7 +162,9 @@ export function MainTerminalView({
               <div className="flex shrink-0 items-center gap-1.5 border-b border-border px-2 pt-1 pb-2">
                 <span className="flex items-center gap-1.5 rounded-sm bg-muted px-2 py-1 text-foreground text-xs">
                   <TerminalIcon className="size-3 shrink-0" />
-                  <span className="max-w-[8rem] truncate">{activeTerminal.name}</span>
+                  <span className="max-w-[8rem] truncate">
+                    {activeTerminal.name}
+                  </span>
                   <span className="shrink-0 text-muted-foreground/60">
                     · {activeTerminal.session}
                   </span>

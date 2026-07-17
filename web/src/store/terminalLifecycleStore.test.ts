@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  RECONNECT_SETTLE_TIMEOUT_MS,
   selectRunnerState,
   selectTerminalState,
   useTerminalLifecycleStore,
@@ -7,6 +8,11 @@ import {
 
 describe("terminal lifecycle store", () => {
   beforeEach(() => useTerminalLifecycleStore.setState({ byConversation: {} }));
+
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
 
   it("tracks runner offline state per conversation", () => {
     useTerminalLifecycleStore.getState().applyRunnerState({
@@ -16,8 +22,12 @@ describe("terminal lifecycle store", () => {
       state: "runner_offline",
     });
 
-    expect(selectRunnerState("c1")(useTerminalLifecycleStore.getState())).toBe("runner_offline");
-    expect(selectRunnerState("c2")(useTerminalLifecycleStore.getState())).toBe("online");
+    expect(selectRunnerState("c1")(useTerminalLifecycleStore.getState())).toBe(
+      "runner_offline",
+    );
+    expect(selectRunnerState("c2")(useTerminalLifecycleStore.getState())).toBe(
+      "online",
+    );
   });
 
   it("clears stale terminals on reconnect and ends reconciling on the first terminal frame", () => {
@@ -35,23 +45,21 @@ describe("terminal lifecycle store", () => {
       state: "runner_reconnected",
     });
 
-    expect(selectTerminalState("c1", "t1")(useTerminalLifecycleStore.getState())).toBe(
-      "terminal_unknown",
-    );
+    expect(
+      selectTerminalState("c1", "t1")(useTerminalLifecycleStore.getState()),
+    ).toBe("terminal_unknown");
     store.applyTerminalState({
       type: "session_terminal_state",
       conversationId: "c1",
       terminalId: "t1",
       state: "terminal_relaunching",
     });
-    expect(selectRunnerState("c1")(useTerminalLifecycleStore.getState())).toBe("online");
+    expect(selectRunnerState("c1")(useTerminalLifecycleStore.getState())).toBe(
+      "online",
+    );
   });
 
   it("ends reconciling on a confirmed attach without a terminal-state frame", () => {
-    // Reproduces the live deadlock: after a runner reconnect the bridge
-    // reaches "connected" but the runner re-attaches an already-running
-    // terminal without re-emitting a terminal-state event. A confirmed attach
-    // must return the conversation to "online" on its own.
     const store = useTerminalLifecycleStore.getState();
     store.applyRunnerState({
       type: "session_runner_state",
@@ -65,7 +73,48 @@ describe("terminal lifecycle store", () => {
 
     store.confirmRunnerAttached("c1");
 
-    expect(selectRunnerState("c1")(useTerminalLifecycleStore.getState())).toBe("online");
+    expect(selectRunnerState("c1")(useTerminalLifecycleStore.getState())).toBe(
+      "online",
+    );
+  });
+
+  it("settles reconnect when the runner returns with no attachable terminal", () => {
+    vi.useFakeTimers();
+    useTerminalLifecycleStore.getState().applyRunnerState({
+      type: "session_runner_state",
+      conversationId: "c1",
+      runnerId: "r1",
+      state: "runner_reconnected",
+    });
+
+    vi.advanceTimersByTime(RECONNECT_SETTLE_TIMEOUT_MS);
+
+    expect(selectRunnerState("c1")(useTerminalLifecycleStore.getState())).toBe(
+      "online",
+    );
+  });
+
+  it("does not let the watchdog overwrite a newer offline edge", () => {
+    vi.useFakeTimers();
+    const store = useTerminalLifecycleStore.getState();
+    store.applyRunnerState({
+      type: "session_runner_state",
+      conversationId: "c1",
+      runnerId: "r1",
+      state: "runner_reconnected",
+    });
+    store.applyRunnerState({
+      type: "session_runner_state",
+      conversationId: "c1",
+      runnerId: "r1",
+      state: "runner_offline",
+    });
+
+    vi.advanceTimersByTime(RECONNECT_SETTLE_TIMEOUT_MS);
+
+    expect(selectRunnerState("c1")(useTerminalLifecycleStore.getState())).toBe(
+      "runner_offline",
+    );
   });
 
   it("never overrides an authoritative runner_offline on a confirmed attach", () => {
@@ -79,7 +128,9 @@ describe("terminal lifecycle store", () => {
 
     store.confirmRunnerAttached("c1");
 
-    expect(selectRunnerState("c1")(useTerminalLifecycleStore.getState())).toBe("runner_offline");
+    expect(selectRunnerState("c1")(useTerminalLifecycleStore.getState())).toBe(
+      "runner_offline",
+    );
   });
 
   it("is a no-op for an unknown conversation on a confirmed attach", () => {
@@ -105,7 +156,11 @@ describe("terminal lifecycle store", () => {
     });
     store.clearConversation("c1");
 
-    expect(selectRunnerState("c1")(useTerminalLifecycleStore.getState())).toBe("online");
-    expect(selectRunnerState("c2")(useTerminalLifecycleStore.getState())).toBe("runner_offline");
+    expect(selectRunnerState("c1")(useTerminalLifecycleStore.getState())).toBe(
+      "online",
+    );
+    expect(selectRunnerState("c2")(useTerminalLifecycleStore.getState())).toBe(
+      "runner_offline",
+    );
   });
 });
