@@ -5,6 +5,7 @@ def test_legacy_local_action_extras_normalize_to_bounded_nested_payload() -> Non
     params = ElicitationRequestParams.model_validate(
         {
             "message": "approve",
+            "action_id": "act_write_1",
             "kind": "write_file",
             "policy_mode": "manual",
             "path_summary": ["src/app.py"],
@@ -26,9 +27,13 @@ def test_malformed_or_apply_patch_payload_degrades_without_preview() -> None:
         {
             "message": "apply secret patch",
             "content_preview": "Bearer secret",
-            "kind": "apply_patch",
-            "policy_mode": "manual",
-            "diff_preview": "Bearer secret",
+            "local_action": {
+                "version": 1,
+                "action_id": "act_unsupported_1",
+                "kind": "apply_patch",
+                "policy_mode": "manual",
+                "diff_preview": "Bearer secret",
+            },
         }
     )
     assert params.local_action is None
@@ -41,6 +46,7 @@ def test_shell_preview_requires_explicit_safe_field() -> None:
     params = ElicitationRequestParams.model_validate(
         {
             "message": "approve",
+            "action_id": "act_shell_1",
             "kind": "run_shell",
             "policy_mode": "manual",
             "command_summary": "curl -H 'Authorization: Bearer secret'",
