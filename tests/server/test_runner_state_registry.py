@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import patch
 
+import pytest
+
+from omnigent.runtime import session_stream
 from omnigent.server import _runner_state_registry
 
 
@@ -55,3 +59,81 @@ def test_recent_reconnected_state_is_still_replayable() -> None:
         _runner_state_registry.record("conv_1", event)
     with patch.object(_runner_state_registry.time, "monotonic", return_value=20.0):
         assert _runner_state_registry.snapshot("conv_1") == event
+
+
+@pytest.mark.asyncio
+async def test_reconnect_deadline_publishes_completion_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    published: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(_runner_state_registry, "_RECONNECT_SETTLE_SECONDS", 0.0)
+    monkeypatch.setattr(
+        session_stream,
+        "publish",
+        lambda session_id, event: published.append((session_id, event)),
+    )
+
+    _runner_state_registry.record(
+        "conv_1",
+        {
+            "type": "session.runner_state",
+            "conversation_id": "conv_1",
+            "runner_id": "runner_1",
+            "state": "runner_reconnected",
+        },
+    )
+    await asyncio.sleep(0)
+
+    assert _runner_state_registry.snapshot("conv_1") is None
+    assert published == [
+        (
+            "conv_1",
+            {
+                "type": "session.terminal_state",
+                "conversation_id": "conv_1",
+                "terminal_id": "__runner_reconcile__",
+                "state": "terminal_unknown",
+            },
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_newer_runner_state_cancels_reconnect_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    published: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(_runner_state_registry, "_RECONNECT_SETTLE_SECONDS", 0.0)
+    monkeypatch.setattr(
+        session_stream,
+        "publish",
+        lambda session_id, event: published.append((session_id, event)),
+    )
+
+    _runner_state_registry.record(
+        "conv_1",
+        {
+            "type": "session.runner_state",
+            "conversation_id": "conv_1",
+            "runner_id": "runner_1",
+            "state": "runner_reconnected",
+        },
+    )
+    _runner_state_registry.record(
+        "conv_1",
+        {
+            "type": "session.runner_state",
+            "conversation_id": "conv_1",
+            "runner_id": "runner_1",
+            "state": "runner_offline",
+        },
+    )
+    await asyncio.sleep(0)
+
+    assert published == []
+    assert _runner_state_registry.snapshot("conv_1") == {
+        "type": "session.runner_state",
+        "conversation_id": "conv_1",
+        "runner_id": "runner_1",
+        "state": "runner_offline",
+    }
