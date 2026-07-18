@@ -1,27 +1,36 @@
-import { defineConfig } from '@playwright/test';
+import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
-  testDir: './e2e',
-  timeout: 240000,
+  testDir: "./e2e",
+  timeout: 240_000,
+
+  // These tests control real local processes and a real backend session.
+  fullyParallel: false,
+  workers: 1,
+
   use: {
-    // Headless by default so the suite runs on CI runners without a display.
-    // Pass `--headed` locally to watch the run.
+    baseURL: "http://127.0.0.1:5173",
     headless: true,
     viewport: { width: 1280, height: 720 },
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
   },
-  // Auto-start the Vite dev server, reusing one if it is already running.
-  // NOTE: the backend API (http://localhost:6767) is NOT started here and
-  // must be running separately before invoking this suite.
+
+  reporter: [["list"], ["html", { open: "never" }]],
+
+  // The backend on port 6767 is an explicit prerequisite. The spec performs
+  // an API preflight and fails immediately with a useful error when absent.
   webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:5173',
-    reuseExistingServer: true,
-    timeout: 120000,
+    command: "npm run dev",
+    url: "http://127.0.0.1:5173",
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000,
   },
+
   projects: [
     {
-      name: 'chromium',
-      use: { browserName: 'chromium' },
+      name: "chromium",
+      use: { browserName: "chromium" },
     },
   ],
 });
