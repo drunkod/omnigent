@@ -36,6 +36,31 @@ def _write_transport_config(config_home: Path, value: str | None) -> None:
     (config_home / "config.yaml").write_text(body, encoding="utf-8")
 
 
+def test_terminals_tmp_root_uses_short_path_on_macos(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """macOS uses a short root so tmux socket paths remain below AF_UNIX limits."""
+    monkeypatch.setattr(terminal_mod.sys, "platform", "darwin")
+    monkeypatch.setattr(
+        terminal_mod.tempfile,
+        "gettempdir",
+        lambda: "/var/folders/very/long/per-user/temp/directory",
+    )
+
+    assert terminal_mod._terminals_tmp_root() == Path("/tmp")
+
+
+def test_terminals_tmp_root_uses_system_temp_elsewhere(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Non-macOS platforms retain the configured system temporary directory."""
+    monkeypatch.setattr(terminal_mod.sys, "platform", "linux")
+    monkeypatch.setattr(terminal_mod.tempfile, "gettempdir", lambda: str(tmp_path))
+
+    assert terminal_mod._terminals_tmp_root() == tmp_path
+
+
 def test_resolve_terminal_transport_precedence(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

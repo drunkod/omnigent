@@ -15,7 +15,9 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:terminal": "playwright test e2e/terminal.spec.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

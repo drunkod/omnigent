@@ -1,54 +1,422 @@
-import { test, expect } from '@playwright/test';
-import { execSync, spawn } from 'child_process';
-import * as fs from 'fs';
-import * as path from 'path';
+import { expect, test } from "@playwright/test";
+import { execFileSync, spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
-function killRunners() {
-  console.log('Killing existing runner processes...');
-  try { execSync("pkill -9 -f 'omnigent run'"); } catch(e){}
-  try { execSync("pkill -9 -f 'omnigent.runner'"); } catch(e){}
-  try { execSync("pkill -9 -f 'omnigent.runtime'"); } catch(e){}
-  try { execSync("pkill -9 -f 'omnigent.runner._entry'"); } catch(e){}
+const API_URL = (
+  process.env.OMNIGENT_E2E_API_URL ??
+  process.env.OMNIGENT_URL ??
+  "http://127.0.0.1:6767"
+).replace(/\/+$/, "");
+const API_AUTH_TOKEN = process.env.OMNIGENT_AUTH_TOKEN?.trim() || null;
+const E2E_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(E2E_DIRECTORY, "../..");
+
+interface SessionSummary {
+  id: string;
+  created_at: number;
+  agent_name?: string | null;
 }
 
-// Relies on the clean slate established by killRunners() at test start: after
-// that, the only `omnigent.runner._entry` process is the one this test spawned,
-// so the first pgrep match is the current session's runner.
-function getRunnerPid(): number | null {
-  try {
-    const stdout = execSync("pgrep -f 'omnigent.runner._entry'").toString().trim();
-    if (stdout) {
-      const pids = stdout.split('\n').map(p => parseInt(p, 10)).filter(p => !isNaN(p));
-      return pids[0] || null;
-    }
-  } catch(e){}
-  return null;
+interface SessionListResponse {
+  data?: SessionSummary[];
+  first_id?: string | null;
+  last_id?: string | null;
+  has_more?: boolean;
 }
 
-// Hoisted so afterEach can tear the process down even when an assertion throws
-// mid-test, instead of leaking the runner until the next run's global kill.
-let cliProc: ReturnType<typeof spawn> | null = null;
+interface ProcessRow {
+  pid: number;
+  parentPid: number;
+  processGroupId: number;
+  command: string;
+}
 
-test.afterEach(() => {
-  try { cliProc?.kill(); } catch(e){}
-  cliProc = null;
-  killRunners();
-});
+interface PreparedAgent {
+  directory: string;
+  dataDirectory: string;
+  agentName: string;
+}
 
-test('same-process terminal reconnect and 404 cleanup', async ({ page }) => {
-  // Per-run unique temp path so repeated or parallel runs never collide.
-  const testFilePath = `/tmp/omnigent-demo-same-process-${Date.now()}.txt`;
-  if (fs.existsSync(testFilePath)) {
-    fs.unlinkSync(testFilePath);
+let cliProcessGroupId: number | null = null;
+let daemonProcessGroupId: number | null = null;
+let createdSessionId: string | null = null;
+let generatedAgentDir: string | null = null;
+let generatedDataDir: string | null = null;
+let testFilePath: string | null = null;
+
+function sleep(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function withApiHeaders(init?: RequestInit): RequestInit {
+  const headers = new Headers(init?.headers);
+
+  if (API_AUTH_TOKEN !== null && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${API_AUTH_TOKEN}`);
   }
 
-  // Kill existing runners
-  killRunners();
-  await new Promise(resolve => setTimeout(resolve, 2000));
+  return {
+    ...init,
+    headers,
+  };
+}
 
-  // Prepare config
-  console.log('Preparing temporary config...');
-  const baseConfig = fs.readFileSync('../examples/polly/agents/codex/config.yaml', 'utf8');
+async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
+  return globalThis.fetch(url, withApiHeaders(init));
+}
+
+async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const response = await apiFetch(url, init);
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+
+    throw new Error(
+      `${init?.method ?? "GET"} ${url} failed: ` +
+        `${response.status} ${response.statusText}` +
+        (body ? `\n${body}` : ""),
+    );
+  }
+
+  return (await response.json()) as T;
+}
+
+async function listSessions(): Promise<SessionSummary[]> {
+  const sessions: SessionSummary[] = [];
+  let after: string | null = null;
+
+  while (true) {
+    const params = new URLSearchParams({
+      limit: "1000",
+      order: "desc",
+    });
+
+    if (after !== null) {
+      params.set("after", after);
+    }
+
+    const page = await fetchJson<SessionListResponse>(
+      `${API_URL}/v1/sessions?${params.toString()}`,
+    );
+    const pageSessions = Array.isArray(page.data) ? page.data : [];
+
+    sessions.push(...pageSessions);
+
+    if (!page.has_more) {
+      return sessions;
+    }
+
+    const nextAfter = page.last_id ?? pageSessions.at(-1)?.id ?? null;
+
+    if (nextAfter === null || nextAfter === after) {
+      throw new Error("Session pagination reported has_more without a usable next cursor");
+    }
+
+    after = nextAfter;
+  }
+}
+
+async function waitForValue<T>(
+  producer: () => Promise<T | null> | T | null,
+  options: { timeoutMs: number; intervalMs?: number; description: string },
+): Promise<T> {
+  const deadline = Date.now() + options.timeoutMs;
+  let lastError: unknown;
+
+  while (Date.now() < deadline) {
+    try {
+      const value = await producer();
+      if (value !== null) return value;
+    } catch (error) {
+      lastError = error;
+    }
+
+    await sleep(options.intervalMs ?? 500);
+  }
+
+  const suffix = lastError instanceof Error ? ` Last error: ${lastError.message}` : "";
+  throw new Error(`Timed out waiting for ${options.description}.${suffix}`);
+}
+
+function readProcessTable(): ProcessRow[] {
+  const output = execFileSync("ps", ["-axo", "pid=,ppid=,pgid=,command="], { encoding: "utf8" });
+  const rows: ProcessRow[] = [];
+
+  for (const line of output.split("\n")) {
+    const match = line.match(/^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/);
+    if (!match) continue;
+
+    rows.push({
+      pid: Number.parseInt(match[1], 10),
+      parentPid: Number.parseInt(match[2], 10),
+      processGroupId: Number.parseInt(match[3], 10),
+      command: match[4],
+    });
+  }
+
+  return rows;
+}
+
+function readHostDaemonPid(dataDirectory: string): number | null {
+  const pidFilePath = path.join(dataDirectory, "host.pid");
+
+  if (!fs.existsSync(pidFilePath)) {
+    return null;
+  }
+
+  const firstLine = fs.readFileSync(pidFilePath, "utf8").trim().split(/\r?\n/, 1)[0];
+
+  const pid = Number.parseInt(firstLine, 10);
+
+  if (!Number.isSafeInteger(pid) || pid <= 1) {
+    throw new Error(`Invalid host daemon PID in ${pidFilePath}: ${firstLine}`);
+  }
+
+  return pid;
+}
+
+function isDescendantOf(
+  candidatePid: number,
+  ancestorPid: number,
+  rowsByPid: Map<number, ProcessRow>,
+): boolean {
+  let current = rowsByPid.get(candidatePid);
+  const visited = new Set<number>();
+
+  while (current !== undefined && !visited.has(current.pid)) {
+    if (current.parentPid === ancestorPid) {
+      return true;
+    }
+
+    visited.add(current.pid);
+    current = rowsByPid.get(current.parentPid);
+  }
+
+  return false;
+}
+
+function findOwnedRunnerPid(daemonPid: number): number | null {
+  const rows = readProcessTable();
+  const rowsByPid = new Map(rows.map((row): [number, ProcessRow] => [row.pid, row]));
+
+  const candidates = rows.filter(
+    (row) =>
+      row.command.includes("omnigent.runner._entry") &&
+      isDescendantOf(row.pid, daemonPid, rowsByPid),
+  );
+
+  if (candidates.length > 1) {
+    throw new Error(
+      `More than one runner belongs to daemon ${daemonPid}: ` +
+        candidates
+          .map((candidate) => `${candidate.pid}/${candidate.processGroupId}: ${candidate.command}`)
+          .join(", "),
+    );
+  }
+
+  return candidates[0]?.pid ?? null;
+}
+
+function processGroupExists(processGroupId: number): boolean {
+  try {
+    process.kill(-processGroupId, 0);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+
+    if (code === "ESRCH") {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
+function signalProcessGroup(processGroupId: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(-processGroupId, signal);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+
+    if (code !== "ESRCH") {
+      throw error;
+    }
+  }
+}
+
+function signalProcess(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(pid, signal);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+
+    if (code !== "ESRCH") {
+      throw error;
+    }
+  }
+}
+
+async function waitForProcessGroupExit(
+  processGroupId: number,
+  timeoutMs: number,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    if (!processGroupExists(processGroupId)) {
+      return true;
+    }
+
+    await sleep(200);
+  }
+
+  return !processGroupExists(processGroupId);
+}
+
+async function terminateProcessGroup(processGroupId: number): Promise<void> {
+  // A runner paused with SIGSTOP cannot process SIGTERM.
+  signalProcessGroup(processGroupId, "SIGCONT");
+  signalProcessGroup(processGroupId, "SIGTERM");
+
+  if (await waitForProcessGroupExit(processGroupId, 10_000)) {
+    return;
+  }
+
+  signalProcessGroup(processGroupId, "SIGKILL");
+
+  if (!(await waitForProcessGroupExit(processGroupId, 2_000))) {
+    throw new Error(`Process group ${processGroupId} remained alive after SIGKILL`);
+  }
+}
+
+async function terminateOwnedProcesses(): Promise<void> {
+  const errors: unknown[] = [];
+
+  if (daemonProcessGroupId !== null) {
+    const processGroupId = daemonProcessGroupId;
+
+    try {
+      await terminateProcessGroup(processGroupId);
+      daemonProcessGroupId = null;
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      errors.push(
+        new Error(`Failed to terminate daemon process group ${processGroupId}: ${detail}`),
+      );
+    }
+  }
+
+  if (cliProcessGroupId !== null) {
+    const processGroupId = cliProcessGroupId;
+
+    try {
+      await terminateProcessGroup(processGroupId);
+      cliProcessGroupId = null;
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      errors.push(new Error(`Failed to terminate CLI process group ${processGroupId}: ${detail}`));
+    }
+  }
+
+  if (errors.length > 0) {
+    throw new AggregateError(errors, "Failed to terminate test-owned process groups");
+  }
+}
+
+async function deleteOwnedSession(): Promise<void> {
+  if (createdSessionId === null) return;
+
+  const sessionId = createdSessionId;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const response = await apiFetch(`${API_URL}/v1/sessions/${encodeURIComponent(sessionId)}`, {
+        method: "DELETE",
+      });
+
+      if (response.ok || response.status === 404) {
+        createdSessionId = null;
+        return;
+      }
+
+      const body = await response.text().catch(() => "");
+      lastError = new Error(
+        `DELETE session failed: ${response.status} ${response.statusText}` +
+          (body ? `\n${body}` : ""),
+      );
+    } catch (error) {
+      lastError = error;
+    }
+
+    if (attempt < 3) {
+      await sleep(500 * attempt);
+    }
+  }
+
+  // Do not let another test accidentally claim this ID.
+  createdSessionId = null;
+
+  const detail = lastError instanceof Error ? lastError.message : String(lastError);
+
+  throw new Error(`Failed to delete test-owned session ${sessionId}: ${detail}`);
+}
+
+interface GeneratedFileCleanupOptions {
+  removeAgentDirectory: boolean;
+  removeDataDirectory: boolean;
+}
+
+function removeGeneratedFiles(options: GeneratedFileCleanupOptions): void {
+  if (testFilePath !== null) {
+    fs.rmSync(testFilePath, { force: true });
+    testFilePath = null;
+  }
+
+  if (options.removeAgentDirectory && generatedAgentDir !== null) {
+    fs.rmSync(generatedAgentDir, {
+      recursive: true,
+      force: true,
+    });
+    generatedAgentDir = null;
+  }
+
+  if (options.removeDataDirectory && generatedDataDir !== null) {
+    fs.rmSync(generatedDataDir, {
+      recursive: true,
+      force: true,
+    });
+    generatedDataDir = null;
+  }
+}
+
+function prepareAgent(): PreparedAgent {
+  const baseConfigPath = path.join(
+    REPO_ROOT,
+    "examples",
+    "polly",
+    "agents",
+    "codex",
+    "config.yaml",
+  );
+  const baseConfig = fs.readFileSync(baseConfigPath, "utf8");
+  const agentName = `terminal-e2e-${randomUUID()}`;
+  const namedConfig = baseConfig.replace(/^name:\s*.*$/m, `name: ${agentName}`);
+
+  if (namedConfig === baseConfig) {
+    throw new Error(`Agent config has no replaceable name field: ${baseConfigPath}`);
+  }
+
   const terminalsBlock = `
 terminals:
   shell:
@@ -60,149 +428,277 @@ terminals:
       sandbox:
         type: none
 `;
-  const agentDir = path.join(process.cwd(), 'e2e/test_agent');
-  fs.mkdirSync(agentDir, { recursive: true });
-  fs.writeFileSync(path.join(agentDir, 'config.yaml'), baseConfig + '\n' + terminalsBlock);
 
-  // Start fresh session
-  console.log('Starting fresh session...');
-  cliProc = spawn('nix', ['develop', '-c', 'uv', 'run', '--frozen', 'omnigent', 'run', agentDir, '--server', 'http://localhost:6767'], {
-    cwd: path.join(process.cwd(), '..'),
-    env: { ...process.env, TERM: 'xterm-256color' }
+  generatedAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "omnigent-terminal-e2e-agent-"));
+  generatedDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "omnigent-terminal-e2e-data-"));
+
+  fs.writeFileSync(
+    path.join(generatedAgentDir, "config.yaml"),
+    `${namedConfig}\n${terminalsBlock}`,
+    "utf8",
+  );
+
+  return {
+    directory: generatedAgentDir,
+    dataDirectory: generatedDataDir,
+    agentName,
+  };
+}
+
+function startCli(preparedAgent: PreparedAgent): void {
+  const child = spawn(
+    "nix",
+    [
+      "develop",
+      "-c",
+      "uv",
+      "run",
+      "--frozen",
+      "omnigent",
+      "run",
+      preparedAgent.directory,
+      "--server",
+      API_URL,
+    ],
+    {
+      cwd: REPO_ROOT,
+      env: {
+        ...process.env,
+        TERM: "xterm-256color",
+        // Gives this test its own daemon pidfile, runner identity, logs,
+        // registration state, and other per-user Omnigent state.
+        OMNIGENT_DATA_DIR: preparedAgent.dataDirectory,
+      },
+      detached: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+
+  if (child.pid === undefined) {
+    throw new Error("Failed to obtain the spawned CLI PID");
+  }
+
+  cliProcessGroupId = child.pid;
+
+  child.stdout?.on("data", (data: Buffer) => {
+    console.log(`[CLI] ${data.toString()}`);
+  });
+  child.stderr?.on("data", (data: Buffer) => {
+    console.error(`[CLI STDERR] ${data.toString()}`);
+  });
+  child.on("exit", (code, signal) => {
+    console.log(`CLI exited: code=${code}, signal=${signal}`);
+  });
+}
+
+async function waitForCreatedSession(
+  existingSessionIds: Set<string>,
+  expectedAgentName: string,
+): Promise<SessionSummary> {
+  return waitForValue(
+    async () => {
+      const matchingSessions = (await listSessions()).filter(
+        (session) =>
+          !existingSessionIds.has(session.id) && session.agent_name === expectedAgentName,
+      );
+
+      if (matchingSessions.length > 1) {
+        throw new Error(
+          `Multiple sessions matched agent ${expectedAgentName}: ` +
+            matchingSessions.map((session) => session.id).join(", "),
+        );
+      }
+
+      return matchingSessions[0] ?? null;
+    },
+    { timeoutMs: 60_000, description: `the session for agent ${expectedAgentName}` },
+  );
+}
+
+test.describe.configure({ mode: "serial" });
+test.skip(
+  process.platform === "win32",
+  "This test requires Unix process groups and SIGSTOP/SIGCONT.",
+);
+
+test.afterEach(async () => {
+  const cleanupErrors: unknown[] = [];
+  let processesTerminated = false;
+
+  try {
+    await terminateOwnedProcesses();
+    processesTerminated = true;
+  } catch (error) {
+    cleanupErrors.push(error);
+  }
+
+  try {
+    await deleteOwnedSession();
+  } catch (error) {
+    cleanupErrors.push(error);
+  }
+
+  try {
+    removeGeneratedFiles({
+      // Preserve the full reproduction state while any owned process
+      // may still be alive.
+      removeAgentDirectory: processesTerminated,
+      removeDataDirectory: processesTerminated,
+    });
+  } catch (error) {
+    cleanupErrors.push(error);
+  }
+
+  if (!processesTerminated) {
+    if (generatedAgentDir !== null) {
+      console.error(`Preserved terminal E2E agent config: ${generatedAgentDir}`);
+    }
+
+    if (generatedDataDir !== null) {
+      console.error(`Preserved terminal E2E daemon state: ${generatedDataDir}`);
+    }
+  }
+
+  if (cleanupErrors.length > 0) {
+    throw new AggregateError(cleanupErrors, "Terminal E2E cleanup failed");
+  }
+});
+
+test("same-process terminal reconnect and 404 cleanup", async ({ page }) => {
+  test.setTimeout(600_000);
+
+  // Fail immediately when the explicit backend prerequisite is absent.
+  await fetchJson<SessionListResponse>(`${API_URL}/v1/sessions?limit=1`);
+
+  const existingSessionIds = new Set((await listSessions()).map((session) => session.id));
+  const preparedAgent = prepareAgent();
+
+  testFilePath = path.join(os.tmpdir(), `omnigent-same-process-${process.pid}-${Date.now()}.txt`);
+
+  startCli(preparedAgent);
+
+  const daemonPid = await waitForValue(() => readHostDaemonPid(preparedAgent.dataDirectory), {
+    timeoutMs: 60_000,
+    description: "the isolated host daemon PID file",
   });
 
-  // Log cli output
-  cliProc.stdout.on('data', (data) => console.log(`[CLI] ${data}`));
-  cliProc.stderr.on('data', (data) => console.error(`[CLI STDERR] ${data}`));
+  // _spawn_host_daemon_process uses start_new_session=True on POSIX,
+  // so the daemon PID is also its process-group ID. Store it immediately
+  // so afterEach can still terminate the daemon if later discovery fails.
+  daemonProcessGroupId = daemonPid;
 
-  await new Promise(resolve => setTimeout(resolve, 15000));
+  const daemonRow = await waitForValue(
+    () => readProcessTable().find((row) => row.pid === daemonPid) ?? null,
+    {
+      timeoutMs: 30_000,
+      description: `host daemon process ${daemonPid}`,
+    },
+  );
 
-  // Get session ID
-  const response = await fetch('http://localhost:6767/v1/sessions');
-  const data = await response.json();
-  if (!data.data || data.data.length === 0) {
-    cliProc?.kill();
-    throw new Error('No sessions found');
+  if (daemonRow.processGroupId !== daemonPid) {
+    throw new Error(
+      `Host daemon ${daemonPid} was expected to lead its process group, ` +
+        `but its PGID is ${daemonRow.processGroupId}`,
+    );
   }
-  const sessions = data.data;
-  sessions.sort((a, b) => b.created_at - a.created_at);
-  const sessionId = sessions[0].id;
-  console.log(`Parsed Session ID: ${sessionId}`);
 
-  // Navigate to session
-  const targetUrl = `http://localhost:5173/c/${sessionId}`;
-  console.log(`Navigating to: ${targetUrl}`);
-  await page.goto(targetUrl);
-  await page.waitForTimeout(5000);
+  const createdSession = await waitForCreatedSession(existingSessionIds, preparedAgent.agentName);
+  createdSessionId = createdSession.id;
 
-  // Reload page
-  console.log('Reloading page...');
-  await page.reload();
-  await page.waitForTimeout(8000);
+  const runnerPid = await waitForValue(() => findOwnedRunnerPid(daemonPid), {
+    timeoutMs: 60_000,
+    description: `runner owned by host daemon ${daemonPid}`,
+  });
 
-  // Dismiss overlays or click shells tab
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(1000);
+  await page.goto(`/c/${encodeURIComponent(createdSessionId)}`);
+  await page.keyboard.press("Escape");
 
-  const shellsTab = page.locator("button:has-text('Shells')").first();
+  const shellsTab = page.getByRole("tab", { name: "Shells" });
+  await expect(shellsTab).toBeVisible({ timeout: 30_000 });
   await shellsTab.click();
-  await page.waitForTimeout(2000);
 
-  // Create new shell
-  const newShellBtn = page.locator("button:has-text('New shell')").first();
-  await newShellBtn.click();
-  await page.waitForTimeout(8000);
+  const newShellButton = page.getByRole("button", { name: "New shell" });
+  await expect(newShellButton).toBeVisible({ timeout: 30_000 });
+  await newShellButton.click();
 
-  // Focus terminal
-  await page.locator('div.xterm').first().click();
-  await page.waitForTimeout(1000);
+  const shellMenuItem = page.getByRole("menuitem", { name: "shell" });
+  if (await shellMenuItem.isVisible().catch(() => false)) await shellMenuItem.click();
 
-  // Verify terminal works
-  console.log('Sending test command...');
+  const terminal = page.locator("div.xterm").first();
+  await expect(terminal).toBeVisible({ timeout: 30_000 });
+
+  const snapshotKey = `omnigent.terminals.${createdSessionId}`;
+  await expect
+    .poll(() => page.evaluate((key) => sessionStorage.getItem(key), snapshotKey), {
+      timeout: 30_000,
+    })
+    .not.toBeNull();
+
+  await terminal.click();
   await page.keyboard.type("echo 'same-process test starting'");
-  await page.keyboard.press('Enter');
-  await page.waitForTimeout(3000);
+  await page.keyboard.press("Enter");
 
-  // Get runner ID from session details
-  const sessionDetailResponse = await fetch(`http://localhost:6767/v1/sessions/${sessionId}`);
-  const sessionDetail = await sessionDetailResponse.json();
-  const runnerId = sessionDetail.runner_id;
-  if (!runnerId) {
-    cliProc?.kill();
-    throw new Error('Runner ID not found in session details');
-  }
-  console.log(`Parsed Runner ID: ${runnerId}`);
+  signalProcess(runnerPid, "SIGSTOP");
 
-  // Get runner pid
-  const runnerPid = getRunnerPid();
-  if (!runnerPid) {
-    cliProc?.kill();
-    throw new Error('Runner PID not found');
-  }
-  console.log(`Found runner process PID: ${runnerPid}`);
+  const offlineOverlay = page.getByTestId("terminal-runner-offline").first();
+  await expect(offlineOverlay).toBeVisible({ timeout: 140_000 });
 
-  // SIGSTOP
-  console.log(`Sending SIGSTOP to PID ${runnerPid}...`);
-  process.kill(runnerPid, 'SIGSTOP');
-
-  console.log('Waiting for health poll to trigger offline state (up to 140s)...');
-  const offlineOverlay = page.locator("[data-testid='terminal-runner-offline']").first();
-  await expect(offlineOverlay).toBeVisible({ timeout: 140000 });
-
-  // Hard reload
-  console.log('Hard reloading browser...');
   await page.reload();
-  await page.waitForTimeout(8000);
+  await expect(page.getByTestId("terminal-runner-offline").first()).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(page.locator("div.xterm").first()).toBeVisible({ timeout: 20_000 });
+  await expect
+    .poll(() => page.evaluate((key) => sessionStorage.getItem(key), snapshotKey))
+    .not.toBeNull();
 
-  // Verify same terminal is selected and overlay is visible
-  const offlineOverlayAfterReload = page.locator("[data-testid='terminal-runner-offline']").first();
-  await expect(offlineOverlayAfterReload).toBeVisible({ timeout: 10000 });
+  signalProcess(runnerPid, "SIGCONT");
+  await expect(page.getByTestId("terminal-runner-offline").first()).not.toBeVisible({
+    timeout: 45_000,
+  });
 
-  // SIGCONT
-  console.log(`Sending SIGCONT to PID ${runnerPid}...`);
-  process.kill(runnerPid, 'SIGCONT');
+  const resumedTerminal = page.locator("div.xterm").first();
+  await resumedTerminal.click();
+  if (testFilePath === null) {
+    throw new Error("The terminal test output path was not initialized");
+  }
+  await page.keyboard.type(`printf '%s\\n' 'same-process-ok' > ${shellQuote(testFilePath)}`);
+  await page.keyboard.press("Enter");
 
-  console.log('Waiting for auto-reattachment (up to 45s)...');
-  await expect(offlineOverlayAfterReload).not.toBeVisible({ timeout: 45000 });
+  await expect
+    .poll(
+      () => {
+        if (testFilePath === null || !fs.existsSync(testFilePath)) return null;
+        return fs.readFileSync(testFilePath, "utf8").trim();
+      },
+      { timeout: 20_000 },
+    )
+    .toBe("same-process-ok");
 
-  // Execute a command successfully
-  await page.locator('div.xterm').first().click();
-  await page.waitForTimeout(1000);
-  await page.keyboard.type(`printf 'same-process-ok\\n' > ${testFilePath}`);
-  await page.keyboard.press('Enter');
-  await page.waitForTimeout(5000);
+  const deletedSessionId = createdSessionId;
 
-  expect(fs.existsSync(testFilePath)).toBe(true);
-  const fileContent = fs.readFileSync(testFilePath, 'utf8').trim();
-  expect(fileContent).toBe('same-process-ok');
-  console.log('Same-process reconnection test PASSED!');
+  const deleteResponse = await apiFetch(
+    `${API_URL}/v1/sessions/${encodeURIComponent(deletedSessionId)}`,
+    { method: "DELETE" },
+  );
 
-  // Test 404 behavior: Delete all sessions
-  console.log('Deleting all sessions to test 404 behavior...');
-  while (true) {
-    const getAllSessionsResponse = await fetch('http://localhost:6767/v1/sessions?limit=100');
-    const allSessionsData = await getAllSessionsResponse.json();
-    if (!allSessionsData.data || allSessionsData.data.length === 0) {
-      break;
-    }
-    for (const s of allSessionsData.data) {
-      await fetch(`http://localhost:6767/v1/sessions/${s.id}`, { method: 'DELETE' });
-    }
-    if (!allSessionsData.has_more) {
-      break;
-    }
+  if (!deleteResponse.ok) {
+    const body = await deleteResponse.text().catch(() => "");
+
+    throw new Error(
+      `DELETE session ${deletedSessionId} failed: ` +
+        `${deleteResponse.status} ${deleteResponse.statusText}` +
+        (body ? `\n${body}` : ""),
+    );
   }
 
-  console.log('Reloading page after delete...');
+  createdSessionId = null;
+
   await page.reload();
-  await page.waitForTimeout(8000);
-
-  const xtermVisible = await page.locator('div.xterm').first().isVisible();
-  const tabsVisible = await page.locator("button:has-text('bash')").first().isVisible();
-  expect(xtermVisible).toBe(false);
-  expect(tabsVisible).toBe(false);
-  console.log('404 cleanup test PASSED!');
-
-  // Process teardown (cliProc + runners) is handled by afterEach so it runs
-  // even if an assertion above fails.
+  await expect
+    .poll(() => page.evaluate((key) => sessionStorage.getItem(key), snapshotKey), {
+      timeout: 20_000,
+    })
+    .toBeNull();
+  await expect(page.locator("div.xterm:visible")).toHaveCount(0, { timeout: 20_000 });
 });

@@ -1888,7 +1888,9 @@ def create_terminal_instance(
         raise RuntimeError("tmux is not installed or not on PATH")
 
     # Create the instance's private directory.
-    private_dir = Path(tempfile.mkdtemp(prefix=_TERMINAL_DIR_PREFIX, dir=str(_terminals_tmp_root())))
+    private_dir = Path(
+        tempfile.mkdtemp(prefix=_TERMINAL_DIR_PREFIX, dir=str(_terminals_tmp_root()))
+    )
     socket_path = private_dir / "tmux.sock"
     # Record the owning process so a later startup can reap this tmux
     # server if we die without graceful shutdown (SIGKILL, harness
