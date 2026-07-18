@@ -4,6 +4,11 @@ dist/
 node_modules/
 reviews/
 
+# Playwright E2E generated artifacts (runtime-built agent config + reports).
+web/e2e/test_agent/
+web/test-results/
+web/playwright-report/
+
 # Generated artifact; never committed.
 .pytest_cache/
 __pycache__/
