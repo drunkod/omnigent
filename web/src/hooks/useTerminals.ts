@@ -551,9 +551,7 @@ export function useTerminals(
   // Only touch sessionStorage when there's no in-memory cache to hydrate from;
   // a synchronous JSON.parse on every render is otherwise wasted work.
   const storedAtRender =
-    hasCachedInventory || conversationId === null
-      ? undefined
-      : readStoredTerminals(conversationId);
+    hasCachedInventory || conversationId === null ? undefined : readStoredTerminals(conversationId);
 
   const hydrateFromStorage =
     !hasCachedInventory && storedAtRender !== undefined && storedAtRender.length > 0;
