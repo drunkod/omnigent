@@ -6,7 +6,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const API_URL = (process.env.OMNIGENT_E2E_API_URL ?? "http://127.0.0.1:6767").replace(/\/+$/, "");
+const API_URL = (
+  process.env.OMNIGENT_E2E_API_URL ??
+  process.env.OMNIGENT_URL ??
+  "http://127.0.0.1:6767"
+).replace(/\/+$/, "");
+const API_AUTH_TOKEN = process.env.OMNIGENT_AUTH_TOKEN?.trim() || null;
 const E2E_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(E2E_DIRECTORY, "../..");
 
@@ -53,13 +58,32 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
+function withApiHeaders(init?: RequestInit): RequestInit {
+  const headers = new Headers(init?.headers);
+
+  if (API_AUTH_TOKEN !== null && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${API_AUTH_TOKEN}`);
+  }
+
+  return {
+    ...init,
+    headers,
+  };
+}
+
+async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
+  return globalThis.fetch(url, withApiHeaders(init));
+}
+
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await globalThis.fetch(url, init);
+  const response = await apiFetch(url, init);
 
   if (!response.ok) {
     const body = await response.text().catch(() => "");
+
     throw new Error(
-      `${init?.method ?? "GET"} ${url} failed: ${response.status} ${response.statusText}` +
+      `${init?.method ?? "GET"} ${url} failed: ` +
+        `${response.status} ${response.statusText}` +
         (body ? `\n${body}` : ""),
     );
   }
@@ -317,37 +341,49 @@ async function deleteOwnedSession(): Promise<void> {
 
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
-      const response = await globalThis.fetch(
-        `${API_URL}/v1/sessions/${encodeURIComponent(sessionId)}`,
-        { method: "DELETE" },
-      );
+      const response = await apiFetch(`${API_URL}/v1/sessions/${encodeURIComponent(sessionId)}`, {
+        method: "DELETE",
+      });
 
       if (response.ok || response.status === 404) {
         createdSessionId = null;
         return;
       }
 
-      lastError = new Error(`DELETE session failed: ${response.status} ${response.statusText}`);
+      const body = await response.text().catch(() => "");
+      lastError = new Error(
+        `DELETE session failed: ${response.status} ${response.statusText}` +
+          (body ? `\n${body}` : ""),
+      );
     } catch (error) {
       lastError = error;
     }
 
-    if (attempt < 3) await sleep(500 * attempt);
+    if (attempt < 3) {
+      await sleep(500 * attempt);
+    }
   }
 
-  // Do not let a later test accidentally claim this ID.
+  // Do not let another test accidentally claim this ID.
   createdSessionId = null;
+
   const detail = lastError instanceof Error ? lastError.message : String(lastError);
+
   throw new Error(`Failed to delete test-owned session ${sessionId}: ${detail}`);
 }
 
-function removeGeneratedFiles(options: { removeDataDirectory: boolean }): void {
+interface GeneratedFileCleanupOptions {
+  removeAgentDirectory: boolean;
+  removeDataDirectory: boolean;
+}
+
+function removeGeneratedFiles(options: GeneratedFileCleanupOptions): void {
   if (testFilePath !== null) {
     fs.rmSync(testFilePath, { force: true });
     testFilePath = null;
   }
 
-  if (generatedAgentDir !== null) {
+  if (options.removeAgentDirectory && generatedAgentDir !== null) {
     fs.rmSync(generatedAgentDir, {
       recursive: true,
       force: true,
@@ -504,16 +540,23 @@ test.afterEach(async () => {
 
   try {
     removeGeneratedFiles({
-      // Preserve the daemon PID file and logs when a process could not
-      // be terminated, so the leaked process can still be diagnosed.
+      // Preserve the full reproduction state while any owned process
+      // may still be alive.
+      removeAgentDirectory: processesTerminated,
       removeDataDirectory: processesTerminated,
     });
   } catch (error) {
     cleanupErrors.push(error);
   }
 
-  if (!processesTerminated && generatedDataDir !== null) {
-    console.error(`Preserved terminal E2E daemon state for diagnostics: ${generatedDataDir}`);
+  if (!processesTerminated) {
+    if (generatedAgentDir !== null) {
+      console.error(`Preserved terminal E2E agent config: ${generatedAgentDir}`);
+    }
+
+    if (generatedDataDir !== null) {
+      console.error(`Preserved terminal E2E daemon state: ${generatedDataDir}`);
+    }
   }
 
   if (cleanupErrors.length > 0) {
@@ -633,11 +676,22 @@ test("same-process terminal reconnect and 404 cleanup", async ({ page }) => {
     .toBe("same-process-ok");
 
   const deletedSessionId = createdSessionId;
-  const deleteResponse = await globalThis.fetch(
+
+  const deleteResponse = await apiFetch(
     `${API_URL}/v1/sessions/${encodeURIComponent(deletedSessionId)}`,
     { method: "DELETE" },
   );
-  expect(deleteResponse.ok).toBe(true);
+
+  if (!deleteResponse.ok) {
+    const body = await deleteResponse.text().catch(() => "");
+
+    throw new Error(
+      `DELETE session ${deletedSessionId} failed: ` +
+        `${deleteResponse.status} ${deleteResponse.statusText}` +
+        (body ? `\n${body}` : ""),
+    );
+  }
+
   createdSessionId = null;
 
   await page.reload();

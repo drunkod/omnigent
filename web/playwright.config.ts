@@ -1,6 +1,10 @@
 import { defineConfig } from "@playwright/test";
 
-const API_URL = (process.env.OMNIGENT_E2E_API_URL ?? "http://127.0.0.1:6767").replace(/\/+$/, "");
+const API_URL = (
+  process.env.OMNIGENT_E2E_API_URL ??
+  process.env.OMNIGENT_URL ??
+  "http://127.0.0.1:6767"
+).replace(/\/+$/, "");
 
 export default defineConfig({
   testDir: "./e2e",
@@ -24,8 +28,7 @@ export default defineConfig({
     url: "http://127.0.0.1:5173",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
-    // Keep Vite's browser proxy on the same backend used by the Node-side
-    // setup and cleanup requests.
+    // Keep the browser proxy, Node-side API calls, and CLI on one backend.
     env: { OMNIGENT_URL: API_URL },
   },
 
