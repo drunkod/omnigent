@@ -64,6 +64,21 @@ def test_reasoning_started_roundtrip() -> None:
     }
 
 
+def test_policy_elicitation_is_not_normalized_as_legacy_local_action() -> None:
+    """A policy's kind/mode fields do not impersonate a runner action."""
+    params = ElicitationRequestParams.model_validate(
+        {
+            "message": "Policy approval required",
+            "kind": "run_shell",
+            "policy_mode": "manual",
+            "policy_name": "manual_shell_approval",
+        }
+    )
+
+    assert params.local_action is None
+    assert params.message == "Policy approval required"
+
+
 def test_reasoning_text_delta_roundtrip() -> None:
     event = ReasoningTextDeltaEvent(type="response.reasoning_text.delta", delta="Considering")
     assert event.model_dump(exclude_none=True) == {
@@ -608,6 +623,60 @@ def test_session_create_git_with_host_id_ok() -> None:
     )
     assert req.git is not None
     assert req.git.branch_name == "feature/x"
+
+
+def test_session_create_runner_binding_accepts_opaque_ids() -> None:
+    from omnigent.server.schemas import SessionCreateRequest
+
+    req = SessionCreateRequest(
+        agent_id="ag_x",
+        runner_id="runner_a",
+        workspace_id="ws_1",
+    )
+    assert req.runner_id == "runner_a"
+    assert req.workspace_id == "ws_1"
+
+
+def test_multipart_session_metadata_accepts_opaque_ids() -> None:
+    from omnigent.server.schemas import SessionCreateMetadata
+
+    metadata = SessionCreateMetadata(runner_id="runner_a", workspace_id="ws_1")
+    assert metadata.runner_id == "runner_a"
+    assert metadata.workspace_id == "ws_1"
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        (
+            {"runner_id": "runner_a", "host_id": "host_a"},
+            "runner_id and host_id are mutually exclusive",
+        ),
+        (
+            {"runner_id": "runner_a", "workspace": "/repo"},
+            "runner-bound sessions use workspace_id",
+        ),
+        (
+            {"workspace_id": "ws_1"},
+            "workspace_id requires runner_id",
+        ),
+        (
+            {"runner_id": "runner_a"},
+            "runner_id requires workspace_id",
+        ),
+        (
+            {"runner_id": "", "workspace_id": "ws_1"},
+            "runner_id must not be empty",
+        ),
+    ],
+)
+def test_session_create_runner_binding_rejects_legacy_mixes(
+    kwargs: dict[str, str], message: str
+) -> None:
+    from omnigent.server.schemas import SessionCreateRequest
+
+    with pytest.raises(ValidationError, match=message):
+        SessionCreateRequest(agent_id="ag_x", **kwargs)
 
 
 def test_session_git_existing_worktree_still_requires_host_id() -> None:

@@ -11,6 +11,7 @@ delineator further down:
 
 from __future__ import annotations
 
+import math
 import re
 from typing import Annotated, Any, Literal, get_args
 
@@ -1315,6 +1316,8 @@ class SessionCreateRequest(BaseModel):
     host_type: Literal["external", "managed"] = "external"
     host_id: str | None = None
     workspace: str | None = None
+    runner_id: str | None = None
+    workspace_id: str | None = None
     git: SessionGitOptions | None = None
     terminal_launch_args: list[str] | None = None
     model_override: str | None = None
@@ -1337,6 +1340,26 @@ class SessionCreateRequest(BaseModel):
         """
         if self.git is not None and self.host_id is None:
             raise ValueError("git worktree creation requires host_id")
+        return self
+
+    @model_validator(mode="after")
+    def _check_runner_binding_fields(self) -> SessionCreateRequest:
+        """Keep opaque runner binding separate from host/path launches."""
+        if self.runner_id is not None and not self.runner_id.strip():
+            raise ValueError("runner_id must not be empty")
+        if self.workspace_id is not None and not self.workspace_id.strip():
+            raise ValueError("workspace_id must not be empty")
+        if self.runner_id is not None and self.host_id is not None:
+            raise ValueError("runner_id and host_id are mutually exclusive")
+        if self.runner_id is not None and self.workspace is not None:
+            raise ValueError(
+                "runner-bound sessions use workspace_id; raw workspace paths "
+                "are only valid for host launches"
+            )
+        if self.workspace_id is not None and self.runner_id is None:
+            raise ValueError("workspace_id requires runner_id")
+        if self.runner_id is not None and self.workspace_id is None:
+            raise ValueError("runner_id requires workspace_id")
         return self
 
     @model_validator(mode="after")
@@ -1433,13 +1456,36 @@ class SessionCreateMetadata(BaseModel):
 
     title: str | None = None
     labels: dict[str, str] = Field(default_factory=dict)
+    local_runner_policy: str | None = None
     reasoning_effort: str | None = None
     host_id: str | None = None
     workspace: str | None = None
+    runner_id: str | None = None
+    workspace_id: str | None = None
     terminal_launch_args: list[str] | None = None
     parent_session_id: str | None = None
 
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def _check_runner_binding_fields(self) -> SessionCreateMetadata:
+        """Keep bundled runner binding separate from host/path launches."""
+        if self.runner_id is not None and not self.runner_id.strip():
+            raise ValueError("runner_id must not be empty")
+        if self.workspace_id is not None and not self.workspace_id.strip():
+            raise ValueError("workspace_id must not be empty")
+        if self.runner_id is not None and self.host_id is not None:
+            raise ValueError("runner_id and host_id are mutually exclusive")
+        if self.runner_id is not None and self.workspace is not None:
+            raise ValueError(
+                "runner-bound sessions use workspace_id; raw workspace paths "
+                "are only valid for host launches"
+            )
+        if self.workspace_id is not None and self.runner_id is None:
+            raise ValueError("workspace_id requires runner_id")
+        if self.runner_id is not None and self.workspace_id is None:
+            raise ValueError("runner_id requires workspace_id")
+        return self
 
 
 class CreatedSessionResponse(BaseModel):
@@ -2858,6 +2904,29 @@ class SessionInterruptedEvent(_SSEEventBase):
     data: SessionInterruptedPayload
 
 
+class SessionLocalActionEvent(_SSEEventBase):
+    """Sanitized audit edge for one runner-local action."""
+
+    type: Literal["session.local_action"]
+    action_id: str
+    session_id: str
+    runner_id: str
+    workspace_id: str
+    kind: str
+    requested_by: str
+    policy_mode: str
+    status: str
+    risk_flags: list[str] = Field(default_factory=list)
+    approval_id: str | None = None
+    cwd: str = "."
+    path_summary: list[str] = Field(default_factory=list)
+    command_summary: str | None = None
+    started_at: float | None = None
+    finished_at: float | None = None
+    exit_code: int | None = None
+    output_truncated: bool = False
+
+
 class SessionCreatedEvent(_SSEEventBase):
     """
     A child (sub-agent) session was spawned from this session.
@@ -3245,6 +3314,104 @@ class SessionPresenceEvent(_SSEEventBase):
     viewers: list[PresenceViewer]
 
 
+class LocalActionApprovalParams(BaseModel):
+    """Bounded transient UI detail for a runner-local approval."""
+
+    version: Literal[1] = 1
+    action_id: str | None = Field(default=None, max_length=128)
+    kind: Literal["write_file", "run_shell"]
+    policy_mode: Literal["manual", "assisted", "auto"]
+    workspace_label: str | None = Field(default=None, max_length=256)
+    cwd: str | None = Field(default=None, max_length=512)
+    path_summary: list[str] = Field(default_factory=list, max_length=16)
+    command_preview: str | None = Field(default=None, max_length=2_000)
+    diff_preview: str | None = Field(default=None, max_length=64 * 1024)
+    diff_truncated: bool = False
+    risk_flags: list[str] = Field(default_factory=list, max_length=16)
+    shell_guarantee: Literal["strict_workspace", "trusted_machine"] | None = None
+    expires_at: float | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+def _bounded_optional_text(value: Any, limit: int, *, nonempty: bool = False) -> str | None:
+    if not isinstance(value, str):
+        return None
+    if nonempty and not value:
+        return None
+    return value[:limit]
+
+
+def _bounded_text_list(value: Any, *, count: int, length: int) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    result: list[str] = []
+    for item in value[:count]:
+        if not isinstance(item, str) or not item:
+            continue
+        result.append(item[:length])
+    return result
+
+
+def _workspace_relative_display(value: Any) -> str | None:
+    candidate = _bounded_optional_text(value, 512, nonempty=True)
+    if candidate is None:
+        return None
+    if candidate.startswith(("/", "\\")) or re.match(r"^[A-Za-z]:[\\/]", candidate):
+        return None
+    return candidate
+
+
+def _normalize_local_action_payload(raw: Any) -> dict[str, Any] | None:
+    if not isinstance(raw, dict) or raw.get("version") != 1:
+        return None
+    kind = raw.get("kind")
+    policy_mode = raw.get("policy_mode")
+    if kind not in {"write_file", "run_shell"}:
+        return None
+    if policy_mode not in {"manual", "assisted", "auto"}:
+        return None
+
+    diff_source = raw.get("diff_preview")
+    diff_preview = _bounded_optional_text(diff_source, 64 * 1024)
+    diff_truncated = raw.get("diff_truncated") is True
+    if isinstance(diff_source, str) and len(diff_source) > 64 * 1024:
+        diff_truncated = True
+
+    expires_at = raw.get("expires_at")
+    normalized_expires = (
+        float(expires_at)
+        if isinstance(expires_at, (int, float))
+        and not isinstance(expires_at, bool)
+        and math.isfinite(float(expires_at))
+        and float(expires_at) > 0
+        else None
+    )
+    shell_guarantee = raw.get("shell_guarantee")
+    if shell_guarantee not in {"strict_workspace", "trusted_machine"}:
+        shell_guarantee = None
+
+    result: dict[str, Any] = {
+        "version": 1,
+        "kind": kind,
+        "policy_mode": policy_mode,
+        "path_summary": _bounded_text_list(raw.get("path_summary"), count=16, length=512),
+        "diff_truncated": diff_truncated,
+        "risk_flags": _bounded_text_list(raw.get("risk_flags"), count=16, length=128),
+    }
+    optional_values = {
+        "action_id": _bounded_optional_text(raw.get("action_id"), 128, nonempty=True),
+        "workspace_label": _bounded_optional_text(raw.get("workspace_label"), 256, nonempty=True),
+        "cwd": _workspace_relative_display(raw.get("cwd")),
+        "command_preview": _bounded_optional_text(raw.get("command_preview"), 2_000),
+        "diff_preview": diff_preview,
+        "shell_guarantee": shell_guarantee,
+        "expires_at": normalized_expires,
+    }
+    result.update({key: value for key, value in optional_values.items() if value is not None})
+    return result
+
+
 class ElicitationRequestParams(BaseModel):
     """
     Inner ``params`` block of a :class:`ElicitationRequestEvent`.
@@ -3297,6 +3464,74 @@ class ElicitationRequestParams(BaseModel):
     policy_name: str | None = None
     content_preview: str | None = None
     target_session_id: str | None = None
+    local_action: LocalActionApprovalParams | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_local_action(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        data = dict(value)
+        raw_local_action = data.get("local_action")
+        legacy_kind = data.get("kind")
+        local_kind = (
+            raw_local_action.get("kind") if isinstance(raw_local_action, dict) else legacy_kind
+        )
+        is_local_action = (
+            local_kind in {"write_file", "run_shell"}
+            and isinstance(data.get("action_id"), str)
+            and bool(data["action_id"])
+        )
+        if raw_local_action is None and is_local_action:
+            raw_local_action = {
+                "version": 1,
+                "action_id": data.get("action_id"),
+                "kind": legacy_kind,
+                "policy_mode": data.get("policy_mode"),
+                "workspace_label": data.get("workspace_label"),
+                "cwd": data.get("cwd"),
+                "path_summary": data.get("path_summary"),
+                "command_preview": data.get("command_preview"),
+                "diff_preview": data.get("diff_preview"),
+                "diff_truncated": data.get("diff_truncated"),
+                "risk_flags": data.get("risk_flags"),
+                "shell_guarantee": data.get("shell_guarantee"),
+                "expires_at": data.get("expires_at"),
+            }
+        normalized = _normalize_local_action_payload(raw_local_action)
+        if normalized is not None:
+            data["local_action"] = normalized
+            for key in (
+                "action_id",
+                "kind",
+                "policy_mode",
+                "workspace_label",
+                "cwd",
+                "path_summary",
+                "command_preview",
+                "diff_preview",
+                "diff_truncated",
+                "risk_flags",
+                "shell_guarantee",
+                "expires_at",
+            ):
+                data.pop(key, None)
+        elif is_local_action or raw_local_action is not None:
+            # Unsupported/malformed local actions remain resolvable only as a
+            # conservative generic prompt; never retain producer previews.
+            data["local_action"] = None
+            data["message"] = "Approval required for an unsupported local action."
+            data["content_preview"] = None
+            for key in (
+                "command_preview",
+                "diff_preview",
+                "path_summary",
+                "risk_flags",
+                "workspace_label",
+                "cwd",
+            ):
+                data.pop(key, None)
+        return data
 
     # MCP's ElicitRequestParams uses ``extra="allow"``; mirror
     # that here so MCP-shaped passthrough (an MCP server's
@@ -3881,6 +4116,7 @@ ServerStreamEvent = Annotated[
     | SessionModelOptionsEvent
     | SessionInputConsumedEvent
     | SessionInterruptedEvent
+    | SessionLocalActionEvent
     | SessionCreatedEvent
     | SessionSupersededEvent
     | SessionPresenceEvent

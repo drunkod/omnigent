@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import stat
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -351,6 +352,7 @@ command = "other"
 args = []
 """
     source_config.write_text(original, encoding="utf-8")
+    source_config.chmod(0o444)
 
     codex_home = tmp_path / "codex-home"
     bridge_dir = tmp_path / "bridge"
@@ -368,6 +370,7 @@ args = []
     assert source_config.read_text(encoding="utf-8") == original
     config_path = codex_home / "config.toml"
     assert not config_path.is_symlink()
+    assert config_path.stat().st_mode & stat.S_IWUSR
     rendered = config_path.read_text(encoding="utf-8")
     assert rendered.count("[mcp_servers.omnigent]") == 1
     assert "[mcp_servers.omnigent.env]" not in rendered

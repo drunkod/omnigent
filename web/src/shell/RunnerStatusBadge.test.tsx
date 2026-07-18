@@ -16,6 +16,19 @@ describe("RunnerStatusBadge", () => {
     expect(screen.getByTestId("runner-status-badge")).toHaveTextContent("Local runner");
   });
 
+  it("shows the persisted workspace and policy", () => {
+    render(
+      <RunnerStatusBadge
+        conversationId="c1"
+        executionMode="local_runner"
+        workspaceLabel="project"
+        policyMode="assisted"
+      />,
+    );
+    expect(screen.getByTestId("runner-status-badge")).toHaveTextContent("Local · project");
+    expect(screen.getByTitle(/assisted permissions/)).toBeInTheDocument();
+  });
+
   it("shows preserved-session copy when the lifecycle event reports offline", () => {
     useTerminalLifecycleStore.getState().applyRunnerState({
       type: "session_runner_state",

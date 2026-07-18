@@ -1597,6 +1597,31 @@ class SqlAlchemyConversationStore(ConversationStore):
 
         return persisted
 
+    def upsert_local_action(
+        self,
+        conversation_id: str,
+        item: NewConversationItem,
+    ) -> ConversationItem:
+        """Upsert one sanitized terminal local-action audit item."""
+        with self._session() as session:
+            row = (
+                session.execute(
+                    select(SqlConversationItem).where(
+                        SqlConversationItem.workspace_id == current_workspace_id(),
+                        SqlConversationItem.conversation_id == conversation_id,
+                        SqlConversationItem.type == encode_item_type("local_action"),
+                        SqlConversationItem.response_id == item.response_id,
+                    )
+                )
+                .scalars()
+                .first()
+            )
+            if row is not None:
+                row.data = strip_nul_bytes(json.dumps(item.data.model_dump(exclude_none=True)))
+                return _to_item(row)
+
+        return self.append(conversation_id, [item])[0]
+
     def list_projects(
         self,
         accessible_by: str | None = None,

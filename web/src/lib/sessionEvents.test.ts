@@ -646,6 +646,56 @@ describe("response.output_item.done (routing_decision)", () => {
 });
 
 describe("response.elicitation_request (FLAT envelope)", () => {
+  it("keeps policy kind/mode metadata out of the legacy local-action path", () => {
+    const out = parse("response.elicitation_request", {
+      type: "response.elicitation_request",
+      elicitation_id: "elicit_policy",
+      params: {
+        mode: "form",
+        message: "Policy approval required",
+        kind: "run_shell",
+        policy_mode: "manual",
+        policy_name: "manual_shell_approval",
+        content_preview: "safe policy preview",
+      },
+    });
+
+    expect(out).toHaveLength(1);
+    const event = out[0] as ElicitationRequest;
+    expect(event.message).toBe("Policy approval required");
+    expect(event.localAction).toBeNull();
+    expect(event.contentPreview).toBe("safe policy preview");
+  });
+
+  it("lifts only typed local-action approval metadata", () => {
+    const out = parse("response.elicitation_request", {
+      type: "response.elicitation_request",
+      elicitation_id: "elicit_local",
+      params: {
+        mode: "form",
+        message: "runner action",
+        phase: "tool_call",
+        policy_name: "local_runner",
+        content_preview: '{"command":"curl -H Authorization: Bearer secret"}',
+        requestedSchema: {},
+        action_id: "act_legacy",
+        kind: "run_shell",
+        policy_mode: "manual",
+        command: "curl -H Authorization: Bearer secret",
+      },
+    });
+
+    expect((out[0] as ElicitationRequest).localAction).toEqual({
+      version: 1,
+      kind: "run_shell",
+      policyMode: "manual",
+      actionId: "act_legacy",
+      pathSummary: [],
+      riskFlags: [],
+      diffTruncated: false,
+    });
+  });
+
   it("lifts structured Codex requestUserInput payloads", () => {
     // Codex's final plan-mode prompt rides as the same
     // ``ask_user_question`` extra as Claude's AskUserQuestion flow.

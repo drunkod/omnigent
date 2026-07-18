@@ -1116,6 +1116,8 @@ export function AppShell() {
                   parentSessionId={activeSession?.parentSessionId}
                   conversationId={conversationId}
                   executionMode={activeSession?.labels?.["omnigent.execution_mode"]}
+                  workspaceLabel={activeSession?.labels?.["omnigent.workspace_label"]}
+                  policyMode={activeSession?.labels?.["omnigent.local_runner_policy"]}
                   boundAgent={boundAgent}
                   canShare={canShare}
                   shareDisabled={shareDisabled}
@@ -1177,7 +1179,7 @@ export function AppShell() {
                     <WorkspacePanel
                       conversationId={conversationId}
                       width={inlinePanelWidth}
-                      inert={inlinePanelWidth === 0}
+                      inert={inlinePanelWidth === 0 || undefined}
                       handleProps={inlinePanelHandleProps}
                       rightRailTab={rightRailTab}
                       onRightRailTabChange={handleRightRailTabChange}

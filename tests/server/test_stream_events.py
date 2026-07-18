@@ -27,6 +27,7 @@ from omnigent.server.schemas import (
     PolicyDeniedEvent,
     ServerStreamEvent,
     SessionCreatedEvent,
+    SessionLocalActionEvent,
     SessionModelOptionsEvent,
     SessionSkillsEvent,
     SessionStatusEvent,
@@ -122,6 +123,7 @@ def test_emit_sites_referenced_by_grep_are_all_in_the_union() -> None:
         repo_root / "omnigent/runtime/llm_retry.py",
         repo_root / "omnigent/runtime/tool_retry.py",
         repo_root / "omnigent/server/routes/sessions.py",
+        repo_root / "omnigent/runner/app.py",
     ]
     pattern = re.compile(r'"type":\s*"(response\.[^"]+|session\.[^"]+)"')
     found: set[str] = set()
@@ -303,6 +305,29 @@ def test_runner_lifecycle_events_round_trip_through_union() -> None:
 
     assert offline.type == "session.runner_state"
     assert terminal.type == "session.terminal_state"
+
+
+def test_local_action_audit_round_trips_through_union() -> None:
+    """A runner audit edge cannot terminate the session SSE stream."""
+    raw = {
+        "type": "session.local_action",
+        "action_id": "act_123",
+        "session_id": "conv_abc",
+        "runner_id": "runner_local",
+        "workspace_id": "ws_123",
+        "kind": "write_file",
+        "requested_by": "agent",
+        "policy_mode": "manual",
+        "status": "requested",
+        "path_summary": ["demo.txt"],
+        "risk_flags": ["writes_files"],
+    }
+
+    parsed = _ADAPTER.validate_python(raw)
+
+    assert isinstance(parsed, SessionLocalActionEvent)
+    assert parsed.action_id == "act_123"
+    assert parsed.path_summary == ["demo.txt"]
 
 
 def test_session_skills_event_round_trips_through_union() -> None:

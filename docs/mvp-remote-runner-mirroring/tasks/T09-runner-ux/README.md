@@ -1,28 +1,33 @@
-# T09 — Runner UX (Track 2 steps)
+# T09 — Runner UX
 
-Web-side surface for remote-local runners, gated on the
-`remote_local_runner` capability (`/v1/info`, live since `95d9988e`).
-Server prerequisites are all in place: hosts API
-(`omnigent/server/routes/hosts.py`), session create with
-`host_id`/`workspace`/`local_runner_policy` (validated fail-loud since
-`18bb38dc`), and binding labels in the session snapshot.
+T09 is the web product track for local runners. It is **blocked** until T10 freezes the
+canonical discovery and create contracts.
 
-Steps are sequential within the track; the whole track is independent of
-T08 close-out and T06b and can run in parallel with both.
+## Dependencies
 
-1. `step-01-runner-list-fetch.md` — `/v1/hosts` types, fetch, `useHosts`
-   hook, capability gate. Probe the real payload before typing.
-2. `step-02-workspace-picker.md` — new-session picker (host → workspace →
-   policy preset) + execution-mode badge from session labels.
-3. `step-03-capability-dashboard.md` — read-only host capability panel.
+- **T10 step 01:** one owner-scoped runner discovery response and public session create
+  using `runner_id + workspace_id`.
+- **T10 step 04:** truthful operation/readiness capabilities.
+- Top-level `/v1/info.remote_local_runner` remains the feature gate.
 
-Run web checks per slice:
+Do not build the picker by round-tripping `path_label`, by sending a raw local path, or
+by treating `host_id` as a runner identifier.
 
-```bash
-cd web && npm test -- --run src/lib/remoteRunner.test.ts && npm run type-check
-```
+## Steps
 
-Done-when for the track: a flag-on server lets a user pair a host, pick a
-workspace and policy at session create, see the local badge in the
-header, and inspect host capabilities — with flag-off servers rendering
-none of it.
+1. `step-01-runner-list-fetch.md` — type and fetch the canonical runner discovery
+   projection with `authenticatedFetch`.
+2. `step-02-workspace-picker.md` — choose runner, opaque workspace ID, and policy;
+   submit `runner_id + workspace_id + local_runner_policy`.
+3. `step-03-capability-dashboard.md` — show truthful harness, terminal, workspace, and
+   degraded-readiness data.
+
+Steps are sequential within T09. T09 can run in parallel with T11 approval UI and T12
+terminal E2E after T10 is complete.
+
+## Done when
+
+With the feature enabled, an owner can select an online runner and one advertised
+workspace, create a session without exposing a local absolute path, see the persisted
+local-runner/workspace badge after refresh, and inspect truthful capability/degraded
+state. With the feature disabled, none of the local-runner UX renders or fetches.

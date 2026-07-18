@@ -1,131 +1,120 @@
-# T09 Step 01 — Runner list types + fetch (Deferred A, corrected)
+# T09 Step 01 — Canonical runner discovery types and fetch
 
-Track 2, step 1. The original Deferred A sketch assumed `GET /v1/runners`;
-the implemented API is **hosts-shaped** (`omnigent/server/routes/hosts.py`):
-`GET /v1/hosts` lists paired hosts with their runners/workspaces, scoped to
-the owner (`test_list_runners_scoped_to_owner`). Build the web types against
-that.
+This step starts only after T10 step 01 lands its owner-scoped discovery contract.
+Examples below assume the recommended `GET /v1/runners` projection. If T10 chooses an
+enriched `/v1/hosts` response instead, keep the same semantic model and use the exact
+landed endpoint.
 
-## 1. Probe the real payload first
+## Required server response
 
-Before writing types, hit the route once and copy the actual shape —
-the sketch below is field-name-guessing from the server models:
+The web client needs a projection like:
 
-```bash
-curl -s "$SERVER/v1/hosts" -H "Authorization: Bearer $TOKEN" | jq .
+```json
+{
+  "data": [
+    {
+      "runner_id": "runner_abc",
+      "host_id": "host_optional",
+      "display_name": "Workstation",
+      "online": true,
+      "runner_version": "0.3.0",
+      "os": "darwin",
+      "arch": "arm64",
+      "harnesses": ["codex", "claude-native"],
+      "terminal_transports": ["control", "pty"],
+      "tool_capabilities": ["read_file", "write_file", "run_shell"],
+      "workspaces": [
+        {
+          "workspace_id": "ws_123",
+          "display_name": "omnigent",
+          "path_label": "~/src/omnigent",
+          "capabilities": ["read", "write", "shell", "git", "terminal"]
+        }
+      ]
+    }
+  ]
+}
 ```
 
-## 2. Types + fetch — `web/src/lib/remoteRunner.ts`
+Rules:
+
+- owner-scoped server-side;
+- `runner_id` is explicit and is the session-create identifier;
+- workspaces expose opaque IDs and display labels only;
+- no absolute root path, pairing token, or auth material;
+- offline runners may remain listed, but cannot be selected for a new session unless
+  the create route supports a documented wake/reconnect flow.
+
+## Web types — `web/src/lib/remoteRunner.ts`
 
 ```typescript
-export interface HostWorkspace {
+export interface RunnerWorkspace {
   workspace_id: string;
   display_name: string;
   path_label: string;
-  capabilities?: string[];
+  capabilities: string[];
 }
 
-export interface HostRunnerInfo {
-  host_id: string;
-  display_name?: string;
+export interface LocalRunnerSummary {
+  runner_id: string;
+  host_id?: string | null;
+  display_name?: string | null;
   online: boolean;
-  os?: string;
-  arch?: string;
-  runner_version?: string;
+  runner_version?: string | null;
+  os?: string | null;
+  arch?: string | null;
   harnesses: string[];
   terminal_transports: string[];
-  workspaces: HostWorkspace[];
+  tool_capabilities: string[];
+  workspaces: RunnerWorkspace[];
 }
 
-export async function fetchHosts(): Promise<HostRunnerInfo[]> {
-  const resp = await fetch("/v1/hosts");
-  if (!resp.ok) throw new Error(`hosts fetch failed: ${resp.status}`);
-  const body = await resp.json();
-  return (body.data ?? body.hosts ?? []) as HostRunnerInfo[];
+export async function fetchLocalRunners(): Promise<LocalRunnerSummary[]> {
+  const response = await authenticatedFetch("/v1/runners");
+  if (!response.ok) {
+    throw new Error(`runner discovery failed: ${response.status}`);
+  }
+  const body = (await response.json()) as { data?: LocalRunnerSummary[] };
+  return body.data ?? [];
 }
 
-/** Capability gate: hide the whole runner UX unless the server opts in. */
 export async function remoteLocalRunnerEnabled(): Promise<boolean> {
-  const resp = await fetch("/v1/info");
-  if (!resp.ok) return false;
-  const info = await resp.json();
-  return info?.capabilities?.remote_local_runner === true;
+  const response = await authenticatedFetch("/v1/info");
+  if (!response.ok) return false;
+  const info = (await response.json()) as { remote_local_runner?: boolean };
+  return info.remote_local_runner === true;
 }
 ```
 
-`remote_local_runner` in `/v1/info` capabilities is live since `95d9988e`
-(`omnigent/server/app.py` ~L1849) — the picker must not render when false.
+Do not use the old nested `info.capabilities.remote_local_runner` sketch; the landed
+server field is top-level.
 
-## 3. Hook with polling — `web/src/hooks/useHosts.ts`
+## Hook
+
+Follow the existing app data-fetch pattern. Polling is acceptable for alpha if no
+push source exists, but it must stop while the capability is off and while the view is
+unmounted. Avoid introducing a second global liveness store solely for this picker.
 
 ```typescript
-import { useEffect, useState } from "react";
-import { fetchHosts, type HostRunnerInfo } from "../lib/remoteRunner";
-
-const POLL_MS = 15_000;
-
-export function useHosts(enabled: boolean): {
-  hosts: HostRunnerInfo[] | null;
-  error: string | null;
-} {
-  const [hosts, setHosts] = useState<HostRunnerInfo[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!enabled) return;
-    let cancelled = false;
-    const load = () =>
-      fetchHosts()
-        .then((h) => !cancelled && (setHosts(h), setError(null)))
-        .catch((e) => !cancelled && setError(String(e)));
-    load();
-    const timer = setInterval(load, POLL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [enabled]);
-
-  return { hosts, error };
+export function useLocalRunners(enabled: boolean) {
+  // returns { runners: LocalRunnerSummary[] | null, error, refresh }
 }
 ```
 
-## 4. Tests — `web/src/lib/remoteRunner.test.ts`
+## Tests
 
-```typescript
-import { describe, expect, it, vi } from "vitest";
-import { fetchHosts, remoteLocalRunnerEnabled } from "./remoteRunner";
-
-describe("fetchHosts", () => {
-  it("returns data array from the hosts envelope", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ data: [{ host_id: "h1", online: true,
-        harnesses: [], terminal_transports: [], workspaces: [] }] })),
-    ));
-    const hosts = await fetchHosts();
-    expect(hosts).toHaveLength(1);
-    expect(hosts[0].host_id).toBe("h1");
-  });
-
-  it("throws on non-2xx", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 500 })));
-    await expect(fetchHosts()).rejects.toThrow("hosts fetch failed: 500");
-  });
-});
-
-describe("remoteLocalRunnerEnabled", () => {
-  it("is false when the capability is absent", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ capabilities: {} })),
-    ));
-    expect(await remoteLocalRunnerEnabled()).toBe(false);
-  });
-});
-```
+- returns `data` from the canonical response;
+- uses `authenticatedFetch`;
+- treats a non-2xx discovery response as an error;
+- reads top-level `/v1/info.remote_local_runner`;
+- performs no discovery request when the feature is disabled;
+- rejects/ignores malformed entries according to the runtime validation approach used
+  elsewhere in the web client;
+- never models or renders an absolute workspace root.
 
 ## Done when
 
-- Types match the probed `/v1/hosts` payload (update the sketch fields).
-- Capability gate verified against a flag-off server (empty UI, no fetch
-  loop).
-- Step 02 (picker) can consume `useHosts` without further API work.
+- Types match the exact T10 response.
+- One test asserts `runner_id` and `workspace_id` survive fetch unchanged.
+- Flag-off mode performs no runner-discovery loop.
+- Step 02 can create a request without converting a display label into a path.

@@ -4039,6 +4039,9 @@ async def _resolve_elicitation(
                 "only the session owner may approve local machine actions",
                 code=ErrorCode.FORBIDDEN,
             )
+        from omnigent.server.permission_metrics import record_approval_decision
+
+        record_approval_decision(data.get("action") == "accept")
     harness_future = _harness_elicitation_registry.get(elicitation_id)
     if harness_future is not None and not harness_future.done():
         # Only the session that owns this elicitation
@@ -9615,6 +9618,30 @@ async def _flush_relay_text(
     session_stream.publish(session_id, done_event.model_dump())
 
 
+def _persist_local_action_item(
+    conversation_store: ConversationStore,
+    session_id: str,
+    event: dict[str, Any],
+) -> None:
+    """Persist one sanitized terminal local-action outcome per action id."""
+    if event.get("status") not in {"completed", "failed", "denied", "blocked", "approved"}:
+        return
+    action_id = event.get("action_id")
+    if not isinstance(action_id, str) or not action_id:
+        return
+    from omnigent.server.audit_sanitizer import sanitize_local_action_history
+
+    safe_event = sanitize_local_action_history(event)
+    safe_event["action_id"] = action_id
+    safe_event["status"] = event["status"]
+    item = NewConversationItem(
+        type="local_action",
+        response_id=action_id,
+        data=parse_item_data("local_action", safe_event),
+    )
+    conversation_store.upsert_local_action(session_id, item)
+
+
 async def _relay_runner_stream(
     session_id: str,
     runner_client: httpx.AsyncClient,
@@ -10056,8 +10083,31 @@ async def _relay_runner_stream(
                         continue
                     if evt_type == "session.local_action":
                         from omnigent.server.audit_sanitizer import sanitize_audit_event
+                        from omnigent.server.permission_metrics import record_local_action
 
                         event = sanitize_audit_event(event)
+                        record_local_action(
+                            kind=str(event.get("kind", "unknown")),
+                            status=str(event.get("status", "unknown")),
+                            policy_mode=str(event.get("policy_mode", "unknown")),
+                        )
+                        if (
+                            event.get("status")
+                            in {
+                                "completed",
+                                "failed",
+                                "denied",
+                                "blocked",
+                                "approved",
+                            }
+                            and conversation_store is not None
+                        ):
+                            await asyncio.to_thread(
+                                _persist_local_action_item,
+                                conversation_store,
+                                session_id,
+                                event,
+                            )
                     session_stream.publish(session_id, event)
 
     except (httpx.HTTPError, ConnectionError):
@@ -12262,6 +12312,29 @@ async def _create_session_from_existing_agent(
         _validated_harness_override, body.harness_override, agent
     )
 
+    binding_harness = harness_override
+    if body.runner_id is not None and binding_harness is None:
+        if agent_cache is None:
+            raise OmnigentError(
+                "local runner binding requires a loadable agent spec",
+                code=ErrorCode.INVALID_INPUT,
+            )
+        try:
+            loaded_agent = await asyncio.to_thread(
+                agent_cache.load,
+                agent.id,
+                agent.bundle_location,
+                expand_env=agent.session_id is None,
+            )
+            from omnigent.harness_aliases import canonicalize_harness
+
+            binding_harness = canonicalize_harness(loaded_agent.spec.executor.harness_kind)
+        except (KeyError, AttributeError, ValueError, ImportError, OSError) as exc:
+            raise OmnigentError(
+                "local runner binding requires a loadable agent harness",
+                code=ErrorCode.INVALID_INPUT,
+            ) from exc
+
     # Inherit runner affinity from the parent session so the child
     # is assigned to the same runner (sub-agent co-location).
     inherited_runner_id: str | None = None
@@ -12280,6 +12353,58 @@ async def _create_session_from_existing_agent(
                 if runner_owner is not None and runner_owner != user_id:
                     # Validate ownership before policy labels are applied below.
                     inherited_runner_id = None
+
+    local_runner_labels: dict[str, str] = {}
+    if body.runner_id is None and inherited_runner_id is not None:
+        from omnigent.server.session_binding import (
+            EXECUTION_MODE_LABEL_KEY,
+            LOCAL_RUNNER_POLICY_LABEL_KEY,
+            WORKSPACE_ID_LABEL_KEY,
+            WORKSPACE_LABEL_LABEL_KEY,
+        )
+
+        parent_labels = parent_conv.labels if parent_conv is not None else {}
+        local_runner_labels = {
+            key: parent_labels[key]
+            for key in (
+                EXECUTION_MODE_LABEL_KEY,
+                WORKSPACE_ID_LABEL_KEY,
+                WORKSPACE_LABEL_LABEL_KEY,
+                LOCAL_RUNNER_POLICY_LABEL_KEY,
+            )
+            if key in parent_labels
+        }
+    if body.runner_id is not None:
+        from omnigent.server.session_binding import (
+            advertised_workspace_label,
+            merge_local_runner_labels,
+            validate_local_runner_binding,
+        )
+
+        if runner_router is None:
+            raise OmnigentError(
+                "runner tunnel registry is not configured",
+                code=ErrorCode.INTERNAL_ERROR,
+            )
+        binding = validate_local_runner_binding(
+            runner_id=body.runner_id,
+            workspace_id=body.workspace_id,
+            registry=runner_router.binding_registry,
+            user_id=user_id,
+            harness=binding_harness,
+        )
+        workspace_label = (
+            advertised_workspace_label(binding.hello, body.workspace_id)
+            if binding is not None and body.workspace_id is not None
+            else None
+        )
+        local_runner_labels = merge_local_runner_labels(
+            body.labels,
+            runner_id=body.runner_id,
+            workspace_id=body.workspace_id,
+            workspace_label=workspace_label,
+            policy_mode=body.local_runner_policy,
+        )
 
     # Workspace validation: if the caller is binding to a host,
     # they must also pass a workspace, and the workspace must
@@ -12302,6 +12427,7 @@ async def _create_session_from_existing_agent(
     if (
         body.local_runner_policy is not None
         and body.host_id is None
+        and body.runner_id is None
         and inherited_runner_id is None
     ):
         raise OmnigentError(
@@ -12393,7 +12519,7 @@ async def _create_session_from_existing_agent(
             agent_id=agent.id,
             title=body.title,
             parent_conversation_id=body.parent_session_id,
-            runner_id=inherited_runner_id,
+            runner_id=body.runner_id or inherited_runner_id,
             kind="sub_agent" if body.parent_session_id else "default",
             sub_agent_name=body.sub_agent_name,
             host_id=body.host_id,
@@ -12461,7 +12587,7 @@ async def _create_session_from_existing_agent(
     # the native path and avoid double-persistence with the
     # transcript forwarder.
     native_agent = native_coding_agent_for_agent_name(agent.name)
-    initial_labels = dict(body.labels) if body.labels else {}
+    initial_labels = local_runner_labels or (dict(body.labels) if body.labels else {})
     if body.local_runner_policy is not None:
         from omnigent.server.session_binding import resolve_policy_mode_value
 
@@ -14077,6 +14203,14 @@ def create_sessions_router(
                     "remote local runner support is not enabled on this server",
                     code=ErrorCode.INVALID_INPUT,
                 )
+        if body.runner_id is not None:
+            from omnigent.server.auth import remote_local_runner_enabled
+
+            if not remote_local_runner_enabled():
+                raise OmnigentError(
+                    "remote local runner support is not enabled on this server",
+                    code=ErrorCode.INVALID_INPUT,
+                )
 
         resp = await _create_session_from_existing_agent(
             conversation_store,
@@ -14124,6 +14258,8 @@ def create_sessions_router(
                         "session_id": resp.id,
                         "agent_id": conv.agent_id,
                         "sub_agent_name": conv.sub_agent_name,
+                        "workspace_id": conv.labels.get("omnigent.workspace_id"),
+                        "execution_mode": conv.labels.get("omnigent.execution_mode"),
                     },
                     timeout=10.0,
                 )
@@ -14356,6 +14492,13 @@ def create_sessions_router(
             raise HTTPException(status_code=422, detail=[_multipart_missing_detail("bundle")])
         parsed_metadata = _parse_session_create_metadata(metadata)
         _reject_reserved_cost_control_label_seed(parsed_metadata.labels)
+        bundle_bytes = await bundle.read()
+        bundle_spec = None
+        if parsed_metadata.runner_id is not None:
+            bundle_spec = validate_agent_bundle(
+                bundle_bytes,
+                enforce_handler_allowlist=not local_single_user_enabled(),
+            )
 
         inherited_runner_id: str | None = None
         if parsed_metadata.parent_session_id is not None:
@@ -14367,18 +14510,57 @@ def create_sessions_router(
                 runner_router=runner_router,
             )
 
-        bundle_bytes = await bundle.read()
+        explicit_runner_id = parsed_metadata.runner_id
+        if explicit_runner_id is not None:
+            from omnigent.server.auth import remote_local_runner_enabled
+            from omnigent.server.session_binding import (
+                advertised_workspace_label,
+                merge_local_runner_labels,
+                validate_local_runner_binding,
+            )
+
+            if not remote_local_runner_enabled():
+                raise OmnigentError(
+                    "remote local runner support is not enabled on this server",
+                    code=ErrorCode.INVALID_INPUT,
+                )
+            if runner_router is None:
+                raise OmnigentError(
+                    "runner tunnel registry is not configured",
+                    code=ErrorCode.INTERNAL_ERROR,
+                )
+            from omnigent.harness_aliases import canonicalize_harness
+
+            bundle_harness = canonicalize_harness(bundle_spec.executor.harness_kind)
+            binding = validate_local_runner_binding(
+                runner_id=explicit_runner_id,
+                workspace_id=parsed_metadata.workspace_id,
+                registry=runner_router.binding_registry,
+                user_id=user_id,
+                harness=bundle_harness,
+            )
+            label = (
+                advertised_workspace_label(binding.hello, parsed_metadata.workspace_id)
+                if binding is not None and parsed_metadata.workspace_id is not None
+                else None
+            )
+            parsed_metadata.labels = merge_local_runner_labels(
+                parsed_metadata.labels,
+                runner_id=explicit_runner_id,
+                workspace_id=parsed_metadata.workspace_id,
+                workspace_label=label,
+                policy_mode=parsed_metadata.local_runner_policy,
+            )
+
         result = await asyncio.to_thread(
             _create_session_from_bundle,
             conversation_store,
             artifact_store,
             parsed_metadata,
             bundle_bytes,
-            inherited_runner_id,
+            explicit_runner_id or inherited_runner_id,
         )
-        # Top-level creates (no inherited runner) skip the notify —
-        # their runner registers itself later.
-        if inherited_runner_id is not None:
+        if explicit_runner_id or inherited_runner_id:
             await _notify_runner_of_bundled_child(
                 result.session_id,
                 result.agent_id,
@@ -19113,14 +19295,18 @@ def create_sessions_router(
             # → runner's ``pending_approvals`` resolves.
             elicit_data = body.data or {}
             elicit_id = f"elicit_{secrets.token_hex(16)}"
-            if isinstance(elicit_data.get("kind"), str) and isinstance(
+            local_action = elicit_data.get("local_action")
+            legacy_local_action = isinstance(elicit_data.get("kind"), str) and isinstance(
                 elicit_data.get("policy_mode"), str
-            ):
+            )
+            if isinstance(local_action, dict) or legacy_local_action:
                 _local_action_elicitations[elicit_id] = session_id
-            elicit_params = ElicitationRequestParams(
-                mode="form",
-                message=elicit_data.get("message", ""),
-                requestedSchema=elicit_data.get("requestedSchema"),
+            elicit_params = ElicitationRequestParams.model_validate(
+                {
+                    **elicit_data,
+                    "mode": "form",
+                    "message": elicit_data.get("message", ""),
+                }
             )
             event = ElicitationRequestEvent(
                 type="response.elicitation_request",
@@ -19838,6 +20024,11 @@ def create_sessions_router(
             stay in this async hook.
             """
             events: list[dict[str, Any]] = []
+            from omnigent.server import _runner_state_registry
+
+            runner_snapshot = _runner_state_registry.snapshot(session_id)
+            if runner_snapshot is not None:
+                events.append(runner_snapshot)
             try:
                 page = await asyncio.to_thread(
                     conversation_store.list_conversations,

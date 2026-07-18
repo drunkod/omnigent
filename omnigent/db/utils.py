@@ -575,6 +575,7 @@ _ITEM_TYPE_PREFIX: dict[str, str] = {
     "resource_event": "rse_",
     "slash_command": "sc_",
     "terminal_command": "tc_",
+    "local_action": "la_",
     "routing_decision": "rd_",
 }
 
@@ -834,6 +835,12 @@ def extract_search_text(item: NewConversationItem) -> str:
         # Index model + rationale so FTS can find a router verdict by
         # the model it picked or its one-line explanation.
         return " ".join(part for part in (data.get("model"), data.get("rationale")) if part)
+    if item.type == "local_action":
+        return " ".join(
+            str(data.get(key, ""))
+            for key in ("action_id", "kind", "status", "policy_mode")
+            if data.get(key)
+        )
     raise ValueError(f"unknown item type: {item.type!r}")
 
 

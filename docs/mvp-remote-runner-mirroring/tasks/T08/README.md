@@ -1,58 +1,54 @@
-# T08 — Permissions, policy presets, and the security test suite (steps)
+# T08 — Permissions, presets, persistence, and permission metrics
 
-Implementation-ready steps for `T08-permissions-policies-tests.md`, verified
-against the codebase at `5565d9bd` (branch `feat/mvp-secure-permissions`).
-Follows the T07 steps pattern: one PR-sized slice per step, in order.
+T08 has substantial implementation, but it is not the final security boundary. Use
+`05-implementation-checklist.md` for status and T10 for reopened blockers.
 
-Ground truth already in place (do NOT re-implement):
+## Landed and evidence-backed
 
-- `PolicyMode` enum (`manual`/`assisted`/`auto`) lives in
-  `omnigent/policies/types.py`; string values are API contract.
-- The runner already reads the mode label per action:
-  `omnigent/runner/tool_dispatch.py` reads
-  `omnigent.local_runner_policy` and defaults to `MANUAL`
-  (covered by `tests/runner/test_local_runner_policy_binding.py`).
-- Server label keys live in `omnigent/server/session_binding.py`
-  (`LOCAL_RUNNER_POLICY_LABEL_KEY`).
-- Runner-side audit publishing exists:
-  `omnigent/runner/app.py::_publish_local_action_audit` emits
-  `session.local_action` events from `AuditRecord.to_event()`.
-- Local-action approvals ride the existing `mcp_elicitation` event flow:
-  `omnigent/runner/app.py::_request_local_action_approval` POSTs an
-  elicitation whose `data` carries `kind` + `policy_mode`, then parks on
-  `omnigent/runner/pending_approvals.wait_for_user_approval`.
-- `get_session_owner_id` (LEVEL_OWNER) exists in
-  `omnigent/server/routes/_auth_helpers.py`.
-- `ErrorCode.FORBIDDEN` maps to HTTP 403 (`omnigent/errors.py`).
+- `PolicyMode` values `manual`, `assisted`, and `auto`, with invalid/missing labels
+  falling back to `MANUAL`.
+- Server-side owner-only resolution for tagged local-action approvals in the current
+  process.
+- Read-only versus interactive terminal attach authorization before runner proxying.
+- Runner publication of `session.local_action` lifecycle events.
+- Persistence of terminal local-action outcomes, upserted by `action_id`.
+- Feature flag off by default, exposed as top-level `remote_local_runner` from
+  `/v1/info`.
+- `omnigent.local_action.total` and `omnigent.approval.decision_total` counters.
 
-## Steps
+## Reopened by the architectural review
 
-1. `step-01-policy-presets.md` — preset catalog + label application.
-2. `step-02-owner-only-approvals.md` — server-side owner gate on
-   local-action approval resolution.
-3. `step-03-audit-sanitization.md` — server-side redaction of persisted
-   `session.local_action` events.
-4. `step-04-feature-flag-telemetry.md` — `remote_local_runner` capability
-   flag + P11 counters.
-5. `step-05-security-test-suite.md` —
-   `tests/server/integration/test_remote_local_runner_permissions.py`.
-6. `step-06-audit-persistence.md` — durable `session.local_action`
-   conversation items (P8's last open box).
-7. `step-07-telemetry-wiring.md` — permission counters via OTel
-   (P11 subset).
+- **Shell guarantee:** `run_shell` contains `cwd`, not arbitrary command paths. T10
+  step 02 must implement a real sandbox or document trusted-machine shell access.
+- **Audit secrecy:** exact-key sanitization and an open-ended persisted model do not
+  prove payload-free history. T10 step 03 replaces them with an allowlisted bounded
+  schema and value-level secret tests.
+- **Capability truthfulness:** search and git reads must converge on one audited
+  authorization path or be removed from that advertisement. T10 step 04 owns this.
+- **Distributed approvals:** pending approval ownership is process-local. Alpha must
+  either state single-replica support or move this state to shared storage.
+- **Observability:** only the two permission counters above are complete; tunnel,
+  attach, mismatch, reconnect, diagnostics, and log-capture work remain P11.
 
-## Done when
+## Original implementation slices
 
-- Three presets resolvable to raw `PolicyMode` label values; unknown or
-  invalid label values fall back to MANUAL (already runner behavior).
-- Only the session owner can approve/deny a local action; collaborators
-  get 403 server-side, before any runner forward.
-- Persisted audit events contain no file contents, diffs, command output,
-  or tokens.
-- The integration suite in step-05 is green.
+1. `step-01-policy-presets.md` — preset catalog and label resolution.
+2. `step-02-owner-only-approvals.md` — server owner gate.
+3. `step-03-audit-sanitization.md` — initial defense-in-depth key removal; superseded
+   for final acceptance by T10 step 03.
+4. `step-04-feature-flag-telemetry.md` — feature flag and initial metric plan.
+5. `step-05-security-test-suite.md` — permission integration cases.
+6. `step-06-audit-persistence.md` — terminal-outcome persistence mechanics.
+7. `step-07-telemetry-wiring.md` — the two implemented permission counters.
 
-## Sequencing note
+## Current done-when
 
-Steps 01–04 are independent of each other and can be done in any order
-(or in parallel). Step 05 tests all of them, so it lands last — but write
-its test file skeleton early and mark cases `xfail` to drive the work.
+T08 may be called functionally landed only when:
+
+- presets and current shell behavior have accurate UI/docs copy;
+- owner approval and attach authorization tests remain green;
+- T10 step 03 proves secrets, full commands, output, contents, and absolute home paths
+  are absent from persisted history and logs;
+- the rollout docs state the approval-replica limitation; and
+- the checklist distinguishes implemented permission metrics from the still-open P11
+  metrics.

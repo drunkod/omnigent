@@ -4,9 +4,16 @@ import { useSessionRunnerOnline } from "@/hooks/RunnerHealthProvider";
 interface RunnerStatusBadgeProps {
   conversationId: string;
   executionMode: string | null | undefined;
+  workspaceLabel?: string | null;
+  policyMode?: string | null;
 }
 
-export function RunnerStatusBadge({ conversationId, executionMode }: RunnerStatusBadgeProps) {
+export function RunnerStatusBadge({
+  conversationId,
+  executionMode,
+  workspaceLabel,
+  policyMode,
+}: RunnerStatusBadgeProps) {
   const lifecycle = useTerminalLifecycleStore(selectRunnerState(conversationId));
   const pollOnline = useSessionRunnerOnline(conversationId);
 
@@ -19,14 +26,21 @@ export function RunnerStatusBadge({ conversationId, executionMode }: RunnerStatu
     ? "Local runner offline"
     : reconnecting
       ? "Reconnecting local runner"
-      : "Local runner";
+      : workspaceLabel
+        ? `Local · ${workspaceLabel}`
+        : "Local runner";
+  const title = offline
+    ? "Session is preserved while the runner is offline"
+    : policyMode
+      ? `Local workspace${workspaceLabel ? `: ${workspaceLabel}` : ""} · ${policyMode} permissions`
+      : label;
 
   return (
     <span
       data-testid="runner-status-badge"
       data-state={offline ? "offline" : reconnecting ? "reconnecting" : "online"}
       className="group inline-flex items-center gap-1.5 text-xs text-muted-foreground"
-      title={offline ? "Session is preserved while the runner is offline" : label}
+      title={title}
     >
       <span
         aria-hidden

@@ -8477,6 +8477,16 @@ def create_runner_app(
         record: AuditRecord,
         **approval_payload: object,
     ) -> bool:
+        local_action: dict[str, object] = {
+            "version": 1,
+            "action_id": record.action_id,
+            "kind": record.kind,
+            "policy_mode": record.policy_mode,
+            "cwd": record.cwd,
+            "path_summary": list(record.path_summary),
+            "risk_flags": list(record.risk_flags),
+            **approval_payload,
+        }
         body: dict[str, Any] = {
             "type": "mcp_elicitation",
             "data": {
@@ -8487,21 +8497,9 @@ def create_runner_app(
                         "approved": {"type": "boolean"},
                     },
                 },
+                "local_action": local_action,
             },
         }
-        data = body["data"]
-        if isinstance(data, dict):
-            data["kind"] = record.kind
-            data["policy_mode"] = record.policy_mode
-            data["cwd"] = record.cwd
-            if record.path_summary:
-                data["path_summary"] = list(record.path_summary)
-            if record.command_summary is not None:
-                data["command_summary"] = record.command_summary
-            if record.risk_flags:
-                data["risk_flags"] = list(record.risk_flags)
-            for key, value in approval_payload.items():
-                data[key] = value
         resp = await server_client.post(
             f"/v1/sessions/{record.session_id}/events",
             json=body,
@@ -8526,6 +8524,7 @@ def create_runner_app(
         runner_id=get_stable_runner_id(),
         publish_audit=_publish_local_action_audit,
         request_approval=_request_local_action_approval,
+        strict_shell=os.environ.get("OMNIGENT_STRICT_LOCAL_SHELL") == "1",
     )
 
     # Per-session filesystem registries for sessions whose workspace

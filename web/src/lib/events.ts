@@ -1,3 +1,4 @@
+import type { LocalActionApproval } from "./localActionApproval";
 // Mirrors sdks/python-client/omnigent_client/_events.py.
 //
 // Hand-ported. When _events.py changes, update this file and the
@@ -182,6 +183,8 @@ export interface ElicitationRequest {
   policyName: string;
   /** Producer-supplied extra (policy ASK only): truncated snapshot of the gated content. */
   contentPreview: string;
+  /** Safe, typed metadata for runner-local approval cards. */
+  localAction?: LocalActionApproval | null;
   /**
    * Producer-supplied extra (claude-native only): structured
    * AskUserQuestion payload — present when the gated tool is

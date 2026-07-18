@@ -8,6 +8,7 @@ import contextlib
 import queue
 import threading
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 import httpx
 import pytest
@@ -108,11 +109,20 @@ class _ThreadHandoffWS:
 
 
 @pytest.fixture
-async def tunneled_client() -> AsyncIterator[
-    tuple[httpx.AsyncClient, TunnelRegistry, asyncio.Task[None]]
-]:
+async def tunneled_client(
+    tmp_path: Path,
+) -> AsyncIterator[tuple[httpx.AsyncClient, TunnelRegistry, asyncio.Task[None], str, Path]]:
     """Build an httpx client tunneled to a fake runner."""
-    runner_app = create_runner_app(server_client=NullServerClient())  # type: ignore[arg-type]
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    runner_app = create_runner_app(  # type: ignore[arg-type]
+        server_client=NullServerClient(),
+        runner_workspace=workspace,
+        per_session_workspace=False,
+    )
+    workspace_id = runner_app.state.local_action_gateway._workspaces.add_path(
+        workspace
+    ).workspace_id
     server_ws, runner_ws = _make_ws_pair()
     registry = TunnelRegistry()
     hello = HelloFrame(
@@ -153,7 +163,7 @@ async def tunneled_client() -> AsyncIterator[
     client = httpx.AsyncClient(transport=transport, base_url="http://runner")
 
     try:
-        yield client, registry, runner_task
+        yield client, registry, runner_task, workspace_id, workspace
     finally:
         await client.aclose()
         sender_task.cancel()
@@ -173,7 +183,7 @@ async def tunneled_client() -> AsyncIterator[
 @pytest.mark.asyncio
 async def test_health_round_trip_via_ws_tunnel(tunneled_client) -> None:
     """GET /health round-trips through the tunnel."""
-    client, _registry, _task = tunneled_client
+    client, _registry, _task, _workspace_id, _workspace = tunneled_client
     response = await client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
@@ -182,7 +192,7 @@ async def test_health_round_trip_via_ws_tunnel(tunneled_client) -> None:
 @pytest.mark.asyncio
 async def test_post_session_events_returns_501_via_ws_tunnel(tunneled_client) -> None:
     """The runner's 501 stub surfaces through the tunnel."""
-    client, _registry, _task = tunneled_client
+    client, _registry, _task, _workspace_id, _workspace = tunneled_client
     response = await client.post(
         "/v1/sessions/conv_test/events",
         json={"type": "message", "role": "user", "content": []},
@@ -196,7 +206,7 @@ async def test_post_session_events_returns_501_via_ws_tunnel(tunneled_client) ->
 @pytest.mark.asyncio
 async def test_concurrent_requests_dont_collide(tunneled_client) -> None:
     """Concurrent requests keep separate responses."""
-    client, _registry, _task = tunneled_client
+    client, _registry, _task, _workspace_id, _workspace = tunneled_client
     responses = await asyncio.gather(*[client.get("/health") for _ in range(5)])
     assert all(r.status_code == 200 for r in responses)
     assert all(r.json() == {"status": "ok"} for r in responses)
@@ -215,9 +225,30 @@ async def test_runner_offline_raises_connect_error() -> None:
 @pytest.mark.asyncio
 async def test_404_round_trip_via_ws_tunnel(tunneled_client) -> None:
     """A runner 404 makes it back to the server side."""
-    client, _registry, _task = tunneled_client
+    client, _registry, _task, _workspace_id, _workspace = tunneled_client
     response = await client.get("/v1/conversations")  # not a runner endpoint
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_local_action_writes_real_workspace_via_ws_tunnel(tunneled_client) -> None:
+    """A server-shaped request reaches the runner gateway through the tunnel."""
+    client, _registry, _task, workspace_id, workspace = tunneled_client
+
+    response = await client.post(
+        "/v1/runner/local-actions",
+        json={
+            "session_id": "conv_tunnel_write",
+            "workspace_id": workspace_id,
+            "kind": "write_file",
+            "path": "from-tunnel.txt",
+            "content": "tunnel accepted\n",
+            "policy_mode": "auto",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert (workspace / "from-tunnel.txt").read_text(encoding="utf-8") == "tunnel accepted\n"
 
 
 @pytest.mark.asyncio

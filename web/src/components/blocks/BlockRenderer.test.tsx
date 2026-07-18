@@ -21,6 +21,46 @@ const FILE_VIEWER_NOOP = {
 };
 
 describe("BlockRenderer dispatch", () => {
+  it("renders a typed local-action elicitation without exposing the producer preview", () => {
+    const items: RenderItem[] = [
+      {
+        kind: "elicitation",
+        itemId: null,
+        elicitationId: "elicit_local_action",
+        message: "Approve local action: run_shell",
+        phase: "approval",
+        policyName: "manual",
+        contentPreview: "API_KEY=secret-value printf unsafe",
+        localAction: {
+          version: 1,
+          actionId: "act_shell",
+          kind: "run_shell",
+          policyMode: "manual",
+          pathSummary: [],
+          commandPreview: "printf [arguments hidden]",
+          diffTruncated: false,
+          shellGuarantee: "trusted_machine",
+          riskFlags: [],
+        },
+        requestedSchema: {},
+        url: null,
+        status: "pending",
+        response: null,
+        askUserQuestion: null,
+        exitPlanMode: null,
+        codexCommand: null,
+        allowAllEdits: false,
+        rememberScope: null,
+      },
+    ];
+
+    render(<BlockRenderer items={items} sessionStatus="idle" />);
+
+    expect(screen.getByText("Run shell command")).toBeDefined();
+    expect(screen.getByText("printf [arguments hidden]")).toBeDefined();
+    expect(screen.queryByText(/secret-value/)).toBeNull();
+  });
+
   it("renders a slash_command RenderItem via SlashCommandCard", () => {
     const items: RenderItem[] = [
       {

@@ -2006,15 +2006,12 @@ def create_app(
     ) -> None:
         """Publish a reconnect lifecycle event onto the session stream."""
         from omnigent.runtime import session_stream
+        from omnigent.server import _runner_state_registry
 
-        session_stream.publish(
-            session_id,
-            {
-                "type": event_type,
-                "conversation_id": session_id,
-                **payload,
-            },
-        )
+        event = {"type": event_type, "conversation_id": session_id, **payload}
+        if event_type == "session.runner_state":
+            _runner_state_registry.record(session_id, event)
+        session_stream.publish(session_id, event)
 
     async def _on_runner_disconnect(runner_id: str) -> None:
         """Mark sessions pinned to *this* runner as offline.

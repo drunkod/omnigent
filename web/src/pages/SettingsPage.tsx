@@ -132,6 +132,7 @@ import {
 import { useIsEmbedded } from "@/lib/embedded";
 import { type CliStatus, getCliStatus, isElectronShell, resetCliPath } from "@/lib/nativeBridge";
 import { cn } from "@/lib/utils";
+import { HostCapabilityPanel } from "@/components/HostCapabilityPanel";
 
 // Admin-only management surfaces, rendered as the Members / Policies settings
 // sub-categories. Visible to admins in all modes (accounts, OIDC, single-user).
@@ -180,6 +181,14 @@ export function SettingsPage() {
       {section === "account" && hasAuthSession && <AccountSection />}
       {section === "archived" && <ArchivedSection />}
       {section === "cli" && isElectronShell() && <LocalCliSection />}
+      {section === "runners" && (
+        <Section
+          title="Runners"
+          description="Inspect paired machines and their reported capabilities."
+        >
+          <HostCapabilityPanel enabled={info !== "loading" && info.remote_local_runner} />
+        </Section>
+      )}
     </PageScroll>
   );
 }

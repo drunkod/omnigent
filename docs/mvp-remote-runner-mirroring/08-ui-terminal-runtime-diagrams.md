@@ -1,234 +1,196 @@
-# 08 — UI Terminal Runtime Mermaid Diagrams
+# 08 — Implemented UI and Terminal Runtime Diagrams
 
-Planning artifact only. This file maps the remote/local runner MVP onto the current web UI runtime and the planned T07 additions. It complements `07-ui-ux-codebase-files.md`, which maps broader UX surfaces to codebase files.
+Status reviewed on 2026-07-17 against PR #2,
+`feat/mvp-runner-binding-approvals`. This file maps the UI modules and server
+contracts that are actually wired on the branch. PR #3 adds the reconnect-safe
+terminal lifecycle, persisted terminal selection, and live terminal acceptance
+details.
 
-## 1. Current terminal UI code ownership
-
-The existing terminal UI already has a clean split between shell surfaces, terminal-resource data, terminal status derivation, and the low-level xterm/WebSocket bridge.
-
-```mermaid
-flowchart TB
-    subgraph surfaces["Terminal surfaces"]
-        PANEL["web/src/shell/TerminalsPanel.tsx<br/>right-side Shells panel<br/>list + selected xterm"]
-        MAIN["web/src/shell/MainTerminalView.tsx<br/>terminal-first main column<br/>agent terminal or rail-opened shell"]
-    end
-
-    subgraph terminal_data["Terminal data + status hooks"]
-        UTERMS["web/src/hooks/useTerminals.ts<br/>HTTP seed + SSE-driven query cache<br/>TerminalInfo mapping"]
-        USPLIT["web/src/shell/useTerminalSplit.ts<br/>inventory filter + active terminal selection"]
-        USTAT["web/src/shell/useTerminalStatuses.ts<br/>connection state + recent activity"]
-        TSTATUS["web/src/shell/terminalStatus.tsx<br/>deriveTerminalStatus + TerminalStatusBadge"]
-        ACTIVITY["web/src/store/terminalActivity<br/>session.terminal.activity pulses"]
-        RUNNERHEALTH["web/src/hooks/RunnerHealthProvider<br/>runner-online edge correction"]
-    end
-
-    subgraph bridge["xterm attach bridge"]
-        TVIEW["web/src/components/blocks/TerminalView.tsx<br/>React shell, reconnect overlay,<br/>buildAttachPath/buildAttachUrl"]
-        TSESSION["web/src/components/blocks/TerminalSession.ts<br/>plain TS bridge: xterm + WebSocket<br/>binary PTY bytes, resize JSON, input hot path"]
-        XTERM["@xterm/xterm + addons<br/>FitAddon · WebLinksAddon · WebglAddon"]
-    end
-
-    subgraph server_api["Existing server API contracts"]
-        TERMSAPI["GET /v1/sessions/:id/resources/terminals<br/>authoritative terminal resources"]
-        CREATEAPI["POST /v1/sessions/:id/resources/terminals<br/>launch declared terminal"]
-        ATTACHAPI["WS /v1/sessions/:id/resources/terminals/:terminal_id/attach<br/>?transport=control|pty&read_only=true"]
-        SSE["Session SSE events<br/>session.resource.created/deleted<br/>session.terminal.activity"]
-    end
-
-    PANEL --> USPLIT
-    USPLIT --> UTERMS
-    USPLIT --> USTAT
-    USPLIT --> TSTATUS
-    USTAT --> ACTIVITY
-    USTAT --> TSTATUS
-    PANEL --> TVIEW
-
-    MAIN --> UTERMS
-    MAIN --> USTAT
-    MAIN --> TSTATUS
-    MAIN --> TVIEW
-
-    TVIEW --> TSESSION
-    TSESSION --> XTERM
-
-    UTERMS --> TERMSAPI
-    UTERMS --> CREATEAPI
-    UTERMS -. "cache patched by" .- SSE
-    UTERMS --> RUNNERHEALTH
-    TSESSION <-->|"binary frames + resize JSON"| ATTACHAPI
-```
-
-## 2. Existing attach lifecycle inside the UI
-
-`TerminalView` owns React state and reconnect policy. `TerminalSession` owns xterm, WebSocket listeners, binary input/output, resize, copy behavior, and cleanup.
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Surface as TerminalsPanel / MainTerminalView
-    participant Hook as useTerminals + useTerminalStatuses
-    participant View as TerminalView.tsx
-    participant Session as TerminalSession.ts
-    participant WS as terminal attach WebSocket
-    participant API as Omnigent server attach route
-
-    Surface->>Hook: read TerminalInfo[] and status helpers
-    Hook-->>Surface: active terminal + getStatus + setConnectionState
-    Surface->>View: sessionId, terminalId, readOnly, transport, callbacks
-    View->>View: buildAttachPath(..., transport)
-    View->>View: resolveWebSocketUrl(path)
-    View->>Session: new TerminalSession(container, wsUrl, callbacks, controlMode)
-    Session->>Session: create xterm, FitAddon, WebLinksAddon, WebGL fallback
-    Session->>WS: open ws(s)://.../attach
-    WS->>API: WebSocket handshake
-    API-->>WS: binary terminal stream
-    WS-->>Session: ArrayBuffer terminal bytes
-    Session->>Session: writeOutput(bytes), sync echo fast path when eligible
-    Session-->>View: onActivity / onState
-    View-->>Hook: setTerminalConnectionState / markTerminalActive
-    Session->>WS: user input as binary bytes
-    Session->>WS: resize as JSON {type, cols, rows}
-
-    alt transport-shaped close
-        WS-->>View: closed 1001/1006/1012/1013
-        View->>View: schedule reconnect with backoff
-        View->>Session: dispose old bridge
-        View->>Session: construct fresh bridge
-    else app close
-        WS-->>View: closed 4xxx app code
-        View->>Surface: render closed / resume overlay
-    end
-```
-
-## 3. Planned remote/local runner UI additions
-
-T07 should extend the current UI rather than replacing it. New files are mostly thin state, picker, badge, and approval-card layers around existing terminal primitives.
+## 1. UI ownership on PR #2
 
 ```mermaid
 flowchart TB
-    subgraph planned["New planned UI modules — T07"]
-        REMOTE_LIB["web/src/lib/remoteRunner.ts<br/>RunnerInfo, RunnerWorkspace,<br/>TerminalUiState, fetchRunners,<br/>close-code mapping"]
-        RUNNER_STATE["web/src/hooks/useRunnerState.ts<br/>listen to session.runner_state<br/>runner_offline / runner_reconnected"]
-        RUNNER_BADGE["web/src/shell/RunnerStatusBadge.tsx<br/>local runner online/offline chip<br/>preserved-session recovery copy"]
-        PICKER["web/src/components/NewSessionRunnerPicker.tsx<br/>owned online local runners<br/>workspace picker + harness warning"]
-        LOCAL_APPROVAL["web/src/components/blocks/LocalActionApprovalCard.tsx<br/>diff preview / command approval<br/>owner approve/deny"]
+    subgraph create["New-session runner binding"]
+        NEWCHAT["web/src/shell/NewChatDialog.tsx<br/>NewChatLandingScreen"]
+        USE_RUNNERS["web/src/hooks/useLocalRunners.ts<br/>React Query polling"]
+        REMOTE["web/src/lib/remoteRunner.ts<br/>typed runner/workspace projection"]
+        INFO["useServerInfo<br/>remote_local_runner feature probe"]
     end
 
-    subgraph existing_surfaces["Existing surfaces to integrate"]
-        NEW_SESSION["new session flow<br/>agent + execution mode selection"]
-        PANEL["TerminalsPanel.tsx"]
-        MAIN["MainTerminalView.tsx"]
-        TVIEW["TerminalView.tsx"]
-        TSESSION["TerminalSession.ts"]
-        APPROVAL_FLOW["existing approval-card/event flow"]
+    subgraph capability["Runner state and capability presentation"]
+        HOSTCAP["web/src/components/HostCapabilityPanel.tsx<br/>runner label + capabilities"]
+        BADGE["web/src/shell/RunnerStatusBadge.tsx<br/>workspace/policy + online state"]
+        HEALTH["RunnerHealthProvider<br/>session runner-online polling"]
     end
 
-    subgraph server_contracts["New/extended server contracts"]
-        RUNNERS_API["GET /v1/runners<br/>runner capabilities + workspaces"]
-        SESSION_CREATE["POST /v1/sessions<br/>{runner_id, workspace_id}"]
-        RUNNER_EVENTS["SSE: session.runner_state<br/>session.terminal_state<br/>session.local_action"]
-        ATTACH_CODES["WS close codes<br/>4503 runner_offline<br/>4404/4405/4406 terminal states"]
-        APPROVAL_API["approval resolution endpoint<br/>owner-only local actions"]
+    subgraph approval["Typed local-action approval"]
+        NORMALIZE["web/src/lib/localActionApproval.ts<br/>normalize typed action payload"]
+        CARD["web/src/components/blocks/LocalActionApprovalCard.tsx<br/>shell/write review"]
+        BLOCKS["ApprovalCard + BlockRenderer<br/>conversation item rendering"]
+        INBOX["InboxPage<br/>owner decision flow"]
     end
 
-    REMOTE_LIB --> RUNNERS_API
-    REMOTE_LIB --> ATTACH_CODES
-    RUNNER_STATE --> RUNNER_EVENTS
+    subgraph terminal["Existing terminal surfaces"]
+        MAIN["MainTerminalView.tsx<br/>terminal-first main surface"]
+        RAIL["TerminalsPanel.tsx<br/>Shells rail"]
+        VIEW["TerminalView.tsx<br/>React attach shell"]
+        SESSION["TerminalSession.ts<br/>xterm + WebSocket bridge"]
+    end
 
-    PICKER --> REMOTE_LIB
-    PICKER --> NEW_SESSION
-    NEW_SESSION --> SESSION_CREATE
+    subgraph server["Server contracts"]
+        INFO_API["GET /v1/info"]
+        RUNNERS_API["GET /v1/runners"]
+        CREATE_API["POST /v1/sessions<br/>JSON or multipart"]
+        EVENTS["session SSE stream<br/>local-action and runner events"]
+        APPROVE_API["approval resolution endpoint"]
+        TERMINAL_API["terminal resources + attach WebSocket"]
+    end
 
-    RUNNER_BADGE --> RUNNER_STATE
-    RUNNER_BADGE --> REMOTE_LIB
-    RUNNER_BADGE --> PANEL
-    RUNNER_BADGE --> MAIN
+    INFO --> INFO_API
+    NEWCHAT --> INFO
+    NEWCHAT --> USE_RUNNERS
+    USE_RUNNERS --> REMOTE
+    REMOTE --> RUNNERS_API
+    NEWCHAT -->|"runner_id + workspace_id + policy"| CREATE_API
 
-    LOCAL_APPROVAL --> APPROVAL_FLOW
-    LOCAL_APPROVAL --> APPROVAL_API
-    LOCAL_APPROVAL --> RUNNER_EVENTS
+    HOSTCAP --> USE_RUNNERS
+    BADGE --> HEALTH
+    BADGE --> EVENTS
 
-    TVIEW --> REMOTE_LIB
-    TVIEW --> ATTACH_CODES
-    TVIEW --> TSESSION
-    PANEL --> TVIEW
-    MAIN --> TVIEW
+    EVENTS --> NORMALIZE
+    NORMALIZE --> CARD
+    CARD --> BLOCKS
+    CARD --> INBOX
+    INBOX --> APPROVE_API
+
+    MAIN --> VIEW
+    RAIL --> VIEW
+    VIEW --> SESSION
+    SESSION <-->|"binary I/O + resize JSON"| TERMINAL_API
 ```
 
-## 4. Remote/local runner UI data flow
+There is no separate `NewSessionRunnerPicker.tsx` or planned
+`useRunnerState.ts` layer on this branch. The picker is integrated into
+`NewChatLandingScreen`, while runner lifecycle state is consumed through the
+existing terminal lifecycle store and runner-health provider.
 
-This is the target user-facing flow after T01–T08 are implemented.
+## 2. Canonical new-session UI flow
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor User
-    participant Picker as NewSessionRunnerPicker
-    participant RemoteLib as remoteRunner.ts
-    participant Server as Omnigent server
-    participant SessionUI as Session UI / shell surfaces
-    participant Badge as RunnerStatusBadge + useRunnerState
-    participant Terminals as useTerminals / TerminalView
-    participant Approval as LocalActionApprovalCard
+    participant Screen as NewChatLandingScreen
+    participant Query as useLocalRunners
+    participant Lib as remoteRunner.ts
+    participant Server
+    participant Session as Created session UI
 
-    User->>Picker: open new session flow
-    Picker->>RemoteLib: fetchRunners()
-    RemoteLib->>Server: GET /v1/runners
-    Server-->>RemoteLib: RunnerInfo[] with workspaces + transports
-    Picker-->>User: choose local runner + workspace
-    User->>Picker: create session
-    Picker->>Server: POST /v1/sessions {runner_id, workspace_id}
-    Server-->>SessionUI: session snapshot labels<br/>execution_mode=local_runner<br/>workspace_id / workspace_label
+    Screen->>Server: GET /v1/info
+    Server-->>Screen: remote_local_runner flag
 
-    SessionUI->>Badge: render local runner state
-    Badge->>Server: subscribe to session event stream
-    Server-->>Badge: session.runner_state / session.terminal_state
-
-    SessionUI->>Terminals: render terminal resources
-    Terminals->>Server: GET /v1/sessions/:id/resources/terminals
-    Server-->>Terminals: terminal resources with terminal_transport
-    User->>Terminals: open terminal
-    Terminals->>Server: WS attach ?transport=control|pty&read_only=...
-    Server-->>Terminals: terminal bytes or app close code
-
-    alt runner offline
-        Server-->>Badge: session.runner_state runner_offline
-        Server-->>Terminals: WS close 4503
-        Badge-->>User: local runner offline, session preserved
-        Terminals-->>User: offline/reconnect overlay, keep xterm buffer
-    else local action asks
-        Server-->>Approval: approval event with diff_preview / command / risk flags
-        Approval-->>User: approve or deny
-        User->>Approval: decision
-        Approval->>Server: approval resolution
-        Server-->>SessionUI: session.local_action audit trail
+    alt feature disabled or still loading
+        Screen-->>User: local runner option hidden / fails closed
+    else enabled
+        Screen->>Query: enable runner query
+        Query->>Lib: fetchLocalRunners()
+        Lib->>Server: GET /v1/runners
+        Server-->>Lib: owner-scoped typed summaries
+        Lib-->>Screen: runners + opaque workspaces + capabilities
+        Screen-->>User: runner choices filtered by online state,<br/>workspace availability, and harness support
+        User->>Screen: select runner and workspace
+        User->>Screen: create session
+        Screen->>Server: POST /v1/sessions<br/>{runner_id, workspace_id,<br/>execution_mode=local_runner,<br/>local_runner_policy}
+        Server-->>Session: snapshot with runner/workspace/policy labels
     end
 ```
 
-## 5. Implementation order for UI PRs
+Selecting the local-runner path clears any host/raw-workspace selection, and
+selecting a host or managed sandbox clears the local-runner selection. The
+contracts remain mutually exclusive.
+
+## 3. Typed approval rendering and decision flow
 
 ```mermaid
-flowchart LR
-    A["UI-0: shared types<br/>remoteRunner.ts"] --> B["UI-1: runner picker<br/>NewSessionRunnerPicker"]
-    B --> C["UI-2: session labels consumed<br/>execution_mode + workspace_label"]
-    C --> D["UI-3: runner badge<br/>useRunnerState + RunnerStatusBadge"]
-    D --> E["UI-4: attach close-code mapping<br/>TerminalView overlay states"]
-    E --> F["UI-5: local action approvals<br/>LocalActionApprovalCard"]
-    F --> G["UI-6: e2e + visual tests<br/>picker, badge, terminal offline, diff card"]
+sequenceDiagram
+    autonumber
+    participant Runner
+    participant Server
+    participant SSE as Session event stream
+    participant Normalize as localActionApproval.ts
+    participant Card as LocalActionApprovalCard
+    actor Owner
+
+    Runner->>Server: local-action requested event<br/>action_id + kind + policy + safe preview
+    Server->>SSE: publish approval/event state
+    SSE->>Normalize: elicitation/local-action payload
+    Normalize->>Normalize: require typed action_id contract<br/>ignore unrelated policy metadata
+    Normalize-->>Card: normalized shell or write approval
+
+    alt run_shell
+        Card-->>Owner: executable-only preview,<br/>hidden arguments, shell guarantee, risk flags
+    else write_file
+        Card-->>Owner: relative path + bounded diff preview
+    end
+
+    Owner->>Card: approve or deny
+    Card->>Server: resolve owning session/action
+    Server-->>Runner: one verdict for exact action_id
+    Server-->>SSE: terminal local-action outcome
+    SSE-->>Card: completed / failed / denied audit state
 ```
 
-Suggested PR boundaries:
+The card never needs the canonical local workspace root. Relative paths and
+display-only labels are sufficient for review.
 
-1. `remoteRunner.ts` types and tests, no visible UI.
-2. New-session runner/workspace picker behind `remote_local_runner` feature flag.
-3. Runner badge and offline/reconnect event handling.
-4. Terminal close-code mapping and transport fallback behavior.
-5. Local action approval card and audit-event rendering.
+## 4. Runner status presentation
 
-## Notes for implementers
+```mermaid
+stateDiagram-v2
+    [*] --> hidden: execution_mode != local_runner
+    [*] --> online: local-runner session
 
-- Keep the existing `TerminalView` / `TerminalSession` split. `TerminalSession` should stay a plain TypeScript bridge outside React render cycles.
-- Do not open WebSocket attaches for every terminal just to compute status. The current `useTerminalSplit` / `useTerminalStatuses` design intentionally avoids fan-out attaches.
-- Prefer control transport when advertised by the runner, but keep PTY fallback and debug override.
-- Runner offline must read as recoverable: the session binding is preserved and should not be silently rebound.
-- Approval cards must show local diffs/commands before the owner decides; audit events must stay payload-free.
+    online --> offline: runner lifecycle offline<br/>or online poll=false
+    offline --> reconnecting: runner_reconnected event
+    reconnecting --> online: terminal lifecycle/attach settles
+    offline --> online: online poll recovers
+
+    state online {
+        [*] --> workspace_label
+        workspace_label --> policy_tooltip
+    }
+
+    note right of offline
+        Badge says the session is preserved.
+        It does not imply that input remains available.
+    end note
+```
+
+PR #2 supplies the runner status and approval surfaces. PR #3 makes the
+terminal-side offline/reconnect behavior generation-safe and bounded.
+
+## 5. Terminal bridge boundary inherited by PR #2
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Surface as MainTerminalView / TerminalsPanel
+    participant View as TerminalView
+    participant Bridge as TerminalSession
+    participant Server as terminal attach route
+    participant Runner as runner attach route
+    participant Tmux as tmux pane
+
+    Surface->>View: sessionId + terminalId + transport + readOnly
+    View->>Bridge: construct xterm/WebSocket bridge
+    Bridge->>Server: WS attach with transport/read_only
+    Server->>Server: authorize owner write or collaborator read
+    Server->>Runner: multiplex ws.open over runner tunnel
+    Runner->>Tmux: control or PTY attach
+    Tmux-->>Bridge: binary terminal bytes through runner/server
+    Bridge->>Tmux: binary input; resize JSON through runner/server
+```
+
+The detailed reconnect state machine, close-code handling, bounded settlement,
+per-surface selection persistence, exited-terminal retention, and real tmux
+acceptance boundary live in the PR #3 version of this document.
