@@ -13,6 +13,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -699,6 +700,12 @@ def _terminals_tmp_root() -> Path:
 
     :returns: The system temp directory, e.g. ``Path("/tmp")``.
     """
+    # macOS' per-user temp dir (``/var/folders/…``) is long enough that
+    # appending the tmux socket name overruns the ~104-char AF_UNIX socket
+    # path limit, so the terminal fails to bind. ``/tmp`` keeps the path
+    # short; ``mkdtemp`` below still creates a private 0700 subdirectory.
+    if sys.platform == "darwin":
+        return Path("/tmp")
     return Path(tempfile.gettempdir())
 
 
@@ -1881,7 +1888,7 @@ def create_terminal_instance(
         raise RuntimeError("tmux is not installed or not on PATH")
 
     # Create the instance's private directory.
-    private_dir = Path(tempfile.mkdtemp(prefix=_TERMINAL_DIR_PREFIX))
+    private_dir = Path(tempfile.mkdtemp(prefix=_TERMINAL_DIR_PREFIX, dir=str(_terminals_tmp_root())))
     socket_path = private_dir / "tmux.sock"
     # Record the owning process so a later startup can reap this tmux
     # server if we die without graceful shutdown (SIGKILL, harness
