@@ -148,7 +148,7 @@ export const PENDING_RECONCILE_INTERVAL_MS = 2_500;
  *
  * This count includes the initial request. With a 2.5-second interval,
  * four consecutive soft results allow three delayed retries before
- * polling stops.
+ * polling falls back to a slow keep-alive.
  *
  * A later runner offline → online transition still performs a fresh
  * invalidation, so exhausting this local retry budget does not prevent
@@ -157,13 +157,25 @@ export const PENDING_RECONCILE_INTERVAL_MS = 2_500;
 export const MAX_CONSECUTIVE_SOFT_TERMINAL_FETCHES = 4;
 
 /**
+ * Slow keep-alive interval used after the tight soft-retry budget is spent.
+ *
+ * Once MAX_CONSECUTIVE_SOFT_TERMINAL_FETCHES consecutive soft responses have
+ * been seen, the tight 2.5s loop stops, but polling continues at this slower
+ * cadence so a runner that stays *health-online* while its terminals endpoint
+ * is flaky (repeated 503s, no offline→online edge to trigger invalidation)
+ * still recovers instead of freezing on a stale snapshot.
+ */
+export const SOFT_RETRY_BACKSTOP_INTERVAL_MS = 30_000;
+
+/**
  * Decide whether the terminals query needs temporary reconciliation polling.
  *
  * Poll in either of these recovery windows:
  *
  * 1. A terminal is being created while no terminal is visible.
  * 2. The runner reports online and the latest terminal-list request returned
- *    a soft, non-authoritative response, while the retry budget remains.
+ *    a soft, non-authoritative response. Retries run at the tight interval
+ *    until the budget is spent, then fall back to a slow keep-alive.
  */
 export function terminalsReconcileInterval(
   reconcileWhilePending: boolean,
@@ -176,12 +188,10 @@ export function terminalsReconcileInterval(
     return PENDING_RECONCILE_INTERVAL_MS;
   }
 
-  if (
-    runnerOnline === true &&
-    lastFetchAuthoritative === false &&
-    consecutiveSoftFetches < MAX_CONSECUTIVE_SOFT_TERMINAL_FETCHES
-  ) {
-    return PENDING_RECONCILE_INTERVAL_MS;
+  if (runnerOnline === true && lastFetchAuthoritative === false) {
+    return consecutiveSoftFetches < MAX_CONSECUTIVE_SOFT_TERMINAL_FETCHES
+      ? PENDING_RECONCILE_INTERVAL_MS
+      : SOFT_RETRY_BACKSTOP_INTERVAL_MS;
   }
 
   return false;
@@ -297,9 +307,22 @@ export function readStoredTerminals(conversationId: string): TerminalInfo[] {
 
 export function writeStoredTerminals(conversationId: string, terminals: TerminalInfo[]): void {
   try {
+    if (terminals.length === 0) {
+      // An authoritative-empty result should remove the key, not persist an
+      // empty array — keeps sessionStorage from accumulating dead entries and
+      // preserves the missing-vs-empty read semantics (both yield []).
+      sessionStorage.removeItem(terminalSnapshotKey(conversationId));
+      return;
+    }
     sessionStorage.setItem(terminalSnapshotKey(conversationId), JSON.stringify(terminals));
   } catch {
-    // Persistence is best-effort when browser storage is unavailable.
+    // Best-effort: storage may be unavailable or full. Drop any stale copy so
+    // a failed write can't leave an outdated snapshot behind.
+    try {
+      sessionStorage.removeItem(terminalSnapshotKey(conversationId));
+    } catch {
+      // Storage fully unavailable; nothing more to do.
+    }
   }
 }
 
@@ -393,11 +416,12 @@ async function fetchTerminalSnapshot(
 }
 
 /**
- * Fetch the current terminal resources for a conversation.
+ * Standalone authoritative fetch that also persists the snapshot.
  *
- * A successful response is authoritative and replaces the persisted
- * inventory, including when the returned list is empty. Soft bootstrap
- * statuses retain and return the last-known session-storage snapshot.
+ * NOTE: `useTerminals` does NOT use this — it calls `fetchTerminalSnapshot`
+ * directly and persists via its own effect, so the persistence rule lives in
+ * exactly one place at runtime. This wrapper is retained for tests and any
+ * out-of-hook caller; keep the two persistence sites in sync if you change one.
  *
  * @param conversationId Session/conversation identifier.
  * @returns Authoritative terminals, or retained terminals when the
@@ -522,9 +546,14 @@ export function useTerminals(
   const cachedAtRender =
     conversationId === null ? undefined : queryClient.getQueryData<TerminalInfo[]>(queryKey);
 
-  const storedAtRender = conversationId === null ? undefined : readStoredTerminals(conversationId);
-
   const hasCachedInventory = cachedAtRender !== undefined;
+
+  // Only touch sessionStorage when there's no in-memory cache to hydrate from;
+  // a synchronous JSON.parse on every render is otherwise wasted work.
+  const storedAtRender =
+    hasCachedInventory || conversationId === null
+      ? undefined
+      : readStoredTerminals(conversationId);
 
   const hydrateFromStorage =
     !hasCachedInventory && storedAtRender !== undefined && storedAtRender.length > 0;

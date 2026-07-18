@@ -18,6 +18,7 @@ import {
   MAX_CONSECUTIVE_SOFT_TERMINAL_FETCHES,
   PENDING_RECONCILE_INTERVAL_MS,
   readStoredTerminals,
+  SOFT_RETRY_BACKSTOP_INTERVAL_MS,
   terminalInfoFromResource,
   terminalsQueryKey,
   terminalsReconcileInterval,
@@ -899,12 +900,16 @@ describe("useTerminals persisted reload bootstrap", () => {
         });
       }
 
-      // Further time must not produce steady-state polling.
+      // After the cap, polling falls back to a slow keep-alive interval.
+      // Advance by the slow interval to see one more call.
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(PENDING_RECONCILE_INTERVAL_MS * 3);
+        await vi.advanceTimersByTimeAsync(SOFT_RETRY_BACKSTOP_INTERVAL_MS);
       });
 
-      expect(fetchMock).toHaveBeenCalledTimes(MAX_CONSECUTIVE_SOFT_TERMINAL_FETCHES);
+      await vi.waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledTimes(MAX_CONSECUTIVE_SOFT_TERMINAL_FETCHES + 1);
+      });
+
       expect(hook.result.current.terminals).toEqual(retained);
     } finally {
       vi.useRealTimers();
@@ -1065,10 +1070,10 @@ describe("terminalsReconcileInterval", () => {
     ).toBe(PENDING_RECONCILE_INTERVAL_MS);
   });
 
-  it("stops soft reconciliation at the retry limit", () => {
+  it("falls back to a slow keep-alive at the retry limit", () => {
     expect(
       terminalsReconcileInterval(false, 1, true, false, MAX_CONSECUTIVE_SOFT_TERMINAL_FETCHES),
-    ).toBe(false);
+    ).toBe(SOFT_RETRY_BACKSTOP_INTERVAL_MS);
   });
 
   it("does not poll after a hard or unresolved fetch outcome", () => {
