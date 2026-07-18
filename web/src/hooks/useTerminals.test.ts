@@ -7,7 +7,7 @@
 // already-running terminal on load / after a missed SSE event.
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -15,16 +15,22 @@ import {
   fetchTerminals,
   inventoryTerminals,
   isAgentTerminalKey,
+  MAX_CONSECUTIVE_SOFT_TERMINAL_FETCHES,
   PENDING_RECONCILE_INTERVAL_MS,
+  readStoredTerminals,
   terminalInfoFromResource,
+  terminalsQueryKey,
   terminalsReconcileInterval,
   terminalTabKey,
   useTerminals,
+  writeStoredTerminals,
   type TerminalInfo,
 } from "./useTerminals";
 
-// useTerminals reads runner liveness to treat an offline runner as zero
-// terminals. Mock it so we can drive that signal directly; it defaults to
+// useTerminals reads runner liveness to trigger authoritative
+// reconciliation when a conversation becomes reachable again.
+// While offline, the last-known terminal inventory stays mounted.
+// Mock it so we can drive that signal directly; it defaults to
 // `undefined` (the no-provider value), which leaves the other tests'
 // behavior unchanged.
 vi.mock("@/hooks/RunnerHealthProvider", () => ({
@@ -43,6 +49,16 @@ function mockResponse(body: unknown, init?: { ok?: boolean; status?: number }): 
 }
 
 const fetchMock = vi.fn();
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
 
 describe("terminalInfoFromResource", () => {
   it("lifts id, metadata.terminal_name, metadata.session_key, metadata.running", () => {
@@ -127,9 +143,11 @@ describe("terminalInfoFromResource", () => {
 describe("fetchTerminals", () => {
   beforeEach(() => {
     fetchMock.mockReset();
+    sessionStorage.clear();
     vi.stubGlobal("fetch", fetchMock);
   });
   afterEach(() => {
+    sessionStorage.clear();
     vi.unstubAllGlobals();
   });
 
@@ -173,9 +191,785 @@ describe("fetchTerminals", () => {
     }
   });
 
+  it("retains stored inventory when the endpoint is unavailable", async () => {
+    const stored = [{ id: "terminal_shell_u-1", name: "shell", session: "u-1", running: true }];
+    writeStoredTerminals("conv_abc", stored);
+    fetchMock.mockResolvedValueOnce(mockResponse(null, { ok: false, status: 503 }));
+
+    expect(await fetchTerminals("conv_abc")).toEqual(stored);
+    expect(readStoredTerminals("conv_abc")).toEqual(stored);
+  });
+
+  it("clears stored inventory when an authoritative response is empty", async () => {
+    writeStoredTerminals("conv_abc", [
+      { id: "terminal_stale", name: "shell", session: "stale", running: true },
+    ]);
+    fetchMock.mockResolvedValueOnce(mockResponse({ object: "list", data: [] }));
+
+    expect(await fetchTerminals("conv_abc")).toEqual([]);
+    expect(readStoredTerminals("conv_abc")).toEqual([]);
+  });
+
+  it("replaces stored inventory with authoritative rows", async () => {
+    writeStoredTerminals("conv_abc", [
+      { id: "terminal_stale", name: "shell", session: "stale", running: true },
+    ]);
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({
+        data: [
+          {
+            id: "terminal_zsh_u-2",
+            name: "zsh:u-2",
+            metadata: { terminal_name: "zsh", session_key: "u-2", running: true },
+          },
+        ],
+      }),
+    );
+
+    const updated = [{ id: "terminal_zsh_u-2", name: "zsh", session: "u-2", running: true }];
+    expect(await fetchTerminals("conv_abc")).toEqual(updated);
+    expect(readStoredTerminals("conv_abc")).toEqual(updated);
+  });
+
+  it("ignores malformed storage and isolates snapshots by conversation", () => {
+    sessionStorage.setItem("omnigent.terminals.conv_bad", "{not-json");
+    sessionStorage.setItem("omnigent.terminals.conv_invalid", JSON.stringify([{ id: 3 }]));
+    writeStoredTerminals("conv_one", [
+      { id: "terminal_one", name: "shell", session: "one", running: true },
+    ]);
+    writeStoredTerminals("conv_two", [
+      { id: "terminal_two", name: "zsh", session: "two", running: false, transport: "pty" },
+    ]);
+
+    expect(readStoredTerminals("conv_bad")).toEqual([]);
+    expect(readStoredTerminals("conv_invalid")).toEqual([]);
+    expect(readStoredTerminals("conv_one").map((terminal) => terminal.id)).toEqual([
+      "terminal_one",
+    ]);
+    expect(readStoredTerminals("conv_two").map((terminal) => terminal.id)).toEqual([
+      "terminal_two",
+    ]);
+  });
+
+  it("does not clear storage for a malformed HTTP 200 response", async () => {
+    const retained = [
+      { id: "terminal_shell_retained", name: "shell", session: "retained", running: true },
+    ];
+    writeStoredTerminals("conv_bad_response", retained);
+    fetchMock.mockResolvedValueOnce(mockResponse({ object: "list" }));
+
+    await expect(fetchTerminals("conv_bad_response")).rejects.toThrow(/invalid list response/);
+    expect(readStoredTerminals("conv_bad_response")).toEqual(retained);
+  });
+
   it("throws on a hard error status so React Query can retry", async () => {
     fetchMock.mockResolvedValueOnce(mockResponse(null, { ok: false, status: 500 }));
     await expect(fetchTerminals("conv_abc")).rejects.toThrow(/500/);
+  });
+
+  it("keeps valid terminals when another response row is malformed", async () => {
+    writeStoredTerminals("conv_mixed_rows", [
+      { id: "terminal_old", name: "shell", session: "old", running: true },
+    ]);
+
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({
+        object: "list",
+        data: [
+          {
+            // Invalid: no resource id.
+            name: "broken",
+            metadata: { terminal_name: "broken", session_key: "broken", running: true },
+          },
+          {
+            id: "terminal_zsh_valid",
+            name: "zsh:valid",
+            metadata: {
+              terminal_name: "zsh",
+              session_key: "valid",
+              running: true,
+              terminal_transport: "control",
+            },
+          },
+        ],
+      }),
+    );
+
+    const valid: TerminalInfo[] = [
+      {
+        id: "terminal_zsh_valid",
+        name: "zsh",
+        session: "valid",
+        running: true,
+        transport: "control",
+      },
+    ];
+
+    await expect(fetchTerminals("conv_mixed_rows")).resolves.toEqual(valid);
+    expect(readStoredTerminals("conv_mixed_rows")).toEqual(valid);
+  });
+
+  it("does not clear stored inventory when every response row is invalid", async () => {
+    const retained: TerminalInfo[] = [
+      { id: "terminal_retained", name: "shell", session: "retained", running: true },
+    ];
+
+    writeStoredTerminals("conv_invalid_rows", retained);
+
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({
+        object: "list",
+        data: [
+          null,
+          "invalid",
+          {
+            name: "missing-id",
+            metadata: { terminal_name: "shell", session_key: "missing-id", running: true },
+          },
+        ],
+      }),
+    );
+
+    await expect(fetchTerminals("conv_invalid_rows")).rejects.toThrow(
+      /no addressable terminal rows/,
+    );
+    expect(readStoredTerminals("conv_invalid_rows")).toEqual(retained);
+  });
+
+  it("deduplicates authoritative terminal rows by id", async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({
+        object: "list",
+        data: [
+          {
+            id: "terminal_shell_shared",
+            name: "shell:first",
+            metadata: { terminal_name: "shell", session_key: "first", running: true },
+          },
+          {
+            id: "terminal_shell_shared",
+            name: "shell:duplicate",
+            metadata: { terminal_name: "shell", session_key: "duplicate", running: false },
+          },
+        ],
+      }),
+    );
+
+    const expected: TerminalInfo[] = [
+      { id: "terminal_shell_shared", name: "shell", session: "first", running: true },
+    ];
+
+    await expect(fetchTerminals("conv_duplicate_rows")).resolves.toEqual(expected);
+    expect(readStoredTerminals("conv_duplicate_rows")).toEqual(expected);
+  });
+
+  it("salvages valid stored rows and removes duplicate ids", () => {
+    const first: TerminalInfo = {
+      id: "terminal_shell_valid",
+      name: "shell",
+      session: "valid",
+      running: true,
+    };
+    const second: TerminalInfo = {
+      id: "terminal_zsh_valid",
+      name: "zsh",
+      session: "valid-2",
+      running: false,
+      transport: "control",
+    };
+
+    sessionStorage.setItem(
+      "omnigent.terminals.conv_mixed_storage",
+      JSON.stringify([{ id: 3 }, first, { ...first, running: false }, "invalid", second]),
+    );
+
+    expect(readStoredTerminals("conv_mixed_storage")).toEqual([first, second]);
+  });
+});
+
+describe("useTerminals persisted reload bootstrap", () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    runnerOnlineMock.mockReturnValue(undefined);
+    sessionStorage.clear();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    sessionStorage.clear();
+    vi.unstubAllGlobals();
+  });
+
+  function createTestQueryClient(): QueryClient {
+    return new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+    });
+  }
+
+  function wrapper(client: QueryClient) {
+    return ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client }, children);
+  }
+
+  async function waitForSuccessfulFetch(
+    client: QueryClient,
+    conversationId: string,
+    expectedFetchCalls: number,
+  ): Promise<void> {
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(expectedFetchCalls);
+    });
+
+    await waitFor(() => {
+      const state = client.getQueryState(terminalsQueryKey(conversationId));
+      expect(state?.fetchStatus).toBe("idle");
+      expect(state?.status).toBe("success");
+    });
+  }
+
+  it("hydrates terminal inventory after a settled offline remount", async () => {
+    const retained: TerminalInfo[] = [
+      {
+        id: "terminal_shell_u-reload",
+        name: "shell",
+        session: "u-reload",
+        running: true,
+      },
+    ];
+
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({
+        data: [
+          {
+            id: "terminal_shell_u-reload",
+            name: "shell:u-reload",
+            metadata: {
+              terminal_name: "shell",
+              session_key: "u-reload",
+              running: true,
+            },
+          },
+        ],
+      }),
+    );
+
+    const firstClient = createTestQueryClient();
+
+    const first = renderHook(() => useTerminals("conv_reload"), {
+      wrapper: wrapper(firstClient),
+    });
+
+    await waitForSuccessfulFetch(firstClient, "conv_reload", 1);
+
+    expect(first.result.current.terminals).toEqual(retained);
+
+    first.unmount();
+
+    runnerOnlineMock.mockReturnValue(false);
+
+    fetchMock.mockResolvedValueOnce(
+      mockResponse(null, {
+        ok: false,
+        status: 503,
+      }),
+    );
+
+    const secondClient = createTestQueryClient();
+
+    const second = renderHook(() => useTerminals("conv_reload"), {
+      wrapper: wrapper(secondClient),
+    });
+
+    // Persisted inventory must be available immediately.
+    expect(second.result.current.terminals).toEqual(retained);
+
+    // Proves the forced mount refetch actually ran and settled.
+    await waitForSuccessfulFetch(secondClient, "conv_reload", 2);
+
+    expect(second.result.current.terminals).toEqual(retained);
+
+    expect(readStoredTerminals("conv_reload")).toEqual(retained);
+  });
+
+  it("preserves an SSE-created terminal during a soft fetch", async () => {
+    const retained: TerminalInfo = {
+      id: "terminal_shell_retained",
+      name: "shell",
+      session: "retained",
+      running: true,
+    };
+    const created: TerminalInfo = {
+      id: "terminal_zsh_created",
+      name: "zsh",
+      session: "created",
+      running: true,
+      transport: "control",
+    };
+    writeStoredTerminals("conv_create_race", [retained]);
+    const request = deferred<Response>();
+    fetchMock.mockImplementationOnce(() => request.promise);
+    const client = createTestQueryClient();
+    const hook = renderHook(() => useTerminals("conv_create_race"), {
+      wrapper: wrapper(client),
+    });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    act(() => {
+      client.setQueryData<TerminalInfo[]>(terminalsQueryKey("conv_create_race"), (current = []) => [
+        ...current,
+        created,
+      ]);
+    });
+    request.resolve(mockResponse(null, { ok: false, status: 503 }));
+    await waitFor(() => {
+      const state = client.getQueryState(terminalsQueryKey("conv_create_race"));
+      expect(state?.fetchStatus).toBe("idle");
+    });
+    expect(hook.result.current.terminals).toEqual([retained, created]);
+    expect(readStoredTerminals("conv_create_race")).toEqual([retained, created]);
+  });
+
+  it("does not resurrect an SSE-deleted terminal after HTTP 200", async () => {
+    const deleted: TerminalInfo = {
+      id: "terminal_shell_deleted",
+      name: "shell",
+      session: "deleted",
+      running: true,
+    };
+    const remaining: TerminalInfo = {
+      id: "terminal_zsh_remaining",
+      name: "zsh",
+      session: "remaining",
+      running: true,
+    };
+    writeStoredTerminals("conv_delete_race", [deleted, remaining]);
+    const request = deferred<Response>();
+    fetchMock.mockImplementationOnce(() => request.promise);
+    const client = createTestQueryClient();
+    const hook = renderHook(() => useTerminals("conv_delete_race"), {
+      wrapper: wrapper(client),
+    });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    act(() => {
+      client.setQueryData<TerminalInfo[]>(terminalsQueryKey("conv_delete_race"), [remaining]);
+    });
+    request.resolve(
+      mockResponse({
+        data: [
+          {
+            id: deleted.id,
+            name: "shell:deleted",
+            metadata: {
+              terminal_name: deleted.name,
+              session_key: deleted.session,
+              running: true,
+            },
+          },
+          {
+            id: remaining.id,
+            name: "zsh:remaining",
+            metadata: {
+              terminal_name: remaining.name,
+              session_key: remaining.session,
+              running: true,
+            },
+          },
+        ],
+      }),
+    );
+    await waitFor(() => {
+      const state = client.getQueryState(terminalsQueryKey("conv_delete_race"));
+      expect(state?.fetchStatus).toBe("idle");
+    });
+    expect(hook.result.current.terminals).toEqual([remaining]);
+    expect(readStoredTerminals("conv_delete_race")).toEqual([remaining]);
+  });
+
+  it("keeps loading state when no persisted inventory exists", async () => {
+    const request = deferred<Response>();
+    fetchMock.mockImplementationOnce(() => request.promise);
+    const client = createTestQueryClient();
+    const hook = renderHook(() => useTerminals("conv_empty_bootstrap"), {
+      wrapper: wrapper(client),
+    });
+    expect(hook.result.current.isLoading).toBe(true);
+    request.resolve(mockResponse({ object: "list", data: [] }));
+    await waitFor(() => {
+      const state = client.getQueryState(terminalsQueryKey("conv_empty_bootstrap"));
+      expect(state?.fetchStatus).toBe("idle");
+    });
+    expect(hook.result.current.isLoading).toBe(false);
+    expect(hook.result.current.terminals).toEqual([]);
+  });
+
+  it("revalidates cached terminals when switching online conversations", async () => {
+    const cachedA: TerminalInfo[] = [
+      {
+        id: "terminal_shell_a",
+        name: "shell",
+        session: "a",
+        running: true,
+      },
+    ];
+
+    const staleB: TerminalInfo[] = [
+      {
+        id: "terminal_shell_b_stale",
+        name: "shell",
+        session: "b-stale",
+        running: true,
+      },
+    ];
+
+    const freshB: TerminalInfo[] = [
+      {
+        id: "terminal_zsh_b_fresh",
+        name: "zsh",
+        session: "b-fresh",
+        running: true,
+        transport: "control",
+      },
+    ];
+
+    const client = createTestQueryClient();
+
+    client.setQueryData<TerminalInfo[]>(terminalsQueryKey("conv_a"), cachedA);
+    client.setQueryData<TerminalInfo[]>(terminalsQueryKey("conv_b"), staleB);
+
+    runnerOnlineMock.mockReturnValue(true);
+
+    fetchMock
+      .mockResolvedValueOnce(
+        mockResponse({
+          data: [
+            {
+              id: "terminal_shell_a",
+              name: "shell:a",
+              metadata: {
+                terminal_name: "shell",
+                session_key: "a",
+                running: true,
+              },
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        mockResponse({
+          data: [
+            {
+              id: "terminal_zsh_b_fresh",
+              name: "zsh:b-fresh",
+              metadata: {
+                terminal_name: "zsh",
+                session_key: "b-fresh",
+                running: true,
+                terminal_transport: "control",
+              },
+            },
+          ],
+        }),
+      );
+
+    const hook = renderHook(
+      ({ conversationId }: { conversationId: string }) => useTerminals(conversationId),
+      {
+        initialProps: { conversationId: "conv_a" },
+        wrapper: wrapper(client),
+      },
+    );
+
+    await waitForSuccessfulFetch(client, "conv_a", 1);
+
+    hook.rerender({ conversationId: "conv_b" });
+
+    await waitForSuccessfulFetch(client, "conv_b", 2);
+
+    expect(hook.result.current.terminals).toEqual(freshB);
+    expect(readStoredTerminals("conv_b")).toEqual(freshB);
+  });
+
+  it("preserves an SSE metadata update during an authoritative fetch", async () => {
+    const baseline: TerminalInfo = {
+      id: "terminal_shell_shared",
+      name: "shell",
+      session: "shared",
+      running: true,
+      transport: "pty",
+    };
+
+    const updated: TerminalInfo = {
+      ...baseline,
+      running: false,
+      transport: "control",
+    };
+
+    writeStoredTerminals("conv_metadata_race", [baseline]);
+
+    const request = deferred<Response>();
+    fetchMock.mockImplementationOnce(() => request.promise);
+
+    const client = createTestQueryClient();
+
+    const hook = renderHook(() => useTerminals("conv_metadata_race"), {
+      wrapper: wrapper(client),
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      client.setQueryData<TerminalInfo[]>(terminalsQueryKey("conv_metadata_race"), [updated]);
+    });
+
+    // The HTTP response contains the older terminal metadata.
+    request.resolve(
+      mockResponse({
+        data: [
+          {
+            id: baseline.id,
+            name: "shell:shared",
+            metadata: {
+              terminal_name: baseline.name,
+              session_key: baseline.session,
+              running: baseline.running,
+              terminal_transport: baseline.transport,
+            },
+          },
+        ],
+      }),
+    );
+
+    await waitForSuccessfulFetch(client, "conv_metadata_race", 1);
+
+    expect(hook.result.current.terminals).toEqual([updated]);
+    expect(readStoredTerminals("conv_metadata_race")).toEqual([updated]);
+  });
+
+  it("makes one request when stored inventory mounts already online", async () => {
+    const retained: TerminalInfo[] = [
+      { id: "terminal_shell_online", name: "shell", session: "online", running: true },
+    ];
+
+    writeStoredTerminals("conv_online_mount", retained);
+
+    runnerOnlineMock.mockReturnValue(true);
+
+    fetchMock.mockResolvedValue(
+      mockResponse({
+        data: [
+          {
+            id: "terminal_shell_online",
+            name: "shell:online",
+            metadata: { terminal_name: "shell", session_key: "online", running: true },
+          },
+        ],
+      }),
+    );
+
+    const client = createTestQueryClient();
+
+    const hook = renderHook(() => useTerminals("conv_online_mount"), {
+      wrapper: wrapper(client),
+    });
+
+    // The persisted value is visible immediately.
+    expect(hook.result.current.terminals).toEqual(retained);
+
+    await waitForSuccessfulFetch(client, "conv_online_mount", 1);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+
+    expect(hook.result.current.terminals).toEqual(retained);
+  });
+
+  it("retries a soft snapshot while already online and stops after authority", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const retained: TerminalInfo[] = [
+        { id: "terminal_shell_retained", name: "shell", session: "retained", running: true },
+      ];
+      const authoritative: TerminalInfo[] = [
+        {
+          id: "terminal_zsh_authoritative",
+          name: "zsh",
+          session: "authoritative",
+          running: true,
+          transport: "control",
+        },
+      ];
+
+      writeStoredTerminals("conv_soft_online", retained);
+      runnerOnlineMock.mockReturnValue(true);
+
+      fetchMock
+        .mockResolvedValueOnce(mockResponse(null, { ok: false, status: 503 }))
+        .mockResolvedValueOnce(
+          mockResponse({
+            object: "list",
+            data: [
+              {
+                id: "terminal_zsh_authoritative",
+                name: "zsh:authoritative",
+                metadata: {
+                  terminal_name: "zsh",
+                  session_key: "authoritative",
+                  running: true,
+                  terminal_transport: "control",
+                },
+              },
+            ],
+          }),
+        );
+
+      const client = createTestQueryClient();
+
+      const hook = renderHook(() => useTerminals("conv_soft_online"), {
+        wrapper: wrapper(client),
+      });
+
+      expect(hook.result.current.terminals).toEqual(retained);
+
+      await vi.waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(PENDING_RECONCILE_INTERVAL_MS);
+      });
+
+      await vi.waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(hook.result.current.terminals).toEqual(authoritative);
+      });
+
+      expect(readStoredTerminals("conv_soft_online")).toEqual(authoritative);
+
+      // An authoritative result must stop the temporary poll.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(PENDING_RECONCILE_INTERVAL_MS * 2);
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("caps consecutive online soft-response retries", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const retained: TerminalInfo[] = [
+        { id: "terminal_shell_retained", name: "shell", session: "retained", running: true },
+      ];
+
+      writeStoredTerminals("conv_soft_retry_cap", retained);
+      runnerOnlineMock.mockReturnValue(true);
+
+      fetchMock.mockResolvedValue(mockResponse(null, { ok: false, status: 503 }));
+
+      const client = createTestQueryClient();
+
+      const hook = renderHook(() => useTerminals("conv_soft_retry_cap"), {
+        wrapper: wrapper(client),
+      });
+
+      expect(hook.result.current.terminals).toEqual(retained);
+
+      await vi.waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+      });
+
+      for (
+        let expectedCalls = 2;
+        expectedCalls <= MAX_CONSECUTIVE_SOFT_TERMINAL_FETCHES;
+        expectedCalls += 1
+      ) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(PENDING_RECONCILE_INTERVAL_MS);
+        });
+
+        await vi.waitFor(() => {
+          expect(fetchMock).toHaveBeenCalledTimes(expectedCalls);
+        });
+      }
+
+      // Further time must not produce steady-state polling.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(PENDING_RECONCILE_INTERVAL_MS * 3);
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(MAX_CONSECUTIVE_SOFT_TERMINAL_FETCHES);
+      expect(hook.result.current.terminals).toEqual(retained);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops soft polling when a later request fails hard", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const retained: TerminalInfo[] = [
+        { id: "terminal_shell_retained", name: "shell", session: "retained", running: true },
+      ];
+
+      writeStoredTerminals("conv_soft_then_hard", retained);
+      runnerOnlineMock.mockReturnValue(true);
+
+      fetchMock
+        .mockResolvedValueOnce(mockResponse(null, { ok: false, status: 503 }))
+        // The hook has retry: 1, so provide two hard failures.
+        .mockResolvedValue(mockResponse(null, { ok: false, status: 500 }));
+
+      const client = createTestQueryClient();
+
+      const hook = renderHook(() => useTerminals("conv_soft_then_hard"), {
+        wrapper: wrapper(client),
+      });
+
+      await vi.waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+      });
+
+      await vi.waitFor(() => {
+        expect(client.getQueryState(terminalsQueryKey("conv_soft_then_hard"))?.fetchStatus).toBe(
+          "idle",
+        );
+      });
+
+      // Trigger the soft-response reconciliation request and its
+      // single built-in retry after the 500 response.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(PENDING_RECONCILE_INTERVAL_MS + 1_500);
+      });
+
+      await vi.waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledTimes(3);
+      });
+
+      await vi.waitFor(() => {
+        expect(client.getQueryState(terminalsQueryKey("conv_soft_then_hard"))?.fetchStatus).toBe(
+          "idle",
+        );
+      });
+
+      // The old implementation keeps polling because the stale
+      // `authoritative: false` value survives the 500.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(PENDING_RECONCILE_INTERVAL_MS * 3);
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(hook.result.current.terminals).toEqual(retained);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -251,6 +1045,34 @@ describe("terminalsReconcileInterval", () => {
   it("never polls when the runner is not spinning up a terminal", () => {
     expect(terminalsReconcileInterval(false, 0)).toBe(false);
     expect(terminalsReconcileInterval(false, 2)).toBe(false);
+  });
+
+  it("retries a soft snapshot while the runner reports online", () => {
+    expect(terminalsReconcileInterval(false, 1, true, false)).toBe(PENDING_RECONCILE_INTERVAL_MS);
+  });
+
+  it("stops soft-response polling after an authoritative result", () => {
+    expect(terminalsReconcileInterval(false, 1, true, true)).toBe(false);
+  });
+
+  it("does not poll a retained snapshot while the runner is offline", () => {
+    expect(terminalsReconcileInterval(false, 1, false, false)).toBe(false);
+  });
+
+  it("continues soft reconciliation below the retry limit", () => {
+    expect(
+      terminalsReconcileInterval(false, 1, true, false, MAX_CONSECUTIVE_SOFT_TERMINAL_FETCHES - 1),
+    ).toBe(PENDING_RECONCILE_INTERVAL_MS);
+  });
+
+  it("stops soft reconciliation at the retry limit", () => {
+    expect(
+      terminalsReconcileInterval(false, 1, true, false, MAX_CONSECUTIVE_SOFT_TERMINAL_FETCHES),
+    ).toBe(false);
+  });
+
+  it("does not poll after a hard or unresolved fetch outcome", () => {
+    expect(terminalsReconcileInterval(false, 1, true, undefined, 1)).toBe(false);
   });
 });
 

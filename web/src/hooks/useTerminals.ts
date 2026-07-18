@@ -138,33 +138,53 @@ interface UseTerminalsResult {
 }
 
 /**
- * How often (ms) to re-poll the authoritative terminals endpoint while
- * the runner reports a terminal is spinning up but none is visible yet.
- * Short enough that the Terminal-pill spinner clears within a couple
- * seconds of the terminal landing; only active during that window, so it
- * adds no steady-state polling.
+ * How often to retry terminal reconciliation during a bounded
+ * bootstrap-recovery window.
  */
-export const PENDING_RECONCILE_INTERVAL_MS = 2500;
+export const PENDING_RECONCILE_INTERVAL_MS = 2_500;
 
 /**
- * Decide the React Query ``refetchInterval`` for the terminals query.
+ * Maximum number of consecutive non-authoritative terminal-list results.
  *
- * Returns :data:`PENDING_RECONCILE_INTERVAL_MS` only while the runner
- * reports a terminal is spinning up (*reconcileWhilePending*) and none is
- * visible yet; ``false`` (no polling) the instant a terminal lands or
- * pending clears. Reading *terminalCount* keeps the poll self-limiting to
- * the Terminal-pill spinner window — no steady-state polling.
+ * This count includes the initial request. With a 2.5-second interval,
+ * four consecutive soft results allow three delayed retries before
+ * polling stops.
  *
- * :param reconcileWhilePending: Whether the runner reports a terminal
- *     spinning up (``terminalPending``).
- * :param terminalCount: Terminals currently in the query cache.
- * :returns: Poll interval in ms, or ``false`` to disable polling.
+ * A later runner offline → online transition still performs a fresh
+ * invalidation, so exhausting this local retry budget does not prevent
+ * recovery after an actual runner restart.
+ */
+export const MAX_CONSECUTIVE_SOFT_TERMINAL_FETCHES = 4;
+
+/**
+ * Decide whether the terminals query needs temporary reconciliation polling.
+ *
+ * Poll in either of these recovery windows:
+ *
+ * 1. A terminal is being created while no terminal is visible.
+ * 2. The runner reports online and the latest terminal-list request returned
+ *    a soft, non-authoritative response, while the retry budget remains.
  */
 export function terminalsReconcileInterval(
   reconcileWhilePending: boolean,
   terminalCount: number,
+  runnerOnline: boolean | undefined = undefined,
+  lastFetchAuthoritative: boolean | undefined = undefined,
+  consecutiveSoftFetches = 0,
 ): number | false {
-  return reconcileWhilePending && terminalCount === 0 ? PENDING_RECONCILE_INTERVAL_MS : false;
+  if (reconcileWhilePending && terminalCount === 0) {
+    return PENDING_RECONCILE_INTERVAL_MS;
+  }
+
+  if (
+    runnerOnline === true &&
+    lastFetchAuthoritative === false &&
+    consecutiveSoftFetches < MAX_CONSECUTIVE_SOFT_TERMINAL_FETCHES
+  ) {
+    return PENDING_RECONCILE_INTERVAL_MS;
+  }
+
+  return false;
 }
 
 interface UseTerminalsOptions {
@@ -233,57 +253,161 @@ export function terminalInfoFromResource(resource: Record<string, unknown>): Ter
   };
 }
 
-// Status codes that mean "no terminal yet / runner not reachable" rather
-// than a hard error: the runner may not be bound or online when the page
-// first loads. We treat these as an empty list (the live SSE
-// ``session.resource.created`` event fills it in once the terminal lands)
-// instead of throwing, so React Query does not enter an error state.
 const _SOFT_TERMINAL_LIST_STATUSES = new Set([404, 409, 502, 503]);
 
-/**
- * Fetch the current terminal resources for a conversation over HTTP.
- *
- * This is the authoritative snapshot the server builds from the
- * runner-side ``/resources/terminals`` list — the same source the SSE
- * snapshot-on-connect replays. It runs once on mount to seed the cache
- * so the Terminal pill reflects an already-running terminal on a fresh
- * load / refresh, and recovers the rail when a live
- * ``session.resource.created`` event was missed (connection hiccup,
- * event landing before the SSE subscription). Live deltas after mount
- * still arrive via SSE.
- *
- * The snapshot is requested in ascending creation order (the endpoint
- * defaults to ``desc``) so the seed matches the SSE delta semantics —
- * ``session.resource.created`` appends at the end of the cached list.
- * Without ``asc``, a page refresh after the agent launches a terminal
- * would flip the order (newest first), bumping the session's own
- * terminal (e.g. claude-native's ``claude/main``, always created
- * first) out of the first tab slot. ``limit=1000`` (the endpoint max)
- * keeps the oldest-first window from dropping the newest terminals on
- * sessions with more than the default page of 20.
- *
- * :param conversationId: Session/conversation identifier,
- *     e.g. ``"conv_abc123"``.
- * :returns: The mapped terminals, or an empty array when the runner is
- *     not yet reachable (see :data:`_SOFT_TERMINAL_LIST_STATUSES`).
- * :raises Error: On a non-soft HTTP error status.
- */
-export async function fetchTerminals(conversationId: string): Promise<TerminalInfo[]> {
-  const res = await authenticatedFetch(
-    `/v1/sessions/${encodeURIComponent(conversationId)}/resources/terminals?order=asc&limit=1000`,
+const terminalSnapshotKey = (conversationId: string) => `omnigent.terminals.${conversationId}`;
+
+function isTerminalInfo(value: unknown): value is TerminalInfo {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const terminal = value as Record<string, unknown>;
+  return (
+    typeof terminal.id === "string" &&
+    terminal.id.length > 0 &&
+    typeof terminal.name === "string" &&
+    typeof terminal.session === "string" &&
+    typeof terminal.running === "boolean" &&
+    (terminal.transport === undefined ||
+      terminal.transport === "control" ||
+      terminal.transport === "pty")
   );
-  if (_SOFT_TERMINAL_LIST_STATUSES.has(res.status)) return [];
-  if (!res.ok) throw new Error(`terminals fetch failed: ${res.status} ${res.statusText}`);
-  const json = (await res.json()) as { data?: unknown };
-  const rows = Array.isArray(json.data) ? json.data : [];
-  const out: TerminalInfo[] = [];
-  for (const row of rows) {
-    if (row && typeof row === "object") {
-      const info = terminalInfoFromResource(row as Record<string, unknown>);
-      if (info !== null) out.push(info);
+}
+
+export function readStoredTerminals(conversationId: string): TerminalInfo[] {
+  try {
+    const raw = sessionStorage.getItem(terminalSnapshotKey(conversationId));
+    if (raw === null) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+
+    const terminals: TerminalInfo[] = [];
+    const seenIds = new Set<string>();
+
+    for (const candidate of parsed) {
+      if (!isTerminalInfo(candidate)) continue;
+      if (seenIds.has(candidate.id)) continue;
+      seenIds.add(candidate.id);
+      terminals.push(candidate);
+    }
+
+    return terminals;
+  } catch {
+    return [];
+  }
+}
+
+export function writeStoredTerminals(conversationId: string, terminals: TerminalInfo[]): void {
+  try {
+    sessionStorage.setItem(terminalSnapshotKey(conversationId), JSON.stringify(terminals));
+  } catch {
+    // Persistence is best-effort when browser storage is unavailable.
+  }
+}
+
+interface TerminalFetchResult {
+  terminals: TerminalInfo[];
+  authoritative: boolean;
+}
+
+function terminalInfoEqual(left: TerminalInfo, right: TerminalInfo): boolean {
+  return (
+    left.id === right.id &&
+    left.name === right.name &&
+    left.session === right.session &&
+    left.running === right.running &&
+    left.transport === right.transport
+  );
+}
+
+function reconcileConcurrentTerminalChanges(
+  baseline: TerminalInfo[],
+  current: TerminalInfo[] | undefined,
+  seed: TerminalInfo[],
+): TerminalInfo[] {
+  if (current === undefined) return seed;
+
+  const baselineById = new Map(baseline.map((terminal) => [terminal.id, terminal]));
+  const currentById = new Map(current.map((terminal) => [terminal.id, terminal]));
+  const resultById = new Map(seed.map((terminal) => [terminal.id, terminal]));
+
+  for (const terminalId of baselineById.keys()) {
+    if (!currentById.has(terminalId)) resultById.delete(terminalId);
+  }
+
+  for (const [terminalId, terminal] of currentById) {
+    const baselineTerminal = baselineById.get(terminalId);
+    if (baselineTerminal === undefined || !terminalInfoEqual(baselineTerminal, terminal)) {
+      resultById.set(terminalId, terminal);
     }
   }
-  return out;
+
+  return [...resultById.values()];
+}
+
+async function fetchTerminalSnapshot(
+  conversationId: string,
+  signal?: AbortSignal,
+): Promise<TerminalFetchResult> {
+  const res = await authenticatedFetch(
+    `/v1/sessions/${encodeURIComponent(conversationId)}/resources/terminals?order=asc&limit=1000`,
+    { signal },
+  );
+
+  if (_SOFT_TERMINAL_LIST_STATUSES.has(res.status)) {
+    return { terminals: readStoredTerminals(conversationId), authoritative: false };
+  }
+
+  if (!res.ok) {
+    throw new Error(`terminals fetch failed: ${res.status} ${res.statusText}`);
+  }
+
+  const json: unknown = await res.json();
+  if (
+    !json ||
+    typeof json !== "object" ||
+    Array.isArray(json) ||
+    !Array.isArray((json as Record<string, unknown>).data)
+  ) {
+    throw new Error("terminals fetch returned an invalid list response");
+  }
+
+  const rows = (json as { data: unknown[] }).data;
+  const terminalsById = new Map<string, TerminalInfo>();
+
+  for (const row of rows) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) {
+      continue;
+    }
+    const terminal = terminalInfoFromResource(row as Record<string, unknown>);
+    if (terminal !== null && !terminalsById.has(terminal.id)) {
+      terminalsById.set(terminal.id, terminal);
+    }
+  }
+
+  const terminals = [...terminalsById.values()];
+
+  if (rows.length > 0 && terminals.length === 0) {
+    throw new Error("terminals fetch returned no addressable terminal rows");
+  }
+
+  return { terminals, authoritative: true };
+}
+
+/**
+ * Fetch the current terminal resources for a conversation.
+ *
+ * A successful response is authoritative and replaces the persisted
+ * inventory, including when the returned list is empty. Soft bootstrap
+ * statuses retain and return the last-known session-storage snapshot.
+ *
+ * @param conversationId Session/conversation identifier.
+ * @returns Authoritative terminals, or retained terminals when the
+ * runner-backed endpoint is temporarily unavailable.
+ * @throws Error for hard HTTP failures or malformed successful responses.
+ */
+export async function fetchTerminals(conversationId: string): Promise<TerminalInfo[]> {
+  const result = await fetchTerminalSnapshot(conversationId);
+  if (result.authoritative) writeStoredTerminals(conversationId, result.terminals);
+  return result.terminals;
 }
 
 /**
@@ -380,10 +504,10 @@ export function useCreateTerminal(conversationId: string) {
  *    (``sys_terminal_launch`` / ``sys_terminal_close``) that the AP
  *    relay republishes onto the stream.
  *
- * ``staleTime: Infinity`` keeps the seed from refetching and clobbering
- * SSE-written data. To avoid dropping a terminal that an SSE event added
- * to the cache while the seed fetch was in flight, the ``queryFn`` unions
- * the fetched list with whatever is already cached, deduped by id.
+ * ``staleTime: Infinity`` keeps steady-state reads from clobbering SSE data.
+ * Persisted initial data is always revalidated on mount, and the query
+ * reconciles creates, deletes, and metadata changes that reach the cache
+ * while its HTTP snapshot is in flight.
  */
 export function useTerminals(
   conversationId: string | null,
@@ -391,6 +515,24 @@ export function useTerminals(
 ): UseTerminalsResult {
   const queryClient = useQueryClient();
   const reconcileWhilePending = options?.reconcileWhilePending ?? false;
+  const queryKey =
+    conversationId === null
+      ? (["conversation", null, "terminals"] as const)
+      : terminalsQueryKey(conversationId);
+  const cachedAtRender =
+    conversationId === null ? undefined : queryClient.getQueryData<TerminalInfo[]>(queryKey);
+
+  const storedAtRender = conversationId === null ? undefined : readStoredTerminals(conversationId);
+
+  const hasCachedInventory = cachedAtRender !== undefined;
+
+  const hydrateFromStorage =
+    !hasCachedInventory && storedAtRender !== undefined && storedAtRender.length > 0;
+
+  // An existing query may contain stale SSE-era data even when it did not
+  // originate from sessionStorage. Revalidate it on a fresh mount.
+  const shouldRefetchExistingOnMount = hasCachedInventory || hydrateFromStorage;
+
   // The terminal list is SSE-primary: live `session.resource.{created,deleted}`
   // deltas (plus the mount seed) ARE the list, so a terminal becomes openable
   // the instant its `created` event lands — no waiting on the runner-liveness
@@ -401,33 +543,103 @@ export function useTerminals(
   // continuous mask would read stale-`false` during a cold/relaunch boot and
   // wrongly hide a terminal the SSE just delivered.
   const runnerOnline = useSessionRunnerOnline(conversationId ?? undefined);
+
+  const terminalFetchSequence = useRef(0);
+
+  // Track whether the most recent completed fetch was authoritative and how
+  // many consecutive soft (non-authoritative) responses have been received.
+  // The refetchInterval uses this to bound the soft-response retry window.
+  // requestId ensures an aborted or superseded request does not overwrite
+  // the observation produced by a newer request.
+  const lastTerminalFetch = useRef<{
+    conversationId: string | null;
+    authoritative: boolean | undefined;
+    consecutiveSoftFetches: number;
+    requestId: number;
+  }>({
+    conversationId: null,
+    authoritative: undefined,
+    consecutiveSoftFetches: 0,
+    requestId: 0,
+  });
+
   const { data, isLoading, error } = useQuery({
-    queryKey:
-      conversationId === null
-        ? ["conversation", null, "terminals"]
-        : terminalsQueryKey(conversationId),
-    queryFn: async () => {
-      const key = terminalsQueryKey(conversationId!);
-      const fetched = await fetchTerminals(conversationId!);
-      // Union with any SSE-written entries already in the cache so a
-      // ``session.resource.created`` that raced the fetch is not lost.
-      // Fetched rows win on id collision (they are the fresher snapshot).
-      const byId = new Map<string, TerminalInfo>();
-      for (const t of queryClient.getQueryData<TerminalInfo[]>(key) ?? []) byId.set(t.id, t);
-      for (const t of fetched) byId.set(t.id, t);
-      return [...byId.values()];
+    queryKey,
+    queryFn: async ({ signal }) => {
+      const activeConversationId = conversationId!;
+      const conversationKey = terminalsQueryKey(activeConversationId);
+      const beforeFetch = queryClient.getQueryData<TerminalInfo[]>(conversationKey);
+
+      const previousObservation = lastTerminalFetch.current;
+      const previousSoftFetches =
+        previousObservation.conversationId === activeConversationId
+          ? previousObservation.consecutiveSoftFetches
+          : 0;
+
+      const requestId = ++terminalFetchSequence.current;
+
+      // Clear the prior outcome before starting this attempt. A hard
+      // failure must not inherit `authoritative: false` from an earlier
+      // soft response and accidentally keep polling.
+      lastTerminalFetch.current = {
+        conversationId: activeConversationId,
+        authoritative: undefined,
+        consecutiveSoftFetches: previousSoftFetches,
+        requestId,
+      };
+
+      try {
+        const fetched = await fetchTerminalSnapshot(activeConversationId, signal);
+
+        // A canceled or superseded request must not overwrite the
+        // observation produced by a newer request.
+        if (lastTerminalFetch.current.requestId === requestId) {
+          lastTerminalFetch.current = {
+            conversationId: activeConversationId,
+            authoritative: fetched.authoritative,
+            consecutiveSoftFetches: fetched.authoritative ? 0 : previousSoftFetches + 1,
+            requestId,
+          };
+        }
+
+        const seed = fetched.authoritative ? fetched.terminals : (beforeFetch ?? fetched.terminals);
+        const current = queryClient.getQueryData<TerminalInfo[]>(conversationKey);
+        return reconcileConcurrentTerminalChanges(beforeFetch ?? [], current, seed);
+      } catch (fetchError) {
+        if (lastTerminalFetch.current.requestId === requestId) {
+          lastTerminalFetch.current = {
+            conversationId: activeConversationId,
+            authoritative: undefined,
+            consecutiveSoftFetches: 0,
+            requestId,
+          };
+        }
+        throw fetchError;
+      }
     },
     enabled: conversationId !== null,
+    initialData: hydrateFromStorage ? storedAtRender : undefined,
+    refetchOnMount: shouldRefetchExistingOnMount ? "always" : undefined,
     staleTime: Infinity,
     // One light retry covers a transient network blip during the
     // initial load without hammering an unreachable runner.
     retry: 1,
     // Self-heal a missed ``session.resource.created`` while a terminal is
     // spinning up: poll the authoritative endpoint until one appears, then
-    // stop. Reads the query's own cached data for the stop condition so it
-    // never feeds back through the caller.
-    refetchInterval: (query) =>
-      terminalsReconcileInterval(reconcileWhilePending, query.state.data?.length ?? 0),
+    // stop. Also re-polls when the runner is online but the last fetch
+    // returned a soft non-authoritative snapshot (503 etc.), bounded by
+    // MAX_CONSECUTIVE_SOFT_TERMINAL_FETCHES to prevent infinite polling.
+    refetchInterval: (query) => {
+      const observation = lastTerminalFetch.current;
+      const appliesToConversation = observation.conversationId === conversationId;
+      return terminalsReconcileInterval(
+        reconcileWhilePending,
+        query.state.data?.length ?? 0,
+        runnerOnline,
+        appliesToConversation ? observation.authoritative : undefined,
+        appliesToConversation ? observation.consecutiveSoftFetches : 0,
+      );
+    },
   });
   // The poll corrects the SSE-driven list ONLY on runner-liveness edges — it
   // never masks continuously. Two corrections, both keyed off the edge so a
@@ -441,14 +653,49 @@ export function useTerminals(
   //     TerminalView owns the lifecycle overlay and xterm buffer preservation;
   //     clearing this cache here would unmount it before the offline state can
   //     render. The next `→ true` correction refreshes the authoritative list.
-  const wasRunnerOnline = useRef<boolean | undefined>(undefined);
   useEffect(() => {
-    if (conversationId !== null) {
-      if (runnerOnline === true && wasRunnerOnline.current !== true) {
-        void queryClient.invalidateQueries({ queryKey: terminalsQueryKey(conversationId) });
+    if (conversationId !== null && data !== undefined) {
+      writeStoredTerminals(conversationId, data);
+    }
+  }, [conversationId, data]);
+
+  const runnerObservation = useRef<{
+    conversationId: string | null;
+    online: boolean | undefined;
+  }>({
+    conversationId,
+    online: runnerOnline,
+  });
+
+  useEffect(() => {
+    const previous = runnerObservation.current;
+
+    const conversationChanged = previous.conversationId !== conversationId;
+
+    if (conversationId !== null && runnerOnline === true) {
+      const key = terminalsQueryKey(conversationId);
+
+      if (conversationChanged) {
+        // Switching to an uncached conversation automatically starts its
+        // first query. Switching to a stored/cached conversation may already
+        // be refetching because of refetchOnMount. Only invalidate when no
+        // request for the new key is active.
+        const state = queryClient.getQueryState(key);
+        if (state?.fetchStatus !== "fetching") {
+          void queryClient.invalidateQueries({ queryKey: key, exact: true });
+        }
+      } else if (previous.online !== true) {
+        // Same conversation recovered from unknown/offline state. The prior
+        // request may have returned a retained soft result, so force a new
+        // authoritative reconciliation.
+        void queryClient.invalidateQueries({ queryKey: key, exact: true });
       }
     }
-    wasRunnerOnline.current = runnerOnline;
+
+    runnerObservation.current = {
+      conversationId,
+      online: runnerOnline,
+    };
   }, [conversationId, runnerOnline, queryClient]);
   return {
     // SSE-primary: the list is whatever the cache holds (seed + live deltas,
