@@ -1,10 +1,11 @@
 import { defineConfig } from "@playwright/test";
 
+const API_URL = (process.env.OMNIGENT_E2E_API_URL ?? "http://127.0.0.1:6767").replace(/\/+$/, "");
+
 export default defineConfig({
   testDir: "./e2e",
   timeout: 240_000,
 
-  // These tests control real local processes and a real backend session.
   fullyParallel: false,
   workers: 1,
 
@@ -18,13 +19,14 @@ export default defineConfig({
 
   reporter: [["list"], ["html", { open: "never" }]],
 
-  // The backend on port 6767 is an explicit prerequisite. The spec performs
-  // an API preflight and fails immediately with a useful error when absent.
   webServer: {
     command: "npm run dev",
     url: "http://127.0.0.1:5173",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    // Keep Vite's browser proxy on the same backend used by the Node-side
+    // setup and cleanup requests.
+    env: { OMNIGENT_URL: API_URL },
   },
 
   projects: [

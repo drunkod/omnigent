@@ -1,15 +1,19 @@
 import { expect, test } from "@playwright/test";
 import { execFileSync, spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const API_URL = process.env.OMNIGENT_E2E_API_URL ?? "http://127.0.0.1:6767";
-const REPO_ROOT = path.resolve(process.cwd(), "..");
+const API_URL = (process.env.OMNIGENT_E2E_API_URL ?? "http://127.0.0.1:6767").replace(/\/+$/, "");
+const E2E_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(E2E_DIRECTORY, "../..");
 
 interface SessionSummary {
   id: string;
   created_at: number;
+  agent_name?: string | null;
 }
 
 interface SessionListResponse {
@@ -23,8 +27,12 @@ interface ProcessRow {
   command: string;
 }
 
+interface PreparedAgent {
+  directory: string;
+  agentName: string;
+}
+
 let ownedProcessGroupId: number | null = null;
-let runnerPid: number | null = null;
 let createdSessionId: string | null = null;
 let generatedAgentDir: string | null = null;
 let testFilePath: string | null = null;
@@ -122,25 +130,14 @@ function signalOwnedGroup(signal: NodeJS.Signals): void {
 }
 
 async function terminateOwnedGroup(): Promise<void> {
-  if (ownedProcessGroupId === null) {
-    runnerPid = null;
-    return;
-  }
+  if (ownedProcessGroupId === null) return;
 
   // A runner left in SIGSTOP cannot process SIGTERM.
   signalOwnedGroup("SIGCONT");
   signalOwnedGroup("SIGTERM");
   await sleep(1_000);
 
-  try {
-    process.kill(-ownedProcessGroupId, 0);
-    signalOwnedGroup("SIGKILL");
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code !== "ESRCH") throw error;
-  }
-
-  runnerPid = null;
+  signalOwnedGroup("SIGKILL");
   ownedProcessGroupId = null;
 }
 
@@ -148,22 +145,32 @@ async function deleteOwnedSession(): Promise<void> {
   if (createdSessionId === null) return;
 
   const sessionId = createdSessionId;
-  createdSessionId = null;
+  let lastError: unknown;
 
-  try {
-    const response = await globalThis.fetch(
-      `${API_URL}/v1/sessions/${encodeURIComponent(sessionId)}`,
-      {
-        method: "DELETE",
-      },
-    );
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const response = await globalThis.fetch(
+        `${API_URL}/v1/sessions/${encodeURIComponent(sessionId)}`,
+        { method: "DELETE" },
+      );
 
-    if (!response.ok && response.status !== 404) {
-      throw new Error(`DELETE session failed: ${response.status} ${response.statusText}`);
+      if (response.ok || response.status === 404) {
+        createdSessionId = null;
+        return;
+      }
+
+      lastError = new Error(`DELETE session failed: ${response.status} ${response.statusText}`);
+    } catch (error) {
+      lastError = error;
     }
-  } catch (error) {
-    console.error(`Failed to clean up test session ${sessionId}:`, error);
+
+    if (attempt < 3) await sleep(500 * attempt);
   }
+
+  // Do not let a later test accidentally claim this ID.
+  createdSessionId = null;
+  const detail = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(`Failed to delete test-owned session ${sessionId}: ${detail}`);
 }
 
 function removeGeneratedFiles(): void {
@@ -178,7 +185,7 @@ function removeGeneratedFiles(): void {
   }
 }
 
-function prepareAgent(): string {
+function prepareAgent(): PreparedAgent {
   const baseConfigPath = path.join(
     REPO_ROOT,
     "examples",
@@ -188,6 +195,13 @@ function prepareAgent(): string {
     "config.yaml",
   );
   const baseConfig = fs.readFileSync(baseConfigPath, "utf8");
+  const agentName = `terminal-e2e-${randomUUID()}`;
+  const namedConfig = baseConfig.replace(/^name:\s*.*$/m, `name: ${agentName}`);
+
+  if (namedConfig === baseConfig) {
+    throw new Error(`Agent config has no replaceable name field: ${baseConfigPath}`);
+  }
+
   const terminalsBlock = `
 terminals:
   shell:
@@ -203,10 +217,10 @@ terminals:
   generatedAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "omnigent-terminal-e2e-agent-"));
   fs.writeFileSync(
     path.join(generatedAgentDir, "config.yaml"),
-    `${baseConfig}\n${terminalsBlock}`,
+    `${namedConfig}\n${terminalsBlock}`,
     "utf8",
   );
-  return generatedAgentDir;
+  return { directory: generatedAgentDir, agentName };
 }
 
 function startCli(agentDirectory: string): number {
@@ -242,23 +256,27 @@ function startCli(agentDirectory: string): number {
   return child.pid;
 }
 
-async function waitForCreatedSession(existingSessionIds: Set<string>): Promise<SessionSummary> {
+async function waitForCreatedSession(
+  existingSessionIds: Set<string>,
+  expectedAgentName: string,
+): Promise<SessionSummary> {
   return waitForValue(
     async () => {
-      const created = (await listSessions()).filter(
-        (session) => !existingSessionIds.has(session.id),
+      const matchingSessions = (await listSessions()).filter(
+        (session) =>
+          !existingSessionIds.has(session.id) && session.agent_name === expectedAgentName,
       );
 
-      if (created.length > 1) {
+      if (matchingSessions.length > 1) {
         throw new Error(
-          "Multiple sessions were created while locating the E2E session: " +
-            created.map((session) => session.id).join(", "),
+          `Multiple sessions matched agent ${expectedAgentName}: ` +
+            matchingSessions.map((session) => session.id).join(", "),
         );
       }
 
-      return created[0] ?? null;
+      return matchingSessions[0] ?? null;
     },
-    { timeoutMs: 60_000, description: "the CLI-created session" },
+    { timeoutMs: 60_000, description: `the session for agent ${expectedAgentName}` },
   );
 }
 
@@ -269,21 +287,37 @@ test.skip(
 );
 
 test.afterEach(async () => {
+  const cleanupErrors: unknown[] = [];
+
   try {
     signalOwnedGroup("SIGCONT");
   } catch (error) {
-    console.error("Failed to resume the test process group:", error);
+    cleanupErrors.push(error);
   }
 
-  await deleteOwnedSession();
-
+  // Stop the owned runner before deleting its durable session, preventing late
+  // callbacks from racing with deletion.
   try {
     await terminateOwnedGroup();
   } catch (error) {
-    console.error("Failed to terminate the test process group:", error);
+    cleanupErrors.push(error);
   }
 
-  removeGeneratedFiles();
+  try {
+    await deleteOwnedSession();
+  } catch (error) {
+    cleanupErrors.push(error);
+  }
+
+  try {
+    removeGeneratedFiles();
+  } catch (error) {
+    cleanupErrors.push(error);
+  }
+
+  if (cleanupErrors.length > 0) {
+    throw new AggregateError(cleanupErrors, "Terminal E2E cleanup failed");
+  }
 });
 
 test("same-process terminal reconnect and 404 cleanup", async ({ page }) => {
@@ -291,18 +325,19 @@ test("same-process terminal reconnect and 404 cleanup", async ({ page }) => {
   await fetchJson<SessionListResponse>(`${API_URL}/v1/sessions?limit=1`);
 
   const existingSessionIds = new Set((await listSessions()).map((session) => session.id));
-  const agentDirectory = prepareAgent();
+  const preparedAgent = prepareAgent();
   testFilePath = path.join(os.tmpdir(), `omnigent-same-process-${process.pid}-${Date.now()}.txt`);
 
-  startCli(agentDirectory);
-  const createdSession = await waitForCreatedSession(existingSessionIds);
+  startCli(preparedAgent.directory);
+  const createdSession = await waitForCreatedSession(existingSessionIds, preparedAgent.agentName);
   createdSessionId = createdSession.id;
 
   if (ownedProcessGroupId === null) {
     throw new Error("The test process group was not initialized");
   }
 
-  runnerPid = await waitForValue(() => findOwnedRunnerPid(ownedProcessGroupId!), {
+  const processGroupId = ownedProcessGroupId;
+  const ownedRunnerPid = await waitForValue(() => findOwnedRunnerPid(processGroupId), {
     timeoutMs: 60_000,
     description: "the runner in the test-owned process group",
   });
@@ -335,7 +370,7 @@ test("same-process terminal reconnect and 404 cleanup", async ({ page }) => {
   await page.keyboard.type("echo 'same-process test starting'");
   await page.keyboard.press("Enter");
 
-  process.kill(runnerPid, "SIGSTOP");
+  process.kill(ownedRunnerPid, "SIGSTOP");
 
   const offlineOverlay = page.getByTestId("terminal-runner-offline").first();
   await expect(offlineOverlay).toBeVisible({ timeout: 140_000 });
@@ -349,7 +384,7 @@ test("same-process terminal reconnect and 404 cleanup", async ({ page }) => {
     .poll(() => page.evaluate((key) => sessionStorage.getItem(key), snapshotKey))
     .not.toBeNull();
 
-  process.kill(runnerPid, "SIGCONT");
+  process.kill(ownedRunnerPid, "SIGCONT");
   await expect(page.getByTestId("terminal-runner-offline").first()).not.toBeVisible({
     timeout: 45_000,
   });
