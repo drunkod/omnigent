@@ -120,9 +120,9 @@ async def tunneled_client(
         runner_workspace=workspace,
         per_session_workspace=False,
     )
-    workspace_id = runner_app.state.local_action_gateway._workspaces.advertise(home=workspace)[0][
-        "workspace_id"
-    ]
+    workspace_id = runner_app.state.local_action_gateway._workspaces.add_path(
+        workspace
+    ).workspace_id
     server_ws, runner_ws = _make_ws_pair()
     registry = TunnelRegistry()
     hello = HelloFrame(

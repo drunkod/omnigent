@@ -56,14 +56,14 @@ def dependency_errors(
         if extra:
             errors.append(f"{field}: stale package-lock root entries: {', '.join(extra)}")
         for name in mismatched:
+            manifest_value = manifest_values[name]
+            lock_value = lock_values[name]
             errors.append(
                 f"{field}: {name!r} spec differs "
-                f"(package.json={manifest_values[name]!r}, package-lock.json={lock_values[name]!r})"
+                f"(package.json={manifest_value!r}, package-lock.json={lock_value!r})"
             )
 
-    unresolved = sorted(
-        name for name in direct_names if f"node_modules/{name}" not in packages
-    )
+    unresolved = sorted(name for name in direct_names if f"node_modules/{name}" not in packages)
     if unresolved:
         errors.append(
             "direct dependencies without a package-lock resolution: " + ", ".join(unresolved)

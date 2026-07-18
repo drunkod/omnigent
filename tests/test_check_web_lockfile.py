@@ -40,8 +40,7 @@ def test_changed_dependency_spec_is_reported() -> None:
     lock = _lock({"dependencies": {"react": "^17.0.0"}}, "react")
 
     assert dependency_errors(package, lock) == [
-        "dependencies: 'react' spec differs "
-        "(package.json='^18.2.0', package-lock.json='^17.0.0')"
+        "dependencies: 'react' spec differs (package.json='^18.2.0', package-lock.json='^17.0.0')"
     ]
 
 
