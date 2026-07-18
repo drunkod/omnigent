@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { authenticatedFetch } from "../lib/identity";
@@ -263,7 +263,7 @@ export function terminalInfoFromResource(resource: Record<string, unknown>): Ter
   };
 }
 
-const _SOFT_TERMINAL_LIST_STATUSES = new Set([404, 409, 502, 503]);
+const _SOFT_TERMINAL_LIST_STATUSES = new Set([409, 502, 503]);
 
 const terminalSnapshotKey = (conversationId: string) => `omnigent.terminals.${conversationId}`;
 
@@ -374,6 +374,12 @@ async function fetchTerminalSnapshot(
     `/v1/sessions/${encodeURIComponent(conversationId)}/resources/terminals?order=asc&limit=1000`,
     { signal },
   );
+
+  if (res.status === 404) {
+    // A missing or inaccessible session is authoritative for this identity.
+    // Do not hydrate terminal tabs from a previous session snapshot.
+    return { terminals: [], authoritative: true };
+  }
 
   if (_SOFT_TERMINAL_LIST_STATUSES.has(res.status)) {
     return { terminals: readStoredTerminals(conversationId), authoritative: false };
@@ -548,10 +554,16 @@ export function useTerminals(
 
   const hasCachedInventory = cachedAtRender !== undefined;
 
-  // Only touch sessionStorage when there's no in-memory cache to hydrate from;
-  // a synchronous JSON.parse on every render is otherwise wasted work.
-  const storedAtRender =
-    hasCachedInventory || conversationId === null ? undefined : readStoredTerminals(conversationId);
+  // Only touch sessionStorage when there's no in-memory cache to hydrate from.
+  // Memoization avoids repeating the synchronous storage read and JSON parse on
+  // unrelated rerenders; changing conversations still reads the isolated key.
+  const storedAtRender = useMemo(
+    () =>
+      hasCachedInventory || conversationId === null
+        ? undefined
+        : readStoredTerminals(conversationId),
+    [conversationId, hasCachedInventory],
+  );
 
   const hydrateFromStorage =
     !hasCachedInventory && storedAtRender !== undefined && storedAtRender.length > 0;

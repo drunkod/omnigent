@@ -183,13 +183,23 @@ describe("fetchTerminals", () => {
     ]);
   });
 
-  it("returns [] for a not-yet-reachable runner (404/409/502/503)", async () => {
+  it("returns [] while the terminal endpoint is temporarily unavailable", async () => {
     // These are "no terminal yet", not errors: the live SSE event fills
     // the rail once the runner binds, so the seed must not throw.
-    for (const status of [404, 409, 502, 503]) {
+    for (const status of [409, 502, 503]) {
       fetchMock.mockResolvedValueOnce(mockResponse(null, { ok: false, status }));
       expect(await fetchTerminals("conv_abc")).toEqual([]);
     }
+  });
+
+  it("clears stored inventory when the session is missing or inaccessible", async () => {
+    const stored = [{ id: "terminal_shell_stale", name: "shell", session: "stale", running: true }];
+    writeStoredTerminals("conv_missing", stored);
+    fetchMock.mockResolvedValueOnce(mockResponse(null, { ok: false, status: 404 }));
+
+    expect(await fetchTerminals("conv_missing")).toEqual([]);
+    expect(readStoredTerminals("conv_missing")).toEqual([]);
+    expect(sessionStorage.getItem("omnigent.terminals.conv_missing")).toBeNull();
   });
 
   it("retains stored inventory when the endpoint is unavailable", async () => {
@@ -427,6 +437,58 @@ describe("useTerminals persisted reload bootstrap", () => {
       expect(state?.status).toBe("success");
     });
   }
+
+  it("reads persisted inventory once across rerenders and again for a new conversation", async () => {
+    const storedA: TerminalInfo[] = [
+      { id: "terminal_shell_a", name: "shell", session: "a", running: true },
+    ];
+    const storedB: TerminalInfo[] = [
+      { id: "terminal_shell_b", name: "shell", session: "b", running: true },
+    ];
+    writeStoredTerminals("conv_storage_a", storedA);
+    writeStoredTerminals("conv_storage_b", storedB);
+
+    // Keep network reconciliation pending so this test counts only render-time
+    // hydration reads, not the separate soft-response fallback read.
+    fetchMock.mockImplementation(() => new Promise<Response>(() => undefined));
+
+    const storageReads: string[] = [];
+    const originalGetItem = Storage.prototype.getItem;
+    const getItemSpy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(function (
+      this: Storage,
+      key: string,
+    ) {
+      if (key.startsWith("omnigent.terminals.")) storageReads.push(key);
+      return originalGetItem.call(this, key);
+    });
+
+    try {
+      const client = createTestQueryClient();
+      const hook = renderHook(
+        ({ conversationId }: { conversationId: string }) => useTerminals(conversationId),
+        {
+          initialProps: { conversationId: "conv_storage_a" },
+          wrapper: wrapper(client),
+        },
+      );
+
+      expect(hook.result.current.terminals).toEqual(storedA);
+      hook.rerender({ conversationId: "conv_storage_a" });
+      hook.rerender({ conversationId: "conv_storage_a" });
+
+      expect(
+        storageReads.filter((key) => key === "omnigent.terminals.conv_storage_a"),
+      ).toHaveLength(1);
+
+      hook.rerender({ conversationId: "conv_storage_b" });
+      expect(hook.result.current.terminals).toEqual(storedB);
+      expect(
+        storageReads.filter((key) => key === "omnigent.terminals.conv_storage_b"),
+      ).toHaveLength(1);
+    } finally {
+      getItemSpy.mockRestore();
+    }
+  });
 
   it("hydrates terminal inventory after a settled offline remount", async () => {
     const retained: TerminalInfo[] = [
