@@ -1,0 +1,86 @@
+name: Terminal E2E
+
+on:
+  pull_request:
+    paths:
+      - "designs/TERMINAL_MIRRORING_ACCEPTANCE.md"
+      - "omnigent/inner/terminal.py"
+      - "omnigent/runner/**"
+      - "omnigent/server/_runner_ws_tunnel.py"
+      - "omnigent/server/routes/terminal_attach.py"
+      - "omnigent/terminals/**"
+      - "tests/runner/transports/ws_tunnel/**"
+      - "tests/terminal_e2e/**"
+      - "web/src/components/blocks/TerminalSession.ts"
+      - "web/src/components/blocks/TerminalView.tsx"
+      - "web/src/components/blocks/TerminalView*.test.tsx"
+      - "web/src/lib/remoteRunner.ts"
+      - "web/src/lib/remoteRunner.test.ts"
+      - "web/src/store/terminalLifecycleStore.ts"
+      - "web/package.json"
+      - "web/package-lock.json"
+      - ".github/workflows/terminal-e2e.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  terminal-e2e-control:
+    name: terminal-e2e-control
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install tmux
+        run: sudo apt-get update && sudo apt-get install -y tmux
+      - run: uv sync --extra dev --frozen
+      - name: Report terminal prerequisites
+        run: |
+          uv run python -c "from omnigent.version import VERSION; print('server/runner version:', VERSION)"
+          tmux -V
+          echo "terminal transport: control"
+      - run: uv run python -m pytest -q tests/terminal_e2e/test_control_attach.py
+
+  terminal-e2e-reconnect:
+    name: terminal-e2e-reconnect
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install tmux
+        run: sudo apt-get update && sudo apt-get install -y tmux
+      - run: uv sync --extra dev --frozen
+      - run: npm ci
+        working-directory: web
+      - name: Report reconnect prerequisites
+        run: |
+          uv run python -c "from omnigent.version import VERSION; print('server/runner version:', VERSION)"
+          tmux -V
+          node --version
+          echo "terminal acceptance: reconnect and browser recovery"
+      - run: >-
+          uv run python -m pytest -q
+          tests/terminal_e2e/test_lifecycle.py
+          tests/runner/transports/ws_tunnel/test_approval_reconnect.py
+          tests/runner/transports/ws_tunnel/test_ws_attach_e2e.py
+      - run: >-
+          npx vitest run
+          src/components/blocks/TerminalView.test.tsx
+          src/components/blocks/TerminalView.refresh.test.tsx
+          src/lib/remoteRunner.test.ts
+        working-directory: web

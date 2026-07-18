@@ -1,196 +1,303 @@
-# 08 — Implemented UI and Terminal Runtime Diagrams
+# 08 — Reconnect-Safe Terminal Runtime Diagrams
 
-Status reviewed on 2026-07-17 against PR #2,
-`feat/mvp-runner-binding-approvals`. This file maps the UI modules and server
-contracts that are actually wired on the branch. PR #3 adds the reconnect-safe
-terminal lifecycle, persisted terminal selection, and live terminal acceptance
-details.
+Status reviewed on 2026-07-17 against PR #3,
+`feat/mvp-terminal-mirroring`, stacked on PR #2. These diagrams describe the
+implemented browser, server, runner-tunnel, and tmux paths. They replace the
+older planned T07 module map.
 
-## 1. UI ownership on PR #2
+## 1. Runtime ownership
 
 ```mermaid
 flowchart TB
-    subgraph create["New-session runner binding"]
-        NEWCHAT["web/src/shell/NewChatDialog.tsx<br/>NewChatLandingScreen"]
-        USE_RUNNERS["web/src/hooks/useLocalRunners.ts<br/>React Query polling"]
-        REMOTE["web/src/lib/remoteRunner.ts<br/>typed runner/workspace projection"]
-        INFO["useServerInfo<br/>remote_local_runner feature probe"]
-    end
-
-    subgraph capability["Runner state and capability presentation"]
-        HOSTCAP["web/src/components/HostCapabilityPanel.tsx<br/>runner label + capabilities"]
-        BADGE["web/src/shell/RunnerStatusBadge.tsx<br/>workspace/policy + online state"]
-        HEALTH["RunnerHealthProvider<br/>session runner-online polling"]
-    end
-
-    subgraph approval["Typed local-action approval"]
-        NORMALIZE["web/src/lib/localActionApproval.ts<br/>normalize typed action payload"]
-        CARD["web/src/components/blocks/LocalActionApprovalCard.tsx<br/>shell/write review"]
-        BLOCKS["ApprovalCard + BlockRenderer<br/>conversation item rendering"]
-        INBOX["InboxPage<br/>owner decision flow"]
-    end
-
-    subgraph terminal["Existing terminal surfaces"]
+    subgraph surfaces["User-visible terminal surfaces"]
         MAIN["MainTerminalView.tsx<br/>terminal-first main surface"]
         RAIL["TerminalsPanel.tsx<br/>Shells rail"]
-        VIEW["TerminalView.tsx<br/>React attach shell"]
-        SESSION["TerminalSession.ts<br/>xterm + WebSocket bridge"]
+        BADGE["RunnerStatusBadge.tsx<br/>online / offline / reconnecting"]
     end
 
-    subgraph server["Server contracts"]
-        INFO_API["GET /v1/info"]
-        RUNNERS_API["GET /v1/runners"]
-        CREATE_API["POST /v1/sessions<br/>JSON or multipart"]
-        EVENTS["session SSE stream<br/>local-action and runner events"]
-        APPROVE_API["approval resolution endpoint"]
-        TERMINAL_API["terminal resources + attach WebSocket"]
+    subgraph selection["Inventory and selection"]
+        TERMS["useTerminals<br/>HTTP inventory + query cache"]
+        SPLIT["useTerminalSplit<br/>rail inventory and selection"]
+        PERSIST["usePersistentActiveKey<br/>sessionStorage per conversation + surface"]
+        RETAIN["useRetainedActiveTerminal<br/>selected exited-terminal tombstone"]
+        STATUS["useTerminalStatuses<br/>resource + live bridge status"]
     end
 
-    INFO --> INFO_API
-    NEWCHAT --> INFO
-    NEWCHAT --> USE_RUNNERS
-    USE_RUNNERS --> REMOTE
-    REMOTE --> RUNNERS_API
-    NEWCHAT -->|"runner_id + workspace_id + policy"| CREATE_API
+    subgraph lifecycle["SSE lifecycle state"]
+        SSE["session event stream<br/>runner_state + terminal_state"]
+        STORE["terminalLifecycleStore<br/>runner state + terminal state by id<br/>30 s browser settle watchdog"]
+    end
 
-    HOSTCAP --> USE_RUNNERS
-    BADGE --> HEALTH
-    BADGE --> EVENTS
+    subgraph bridge["Selected terminal bridge"]
+        VIEW["TerminalView.tsx<br/>React lifecycle, retry policy,<br/>one control-to-PTY fallback"]
+        SESSION["TerminalSession.ts<br/>xterm + WebSocket + binary I/O"]
+        XTERM["@xterm/xterm<br/>FitAddon · WebLinksAddon · WebGL fallback"]
+    end
 
-    EVENTS --> NORMALIZE
-    NORMALIZE --> CARD
-    CARD --> BLOCKS
-    CARD --> INBOX
-    INBOX --> APPROVE_API
+    subgraph server["Remote server"]
+        SNAPSHOT["runner-state snapshot replay<br/>stable offline, bounded reconnect"]
+        STATE_REG["_runner_state_registry.py<br/>26 s server settle marker"]
+        ATTACH["terminal_attach.py<br/>authorization + runner proxy"]
+        TUNNEL["_runner_ws_tunnel.py<br/>multiplexed ws.* channels"]
+        REG["TunnelRegistry<br/>newest runner generation"]
+    end
+
+    subgraph runner["Local runner"]
+        RUNNER_ATTACH["resource-addressed attach route"]
+        TREG["TerminalRegistry"]
+        TMUX["tmux control / PTY bridge"]
+    end
+
+    MAIN --> PERSIST
+    RAIL --> SPLIT
+    SPLIT --> PERSIST
+    SPLIT --> TERMS
+    SPLIT --> RETAIN
+    SPLIT --> STATUS
+    MAIN --> RETAIN
+
+    SSE --> STORE
+    SNAPSHOT --> SSE
+    STATE_REG --> SNAPSHOT
+    STORE --> BADGE
+    STORE --> VIEW
+    RETAIN --> MAIN
+    RETAIN --> RAIL
 
     MAIN --> VIEW
     RAIL --> VIEW
     VIEW --> SESSION
-    SESSION <-->|"binary I/O + resize JSON"| TERMINAL_API
+    SESSION --> XTERM
+    SESSION <-->|"binary frames + resize JSON"| ATTACH
+    ATTACH <-->|"multiplexed WebSocket channel"| TUNNEL
+    TUNNEL --> REG
+    REG <-->|"current runner generation"| RUNNER_ATTACH
+    RUNNER_ATTACH --> TREG
+    TREG --> TMUX
 ```
 
-There is no separate `NewSessionRunnerPicker.tsx` or planned
-`useRunnerState.ts` layer on this branch. The picker is integrated into
-`NewChatLandingScreen`, while runner lifecycle state is consumed through the
-existing terminal lifecycle store and runner-health provider.
+Only the selected terminal opens a live attach WebSocket. Unselected terminal
+rows derive status from resource/lifecycle state instead of creating fan-out
+tmux attaches.
 
-## 2. Canonical new-session UI flow
+## 2. Public attach and byte path
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor User
-    participant Screen as NewChatLandingScreen
-    participant Query as useLocalRunners
-    participant Lib as remoteRunner.ts
-    participant Server
-    participant Session as Created session UI
+    participant Surface as Main / Shells rail
+    participant View as TerminalView
+    participant Bridge as TerminalSession
+    participant Server as Public attach route
+    participant Tunnel as Runner tunnel
+    participant Runner as Runner attach route
+    participant Tmux as tmux pane
 
-    Screen->>Server: GET /v1/info
-    Server-->>Screen: remote_local_runner flag
+    Surface->>View: sessionId, terminalId, transport, readOnly
+    View->>Bridge: construct one xterm/WebSocket bridge
+    Bridge->>Server: WS /v1/sessions/:id/resources/terminals/:terminal_id/attach
+    Server->>Server: require owner for interactive attach<br/>or read access for read_only
+    Server->>Tunnel: ws.open + selected transport
+    Tunnel->>Runner: resource-addressed attach
+    Runner->>Tmux: control bridge or PTY attach
 
-    alt feature disabled or still loading
-        Screen-->>User: local runner option hidden / fails closed
-    else enabled
-        Screen->>Query: enable runner query
-        Query->>Lib: fetchLocalRunners()
-        Lib->>Server: GET /v1/runners
-        Server-->>Lib: owner-scoped typed summaries
-        Lib-->>Screen: runners + opaque workspaces + capabilities
-        Screen-->>User: runner choices filtered by online state,<br/>workspace availability, and harness support
-        User->>Screen: select runner and workspace
-        User->>Screen: create session
-        Screen->>Server: POST /v1/sessions<br/>{runner_id, workspace_id,<br/>execution_mode=local_runner,<br/>local_runner_policy}
-        Server-->>Session: snapshot with runner/workspace/policy labels
-    end
+    Tmux-->>Runner: terminal bytes
+    Runner-->>Tunnel: ws.frame
+    Tunnel-->>Server: proxied binary frame
+    Server-->>Bridge: binary frame
+    Bridge->>Bridge: xterm.write(Uint8Array)
+
+    User->>Bridge: keyboard / paste
+    Bridge->>Server: raw binary input
+    Server->>Runner: tunneled binary input
+    Runner->>Tmux: send input
+
+    Bridge->>Server: JSON resize {cols, rows}
+    Server->>Runner: tunneled control frame
+    Runner->>Tmux: resize pane
 ```
 
-Selecting the local-runner path clears any host/raw-workspace selection, and
-selecting a host or managed sandbox clears the local-runner selection. The
-contracts remain mutually exclusive.
+Control transport seeds the xterm buffer from tmux capture and then streams
+output. PTY remains a fallback path; product-level PTY parity is still an open
+decision.
 
-## 3. Typed approval rendering and decision flow
+## 3. Runner loss and bounded reconciliation
 
 ```mermaid
 sequenceDiagram
     autonumber
+    participant Tmux
     participant Runner
-    participant Server
-    participant SSE as Session event stream
-    participant Normalize as localActionApproval.ts
-    participant Card as LocalActionApprovalCard
-    actor Owner
+    participant Registry as TunnelRegistry
+    participant State as Server runner-state registry
+    participant SSE as Session stream
+    participant Store as Browser lifecycle store
+    participant View as TerminalView
 
-    Runner->>Server: local-action requested event<br/>action_id + kind + policy + safe preview
-    Server->>SSE: publish approval/event state
-    SSE->>Normalize: elicitation/local-action payload
-    Normalize->>Normalize: require typed action_id contract<br/>ignore unrelated policy metadata
-    Normalize-->>Card: normalized shell or write approval
+    Note over Tmux,View: Stable connected terminal
+    Tmux-->>View: terminal I/O through runner tunnel
 
-    alt run_shell
-        Card-->>Owner: executable-only preview,<br/>hidden arguments, shell guarantee, risk flags
-    else write_file
-        Card-->>Owner: relative path + bounded diff preview
+    Runner-xRegistry: tunnel generation disconnects
+    Registry->>State: record runner_offline
+    State->>SSE: session.runner_state runner_offline
+    Registry-->>View: attach closes as 4503
+    SSE-->>Store: runner_offline
+    Store->>View: disable input; preserve terminal/session selection
+
+    Runner->>Registry: reconnect same runner_id with new generation
+    Registry->>State: record runner_reconnected
+    State->>State: schedule 26 s bounded completion
+    State->>SSE: session.runner_state runner_reconnected
+    SSE-->>Store: clear stale per-terminal lifecycle map<br/>start 30 s browser watchdog
+    Store->>View: force one fresh-generation reattach
+
+    Registry->>Runner: reconcile terminal resources (bounded server path)
+    alt live terminals re-emitted
+        Runner-->>SSE: session.terminal_state terminal_running
+        SSE-->>Store: terminal state ends reconciliation
+        View->>Registry: fresh attach opens
+        View->>Store: confirmRunnerAttached
+    else zero terminals
+        Registry->>State: complete_reconciliation(terminal_count=0)
+        State->>SSE: compatibility terminal_unknown marker
+        SSE-->>Store: end reconciliation
+    else reconcile event is lost / fails / times out
+        State->>SSE: 26 s terminal_unknown completion marker
+        SSE-->>Store: end reconciliation
+        opt server marker also missed
+            Store->>Store: 30 s settleReconciliation
+        end
     end
 
-    Owner->>Card: approve or deny
-    Card->>Server: resolve owning session/action
-    Server-->>Runner: one verdict for exact action_id
-    Server-->>SSE: terminal local-action outcome
-    SSE-->>Card: completed / failed / denied audit state
+    Note over State,Store: Every completion path rechecks current state.<br/>A newer runner_offline edge is not overwritten.
 ```
 
-The card never needs the canonical local workspace root. Relative paths and
-display-only labels are sufficient for review.
+`runner_offline` is stable and replayable. `runner_reconnected` is a transient
+edge: server replay expires after 30 seconds and both server and browser have
+bounded ways to leave reconciliation.
 
-## 4. Runner status presentation
+## 4. Browser and server lifecycle state model
 
 ```mermaid
 stateDiagram-v2
-    [*] --> hidden: execution_mode != local_runner
-    [*] --> online: local-runner session
+    [*] --> online
 
-    online --> offline: runner lifecycle offline<br/>or online poll=false
-    offline --> reconnecting: runner_reconnected event
-    reconnecting --> online: terminal lifecycle/attach settles
-    offline --> online: online poll recovers
+    online --> runner_offline: runner tunnel lost / attach 4503
+    runner_offline --> runner_reconnected: same runner_id registers new generation
+    runner_reconnected --> online: terminal_state event
+    runner_reconnected --> online: fresh attach confirmed
+    runner_reconnected --> online: zero-terminal completion marker
+    runner_reconnected --> online: server/browser settle deadline
+    runner_reconnected --> runner_offline: newer tunnel loss
 
-    state online {
-        [*] --> workspace_label
-        workspace_label --> policy_tooltip
+    state terminal_lifecycle {
+        [*] --> terminal_unknown
+        terminal_unknown --> terminal_starting
+        terminal_starting --> terminal_running
+        terminal_starting --> terminal_failed
+        terminal_running --> terminal_detached
+        terminal_detached --> terminal_running
+        terminal_running --> terminal_exited
+        terminal_running --> terminal_relaunching
+        terminal_relaunching --> terminal_running
+        terminal_relaunching --> terminal_failed
     }
 
-    note right of offline
-        Badge says the session is preserved.
-        It does not imply that input remains available.
+    note right of runner_offline
+        Session binding, xterm buffer,
+        and persisted active keys survive.
+        Input and New shell remain disabled.
+    end note
+
+    note right of runner_reconnected
+        One fresh attach is required before
+        a connected bridge confirms recovery.
     end note
 ```
 
-PR #2 supplies the runner status and approval surfaces. PR #3 makes the
-terminal-side offline/reconnect behavior generation-safe and bounded.
+Runner state and individual terminal state are separate. A runner outage does
+not rewrite every terminal as exited, and a terminal exit does not imply the
+runner is offline.
 
-## 5. Terminal bridge boundary inherited by PR #2
+## 5. Attach close-code and retry behavior
+
+```mermaid
+flowchart TB
+    CLOSE["attach closes"] --> CODE{"close code / close class"}
+
+    CODE -->|"4503"| OFFLINE["runner_offline<br/>preserve session + wait for runner"]
+    CODE -->|"4404"| EXITED["terminal_exited<br/>retain selected tombstone"]
+    CODE -->|"4405"| DETACHED["terminal_detached<br/>manual attach/resume allowed"]
+    CODE -->|"4406 while control"| FALLBACK["retry once with PTY"]
+    FALLBACK -->|"second unsupported close"| STOP["closed overlay; no fallback loop"]
+    CODE -->|"unexpected 1001/1006/1012/1013"| BACKOFF["automatic redial<br/>0.5, 1, 2, 4, 8 s"]
+    BACKOFF -->|"visible tab or timer"| REDIAL["dispose old bridge + fresh attach"]
+    CODE -->|"other deliberate/app close"| CLOSED["closed/resume overlay"]
+```
+
+The retry budget resets only after a connection remains stable for 30 seconds,
+which prevents both permanent exhaustion across unrelated outages and an
+infinite connect/drop loop.
+
+## 6. Independent selection and exited-terminal retention
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Surface as MainTerminalView / TerminalsPanel
-    participant View as TerminalView
-    participant Bridge as TerminalSession
-    participant Server as terminal attach route
-    participant Runner as runner attach route
-    participant Tmux as tmux pane
+    actor User
+    participant Main as MainTerminalView
+    participant Rail as TerminalsPanel
+    participant Storage as sessionStorage
+    participant Inventory as useTerminals
+    participant Retain as useRetainedActiveTerminal
+    participant Lifecycle as terminalLifecycleStore
 
-    Surface->>View: sessionId + terminalId + transport + readOnly
-    View->>Bridge: construct xterm/WebSocket bridge
-    Bridge->>Server: WS attach with transport/read_only
-    Server->>Server: authorize owner write or collaborator read
-    Server->>Runner: multiplex ws.open over runner tunnel
-    Runner->>Tmux: control or PTY attach
-    Tmux-->>Bridge: binary terminal bytes through runner/server
-    Bridge->>Tmux: binary input; resize JSON through runner/server
+    User->>Main: select terminal A
+    Main->>Storage: set omnigent.activeTerminalKey.&lt;conversation&gt;.main = A
+
+    User->>Rail: select terminal B
+    Rail->>Storage: set omnigent.activeTerminalKey.&lt;conversation&gt;.rail = B
+    Note over Main,Rail: Main and rail selections do not overwrite each other
+
+    Inventory-->>Rail: transient empty inventory while runner offline
+    Rail->>Storage: keep B because runner state is not authoritative online
+
+    Lifecycle-->>Retain: terminal B = terminal_exited
+    Inventory-->>Retain: B removed from runnable inventory
+    Retain-->>Rail: last selected B retained as exited tombstone
+    Note over Rail: Other live terminal rows remain selectable and usable
+
+    Inventory-->>Rail: authoritative online inventory excludes stale key
+    alt no exited tombstone
+        Rail->>Storage: prune stale selection
+    else exited tombstone
+        Rail->>Storage: retain key long enough to show terminal-exited state
+    end
 ```
 
-The detailed reconnect state machine, close-code handling, bounded settlement,
-per-surface selection persistence, exited-terminal retention, and real tmux
-acceptance boundary live in the PR #3 version of this document.
+Persistence is best-effort and scoped to the browser session, conversation, and
+surface. It is not server-side terminal ownership.
+
+## 7. Executable acceptance boundary
+
+```mermaid
+flowchart LR
+    CLIENT["authenticated WebSocket client"] --> PUBLIC["public terminal attach route"]
+    PUBLIC --> MUX["server-to-runner multiplexed tunnel"]
+    MUX --> RUNNER["runner attach route"]
+    RUNNER --> TMUX["real tmux pane"]
+
+    TESTS["tests/terminal_e2e"] -. validates .-> CLIENT
+    TESTS -. "input, resize, UTF-8, control bytes,<br/>Ctrl-C, alternate screen, rapid output" .-> TMUX
+    TESTS -. "offline vs exit, reconnect,<br/>stale generation, permissions" .-> MUX
+    CI["Terminal E2E workflow"] --> TESTS
+```
+
+Still outside the live boundary:
+
+- a literal browser page reload with SSE bootstrap while offline, followed by
+  automatic recovery;
+- PTY byte-parity CI, only if PTY remains a supported product contract;
+- final human evidence for current-head automatic reconnect and the distinct
+  exited-terminal presentation.

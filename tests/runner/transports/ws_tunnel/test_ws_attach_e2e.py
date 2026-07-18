@@ -19,6 +19,7 @@ import pytest
 from fastapi import FastAPI, WebSocket
 from websockets.exceptions import ConnectionClosed
 
+from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.runner.transports.ws_tunnel.frames import (
     HelloFrame,
     WSCloseFrame,
@@ -28,47 +29,8 @@ from omnigent.runner.transports.ws_tunnel.frames import (
     encode_frame,
 )
 from omnigent.runner.transports.ws_tunnel.registry import TunnelRegistry
-from omnigent.runner.transports.ws_tunnel.serve import (
-    _cancel_ws_channels,
-    _handle_tunnel_frame,
-    _RunnerWSChannel,
-)
 from omnigent.server._runner_ws_tunnel import _TunneledWSConn
-
-
-class _FakeWS:
-    """Bidirectional in-memory WebSocket pair half."""
-
-    def __init__(self) -> None:
-        self.recv_queue: asyncio.Queue[str] = asyncio.Queue()
-        self._peer: _FakeWS | None = None
-
-    def link(self, peer: _FakeWS) -> None:
-        self._peer = peer
-        peer._peer = self
-
-    async def send_text(self, data: str) -> None:
-        assert self._peer is not None
-        await self._peer.recv_queue.put(data)
-
-    async def receive_text(self) -> str:
-        return await self.recv_queue.get()
-
-
-def _make_pair() -> tuple[_FakeWS, _FakeWS]:
-    a, b = _FakeWS(), _FakeWS()
-    a.link(b)
-    return a, b
-
-
-async def _drain_session_outbound(registry: TunnelRegistry, runner_id: str) -> None:
-    session = registry.get(runner_id)
-    assert session is not None
-    while True:
-        data = await session.outbound_queue.get()
-        if data is None:
-            return
-        await session.ws.send_text(data)
+from tests.runner.transports.ws_tunnel.helpers import LoopbackWebSocket, run_tunnel_harness
 
 
 def _build_echo_app() -> FastAPI:
@@ -101,9 +63,6 @@ def _build_echo_app() -> FastAPI:
 async def test_text_and_binary_round_trip_over_tunneled_ws_attach() -> None:
     """Text and binary frames round-trip in both directions."""
     runner_app = _build_echo_app()
-    server_ws, runner_ws = _make_pair()
-
-    registry = TunnelRegistry()
     hello = HelloFrame(
         runner_version="0.1.0-test",
         frame_protocol_version=1,
@@ -111,52 +70,23 @@ async def test_text_and_binary_round_trip_over_tunneled_ws_attach() -> None:
         envs=["test"],
     )
     runner_id = "runner-attach-1"
-    session = registry.register(runner_id, server_ws, hello)
-
-    # Server-side sender loop drains the session outbound queue onto
-    # the fake socket — same pattern that the real runner_tunnel route
-    # uses in production.
-    sender_task = asyncio.create_task(_drain_session_outbound(registry, runner_id))
-
-    # Server-side receive loop routes ws.* frames into the channel
-    # inbound queue.
-    async def server_receive_loop() -> None:
-        while True:
-            text = await server_ws.receive_text()
-            frame = decode_frame(text)
-            if isinstance(frame, (WSFrame, WSCloseFrame)):
-                registry.route_ws_inbound(runner_id, frame, session=session)
-
-    server_recv_task = asyncio.create_task(server_receive_loop())
-
-    # Runner-side: invoke _handle_tunnel_frame for each inbound text frame.
-    ws_channels: dict[str, _RunnerWSChannel] = {}
-    dispatch_tasks: dict[str, asyncio.Task[None]] = {}
-
-    async def runner_receive_loop() -> None:
-        while True:
-            text = await runner_ws.receive_text()
-            await _handle_tunnel_frame(
-                runner_app, text, runner_ws.send_text, dispatch_tasks, ws_channels
-            )
-
-    runner_recv_task = asyncio.create_task(runner_receive_loop())
-
-    try:
+    async with run_tunnel_harness(runner_app, runner_id=runner_id, hello=hello) as tunnel:
+        session = tunnel.registry.get(runner_id)
+        assert session is not None
         # Server side: open a tunneled WS attach via the factory's
         # connection class directly.
         runner_path = (
             "/v1/sessions/conv_x/resources/terminals/terminal_bash_s1/attach?read_only=false"
         )
         async with _TunneledWSConn(
-            registry=registry,
+            registry=tunnel.registry,
             session=session,
             runner_path=runner_path,
         ) as conn:
             # Wait until the runner dispatch task has accepted, so the
             # echo route's receive loop is in place before we send.
             for _ in range(20):
-                if ws_channels and any(ch.accepted for ch in ws_channels.values()):
+                if tunnel.ws_channels and any(ch.accepted for ch in tunnel.ws_channels.values()):
                     break
                 await asyncio.sleep(0.01)
 
@@ -169,21 +99,12 @@ async def test_text_and_binary_round_trip_over_tunneled_ws_attach() -> None:
             await conn.send(b"\x00\x01\x02ABC")
             reply2 = await asyncio.wait_for(conn.recv(), timeout=2.0)
             assert reply2 == b"binary-echo:\x00\x01\x02ABC"
-    finally:
-        for task in (sender_task, server_recv_task, runner_recv_task):
-            task.cancel()
-        await asyncio.gather(
-            sender_task, server_recv_task, runner_recv_task, return_exceptions=True
-        )
-        await _cancel_ws_channels(ws_channels)
 
 
 @pytest.mark.asyncio
 async def test_runner_side_close_surfaces_as_connection_closed_with_code() -> None:
     """A runner-initiated WS close arrives on the server as ConnectionClosed."""
     runner_app = _build_echo_app()
-    server_ws, runner_ws = _make_pair()
-    registry = TunnelRegistry()
     hello = HelloFrame(
         runner_version="0.1.0-test",
         frame_protocol_version=1,
@@ -191,41 +112,19 @@ async def test_runner_side_close_surfaces_as_connection_closed_with_code() -> No
         envs=["test"],
     )
     runner_id = "runner-attach-2"
-    session = registry.register(runner_id, server_ws, hello)
-    sender_task = asyncio.create_task(_drain_session_outbound(registry, runner_id))
-
-    async def server_receive_loop() -> None:
-        while True:
-            text = await server_ws.receive_text()
-            frame = decode_frame(text)
-            if isinstance(frame, (WSFrame, WSCloseFrame)):
-                registry.route_ws_inbound(runner_id, frame, session=session)
-
-    server_recv_task = asyncio.create_task(server_receive_loop())
-
-    ws_channels: dict[str, _RunnerWSChannel] = {}
-    dispatch_tasks: dict[str, asyncio.Task[None]] = {}
-
-    async def runner_receive_loop() -> None:
-        while True:
-            text = await runner_ws.receive_text()
-            await _handle_tunnel_frame(
-                runner_app, text, runner_ws.send_text, dispatch_tasks, ws_channels
-            )
-
-    runner_recv_task = asyncio.create_task(runner_receive_loop())
-
-    try:
+    async with run_tunnel_harness(runner_app, runner_id=runner_id, hello=hello) as tunnel:
+        session = tunnel.registry.get(runner_id)
+        assert session is not None
         runner_path = (
             "/v1/sessions/conv_y/resources/terminals/terminal_bash_s1/attach?read_only=false"
         )
         async with _TunneledWSConn(
-            registry=registry,
+            registry=tunnel.registry,
             session=session,
             runner_path=runner_path,
         ) as conn:
             for _ in range(20):
-                if ws_channels and any(ch.accepted for ch in ws_channels.values()):
+                if tunnel.ws_channels and any(ch.accepted for ch in tunnel.ws_channels.values()):
                     break
                 await asyncio.sleep(0.01)
 
@@ -235,13 +134,72 @@ async def test_runner_side_close_surfaces_as_connection_closed_with_code() -> No
             assert exc_info.value.rcvd is not None
             assert exc_info.value.rcvd.code == 4242
             assert exc_info.value.rcvd.reason == "goodbye"
+
+
+@pytest.mark.asyncio
+async def test_valid_unadvertised_transport_is_rejected_before_channel_allocation() -> None:
+    """A canonical transport absent from a non-empty hello list fails closed."""
+    registry = TunnelRegistry()
+    ws, peer = LoopbackWebSocket(), LoopbackWebSocket()
+    ws.link(peer)
+    hello = HelloFrame(
+        runner_version="0.1.0",
+        frame_protocol_version=1,
+        harnesses=["test"],
+        envs=["test"],
+        terminal_transports=["control"],
+    )
+    session = registry.register("runner-capability", ws, hello)
+    conn = _TunneledWSConn(
+        registry=registry,
+        session=session,
+        runner_path=("/v1/sessions/conv/resources/terminals/terminal_x/attach?transport=pty"),
+    )
+
+    with pytest.raises(OmnigentError) as exc_info:
+        await conn.__aenter__()
+
+    assert exc_info.value.code == ErrorCode.TERMINAL_TRANSPORT_UNSUPPORTED
+    assert session.ws_channels == {}
+    registry.deregister(session.runner_id, session=session)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("advertised", "query"),
+    [
+        ([], "transport=pty"),
+        (["control"], "transport=not-a-real-transport"),
+    ],
+)
+async def test_legacy_or_invalid_transport_query_remains_permissive(
+    advertised: list[str],
+    query: str,
+) -> None:
+    """Rolling upgrades and stray query values preserve the normal attach path."""
+    registry = TunnelRegistry()
+    ws, peer = LoopbackWebSocket(), LoopbackWebSocket()
+    ws.link(peer)
+    hello = HelloFrame(
+        runner_version="0.1.0",
+        frame_protocol_version=1,
+        harnesses=["test"],
+        envs=["test"],
+        terminal_transports=advertised,
+    )
+    session = registry.register("runner-compatible", ws, hello)
+    conn = _TunneledWSConn(
+        registry=registry,
+        session=session,
+        runner_path=f"/v1/sessions/conv/resources/terminals/terminal_x/attach?{query}",
+    )
+
+    await conn.__aenter__()
+    try:
+        assert len(session.ws_channels) == 1
     finally:
-        for task in (sender_task, server_recv_task, runner_recv_task):
-            task.cancel()
-        await asyncio.gather(
-            sender_task, server_recv_task, runner_recv_task, return_exceptions=True
-        )
-        await _cancel_ws_channels(ws_channels)
+        await conn.__aexit__(None, None, None)
+        registry.deregister(session.runner_id, session=session)
 
 
 @pytest.mark.asyncio
@@ -265,7 +223,8 @@ async def test_frame_encode_decode_round_trip() -> None:
 async def test_open_ws_channel_session_guard_rejects_stale_session() -> None:
     """open_ws_channel raises KeyError when its session has been replaced."""
     registry = TunnelRegistry()
-    ws_a, _ = _make_pair()
+    ws_a, peer_a = LoopbackWebSocket(), LoopbackWebSocket()
+    ws_a.link(peer_a)
     hello = HelloFrame(
         runner_version="0.1.0",
         frame_protocol_version=1,
@@ -274,7 +233,8 @@ async def test_open_ws_channel_session_guard_rejects_stale_session() -> None:
     )
     session_old = registry.register("runner-replace", ws_a, hello)
     # New session replaces the old one.
-    ws_b, _ = _make_pair()
+    ws_b, peer_b = LoopbackWebSocket(), LoopbackWebSocket()
+    ws_b.link(peer_b)
     registry.register("runner-replace", ws_b, hello)
     with pytest.raises(KeyError):
         registry.open_ws_channel("runner-replace", "stale01", session=session_old)

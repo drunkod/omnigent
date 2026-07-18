@@ -158,6 +158,7 @@ export function TerminalView({
       lifecycleTerminalState === "terminal_starting" ||
       lifecycleTerminalState === "terminal_relaunching",
   );
+  const reconnectAttachPendingRef = useRef(false);
   const { resolvedTheme } = useTheme();
   // Terminal theme is independent of the app theme: "auto" follows the app's
   // resolved appearance, while "light"/"dark" pin the terminal. Reading the
@@ -196,10 +197,7 @@ export function TerminalView({
     onInputRef.current?.();
   }, []);
 
-  // Dispose the outgoing session before a remount re-dials. React 18
-  // ignores the cleanup function attachSession returns (ref cleanups
-  // arrived in React 19), so without this every remount would abandon
-  // the previous session — xterm buffers, observers, and all.
+  // Dispose the outgoing session before a remount re-dials.
   const disposeActiveSession = useCallback(() => {
     sessionRef.current?.dispose();
     sessionRef.current = null;
@@ -230,66 +228,64 @@ export function TerminalView({
     }
   }, [onResume, reattach]);
 
-  const attachSession = useCallback(
-    (node: HTMLDivElement | null) => {
-      if (node === null) return;
-      // Reset to ``connecting`` for every fresh attach so a stale
-      // overlay from a previous mount doesn't flash during the
-      // handshake. The session's WS ``open`` handler transitions us
-      // to ``connected``.
-      notifyState({ kind: "connecting" });
+  const mountNodeRef = useRef<HTMLDivElement | null>(null);
+  const attachSession = useCallback((node: HTMLDivElement | null) => {
+    mountNodeRef.current = node;
+  }, []);
 
-      // Defer the actual session construction by one microtask so
-      // React 19 StrictMode's synchronous attach → cleanup → attach
-      // sequence collapses to a single real WS handshake. Without
-      // this, the first attach opens a WebSocket, the cleanup closes
-      // it 0ms later, and the second attach opens another — the
-      // server sees two handshakes per mount in dev. The microtask
-      // runs after the entire commit phase: by then the StrictMode
-      // cleanup has flipped ``cancelled`` and the first scheduled
-      // open is a no-op. The second attach's microtask proceeds and
-      // is the one that actually opens the WS.
-      let terminalSession: TerminalSession | null = null;
-      let cancelled = false;
-      queueMicrotask(() => {
-        if (cancelled) return;
-        terminalSession = new TerminalSession(
-          node,
-          buildAttachUrl(sessionId, terminalId, readOnly, transport, ptyFallback),
-          notifyState,
-          isDarkRef.current,
-          notifyActivity,
-          notifyInput,
-          controlMode,
-        );
-        const lifecycle = useTerminalLifecycleStore.getState();
-        terminalSession.setInputEnabled(
-          inputAvailableFor(
-            selectRunnerState(sessionId)(lifecycle),
-            selectTerminalState(sessionId, terminalId)(lifecycle),
-          ),
-        );
-        sessionRef.current = terminalSession;
-      });
-      return () => {
-        cancelled = true;
-        terminalSession?.dispose();
+  useEffect(() => {
+    const node = mountNodeRef.current;
+    if (node === null) return;
+    // Reset to ``connecting`` for every fresh attach so a stale
+    // overlay from a previous mount doesn't flash during the
+    // handshake. The session's WS ``open`` handler transitions us
+    // to ``connected``.
+    notifyState({ kind: "connecting" });
+
+    // Defer construction so StrictMode's setup/cleanup/setup cycle opens
+    // only the surviving WebSocket session.
+    let terminalSession: TerminalSession | null = null;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      terminalSession = new TerminalSession(
+        node,
+        buildAttachUrl(sessionId, terminalId, readOnly, transport, ptyFallback),
+        notifyState,
+        isDarkRef.current,
+        notifyActivity,
+        notifyInput,
+        controlMode,
+      );
+      const lifecycle = useTerminalLifecycleStore.getState();
+      terminalSession.setInputEnabled(
+        inputAvailableFor(
+          selectRunnerState(sessionId)(lifecycle),
+          selectTerminalState(sessionId, terminalId)(lifecycle),
+        ),
+      );
+      sessionRef.current = terminalSession;
+    });
+    return () => {
+      cancelled = true;
+      if (terminalSession !== null && sessionRef.current === terminalSession) {
+        terminalSession.dispose();
         sessionRef.current = null;
-        onStateChangeRef.current?.(null);
-      };
-    },
-    [
-      sessionId,
-      terminalId,
-      readOnly,
-      transport,
-      ptyFallback,
-      controlMode,
-      notifyState,
-      notifyActivity,
-      notifyInput,
-    ],
-  );
+      }
+      onStateChangeRef.current?.(null);
+    };
+  }, [
+    connectAttempt,
+    sessionId,
+    terminalId,
+    readOnly,
+    transport,
+    ptyFallback,
+    controlMode,
+    notifyState,
+    notifyActivity,
+    notifyInput,
+  ]);
 
   // Push theme changes into the live session without remounting.
   useEffect(() => {
@@ -384,6 +380,23 @@ export function TerminalView({
       setDismissedLifecycleState(null);
     }
   }, [dismissedLifecycleState, state.kind]);
+
+  // Runner-state delivery can race the old bridge's close. Always redial once
+  // before treating a connected bridge as proof of recovery.
+  useEffect(() => {
+    if (runnerState !== "runner_reconnected") {
+      reconnectAttachPendingRef.current = false;
+      return;
+    }
+    if (!reconnectAttachPendingRef.current) {
+      reconnectAttachPendingRef.current = true;
+      reattach();
+      return;
+    }
+    if (state.kind === "connected") {
+      useTerminalLifecycleStore.getState().confirmRunnerAttached(sessionId);
+    }
+  }, [runnerState, state.kind, sessionId, reattach]);
 
   useEffect(() => {
     sessionRef.current?.setInputEnabled(

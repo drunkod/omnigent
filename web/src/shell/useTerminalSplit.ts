@@ -1,9 +1,12 @@
 // Shared data hook for InlineTerminalsSection and TerminalsPanel.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useResizableColumn } from "@/hooks/useResizableColumn";
 import { inventoryTerminals, terminalTabKey, useTerminals } from "@/hooks/useTerminals";
+import { selectRunnerState, useTerminalLifecycleStore } from "@/store/terminalLifecycleStore";
 import { useTerminalFirst } from "./TerminalFirstContext";
+import { usePersistentActiveKey } from "./usePersistentActiveKey";
+import { useRetainedActiveTerminal } from "./useRetainedActiveTerminal";
 import { useTerminalStatuses } from "./useTerminalStatuses";
 
 // Only the terminal the user actually selects opens a WebSocket (via
@@ -14,7 +17,7 @@ import { useTerminalStatuses } from "./useTerminalStatuses";
 // derive their badge from the resource ``running`` flag alone (see
 // ``deriveTerminalStatus``).
 export function useTerminalSplit(conversationId: string) {
-  const { terminals: allTerminals } = useTerminals(conversationId);
+  const { terminals: allTerminals, isLoading } = useTerminals(conversationId);
   // Inventory view: the agent's own terminal (SDK REPL / native vendor
   // pane) backs the pill's Terminal view and must not appear as a
   // shell row here.
@@ -23,14 +26,18 @@ export function useTerminalSplit(conversationId: string) {
     () => inventoryTerminals(allTerminals, terminalFirstCtx?.isTerminalFirst ?? false),
     [allTerminals, terminalFirstCtx?.isTerminalFirst],
   );
-  const [activeKey, setActiveKey] = useState<string | null>(null);
+  const [activeKey, setActiveKey] = usePersistentActiveKey(conversationId, "rail");
+  const runnerState = useTerminalLifecycleStore(selectRunnerState(conversationId));
   const { getStatus, setTerminalConnectionState, markTerminalActive } = useTerminalStatuses(
     terminals,
     conversationId,
   );
 
-  const activeTerminal =
-    activeKey !== null ? (terminals.find((t) => terminalTabKey(t) === activeKey) ?? null) : null;
+  const { activeTerminal, isExitedTombstone } = useRetainedActiveTerminal(
+    conversationId,
+    terminals,
+    activeKey,
+  );
 
   const {
     width: listWidth,
@@ -38,12 +45,15 @@ export function useTerminalSplit(conversationId: string) {
     handleProps: columnHandleProps,
   } = useResizableColumn();
 
-  // Clear activeKey if the selected terminal is removed. Do NOT
-  // auto-select — null is the intentional "no terminal selected" state.
+  // Clear a genuinely stale selection only after the authoritative inventory
+  // has loaded while the runner is online. During offline/reconnect windows an
+  // empty list is transient and must not erase the key needed after reload.
   useEffect(() => {
-    if (activeKey === null) return;
-    if (!terminals.some((t) => terminalTabKey(t) === activeKey)) setActiveKey(null);
-  }, [terminals, activeKey]);
+    if (activeKey === null || isLoading || runnerState !== "online") return;
+    if (!terminals.some((t) => terminalTabKey(t) === activeKey) && !isExitedTombstone) {
+      setActiveKey(null);
+    }
+  }, [terminals, activeKey, isExitedTombstone, isLoading, runnerState, setActiveKey]);
 
   return {
     terminals,

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type ConnectionState } from "@/components/blocks/TerminalSession";
 import { type TerminalInfo } from "@/hooks/useTerminals";
+import { useTerminalRunnerLifecycle } from "@/hooks/useTerminalRunnerLifecycle";
 import { useTerminalActivityStore } from "@/store/terminalActivity";
 import { useTerminalLifecycleStore } from "@/store/terminalLifecycleStore";
 import { deriveTerminalStatus, type TerminalStatus } from "./terminalStatus";
@@ -16,6 +17,11 @@ const ACTIVE_OUTPUT_WINDOW_MS = 1500;
  * unrelated terminal tabs.
  */
 export function useTerminalStatuses(terminals: TerminalInfo[], conversationId?: string) {
+  // Fold the open session's tunnel-accurate health poll into the same lifecycle
+  // store TerminalView already uses for its offline overlay, input gate, and
+  // reconnect path. Cached terminal inventory intentionally remains mounted.
+  useTerminalRunnerLifecycle(conversationId);
+
   const [activeTerminalIds, setActiveTerminalIds] = useState(() => new Set<string>());
   const [connectionStates, setConnectionStates] = useState(
     () => new Map<string, ConnectionState>(),
