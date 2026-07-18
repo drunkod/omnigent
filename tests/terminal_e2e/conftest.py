@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
 import socket
 import sys
+import tempfile
 import textwrap
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -23,11 +25,91 @@ from omnigent.runner.transports.ws_tunnel.frames import HelloFrame
 from omnigent.runner.transports.ws_tunnel.registry import RunnerSession, TunnelRegistry
 from omnigent.runtime import _globals, set_runner_ws_factory
 from omnigent.server._runner_ws_tunnel import _TunneledWSConn
-from omnigent.server.auth import LEVEL_OWNER, LEVEL_READ, RESERVED_USER_PUBLIC, UnifiedAuthProvider
+from omnigent.server.auth import (
+    LEVEL_OWNER,
+    LEVEL_READ,
+    RESERVED_USER_PUBLIC,
+    UnifiedAuthProvider,
+)
 from omnigent.server.routes.terminal_attach import create_terminal_attach_router
 from omnigent.terminals import TerminalRegistry
 from tests.runner.helpers import NullServerClient
-from tests.runner.transports.ws_tunnel.helpers import TunnelHarness, run_tunnel_harness
+from tests.runner.transports.ws_tunnel.helpers import (
+    TunnelHarness,
+    run_tunnel_harness,
+)
+
+# macOS sockaddr_un.sun_path is 104 bytes including the terminating NUL.
+# Keep generated tmux socket pathnames below 104 encoded filesystem bytes.
+_MACOS_UNIX_SOCKET_PATH_MAX_BYTES = 104
+
+# Intentionally short: the production layer adds another
+# "omnigent-terminal-<random>/tmux.sock" beneath this directory.
+_TMUX_TEST_TEMP_PREFIX = "ogt-"
+
+
+def _short_writable_temp_base() -> Path:
+    """Return a short writable base for tmux Unix-domain sockets.
+
+    Terminal E2E tests can be launched from editors, Nix shells, or CI
+    environments whose TMPDIR is deeply nested. tmux uses a Unix-domain
+    socket below that directory, and macOS rejects the launch when the
+    encoded socket pathname reaches sockaddr_un.sun_path's limit.
+
+    Prefer the conventional short /tmp spelling on POSIX. Fall back to
+    Python's configured temporary directory when /tmp is unavailable.
+
+    Returns:
+        A writable directory suitable as the parent of the fixture root.
+
+    Raises:
+        RuntimeError: If no usable temporary directory is available.
+    """
+    short_base = Path("/tmp")
+
+    if os.name == "posix" and short_base.is_dir() and os.access(short_base, os.W_OK | os.X_OK):
+        return short_base
+
+    fallback = Path(tempfile.gettempdir())
+
+    if fallback.is_dir() and os.access(fallback, os.W_OK | os.X_OK):
+        return fallback
+
+    raise RuntimeError(
+        "terminal E2E tests require a writable temporary directory for private tmux sockets"
+    )
+
+
+@pytest.fixture
+def _tmux_temp_root(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[Path]:
+    """Force terminal-private directories beneath a short fixture root.
+
+    Updating the environment variables alone is insufficient because
+    Python caches its resolved temporary directory in ``tempfile.tempdir``.
+    Override both the environment and that cache for the fixture lifetime.
+
+    The root remains alive until dependent terminal fixtures finish their
+    shutdown, then it is recursively removed.
+    """
+    base = _short_writable_temp_base()
+    root = Path(
+        tempfile.mkdtemp(
+            prefix=_TMUX_TEST_TEMP_PREFIX,
+            dir=str(base),
+        )
+    )
+
+    monkeypatch.setenv("TMPDIR", str(root))
+    monkeypatch.setenv("TEMP", str(root))
+    monkeypatch.setenv("TMP", str(root))
+    monkeypatch.setattr(tempfile, "tempdir", str(root))
+
+    try:
+        yield root
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
 
 
 class _PermissionStore:
@@ -116,7 +198,10 @@ class TerminalTunnelFixture:
 
 
 @pytest_asyncio.fixture
-async def terminal_tunnel(tmp_path: Path) -> AsyncIterator[TerminalTunnelFixture]:
+async def terminal_tunnel(
+    tmp_path: Path,
+    _tmux_temp_root: Path,
+) -> AsyncIterator[TerminalTunnelFixture]:
     """Launch a deterministic terminal and expose it over the real tunnel stack."""
     if shutil.which("tmux") is None:
         pytest.fail("T12 requires tmux; install it in the supported test environment")
