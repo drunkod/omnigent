@@ -25,24 +25,22 @@ afterEach(() => {
 describe("useTerminalRunnerLifecycle", () => {
   it("turns a poll-only outage into terminal offline and reconnect lifecycle", async () => {
     useSessionRunnerOnlineMock.mockReturnValue(false);
-    const { result, rerender } = renderHook(() =>
-      useTerminalRunnerLifecycle("conv_abc"),
-    );
+    const { result, rerender } = renderHook(() => useTerminalRunnerLifecycle("conv_abc"));
 
     expect(result.current).toBe("runner_offline");
     await waitFor(() =>
-      expect(
-        useTerminalLifecycleStore.getState().byConversation.conv_abc?.runnerState,
-      ).toBe("runner_offline"),
+      expect(useTerminalLifecycleStore.getState().byConversation.conv_abc?.runnerState).toBe(
+        "runner_offline",
+      ),
     );
 
     useSessionRunnerOnlineMock.mockReturnValue(true);
     rerender();
 
     await waitFor(() =>
-      expect(
-        useTerminalLifecycleStore.getState().byConversation.conv_abc?.runnerState,
-      ).toBe("runner_reconnected"),
+      expect(useTerminalLifecycleStore.getState().byConversation.conv_abc?.runnerState).toBe(
+        "runner_reconnected",
+      ),
     );
   });
 
@@ -54,13 +52,11 @@ describe("useTerminalRunnerLifecycle", () => {
       state: "runner_offline",
     });
 
-    const { result } = renderHook(() =>
-      useTerminalRunnerLifecycle("conv_abc"),
-    );
+    const { result } = renderHook(() => useTerminalRunnerLifecycle("conv_abc"));
 
     expect(result.current).toBe("runner_offline");
-    expect(
-      useTerminalLifecycleStore.getState().byConversation.conv_abc?.lastRunnerId,
-    ).toBe("runner_1");
+    expect(useTerminalLifecycleStore.getState().byConversation.conv_abc?.lastRunnerId).toBe(
+      "runner_1",
+    );
   });
 });

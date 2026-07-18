@@ -16,15 +16,8 @@
 import { TerminalIcon, XIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo } from "react";
 import { TerminalView } from "@/components/blocks/TerminalView";
-import {
-  AGENT_TERMINAL_IDS,
-  terminalTabKey,
-  useTerminals,
-} from "@/hooks/useTerminals";
-import {
-  selectRunnerState,
-  useTerminalLifecycleStore,
-} from "@/store/terminalLifecycleStore";
+import { AGENT_TERMINAL_IDS, terminalTabKey, useTerminals } from "@/hooks/useTerminals";
+import { selectRunnerState, useTerminalLifecycleStore } from "@/store/terminalLifecycleStore";
 import { useTerminalFirst } from "./TerminalFirstContext";
 import { TerminalStatusBadge } from "./terminalStatus";
 import { usePersistentActiveKey } from "./usePersistentActiveKey";
@@ -78,16 +71,16 @@ export function MainTerminalView({
     "main",
     initialTerminalKey || "",
   );
-  const runnerState = useTerminalLifecycleStore(
-    selectRunnerState(conversationId),
-  );
+  const runnerState = useTerminalLifecycleStore(selectRunnerState(conversationId));
   const { activeTerminal, isExitedTombstone } = useRetainedActiveTerminal(
     conversationId,
     terminals,
     activeKey,
   );
-  const { getStatus, setTerminalConnectionState, markTerminalActive } =
-    useTerminalStatuses(terminals, conversationId);
+  const { getStatus, setTerminalConnectionState, markTerminalActive } = useTerminalStatuses(
+    terminals,
+    conversationId,
+  );
   // No manual keyboard padding here: this view is flow content inside the
   // app-shell, which useIOSViewportLock sizes to the visual viewport, so the
   // terminal already sits above the keyboard. (Fixed overlays like the mobile
@@ -163,9 +156,7 @@ export function MainTerminalView({
               <div className="flex shrink-0 items-center gap-1.5 border-b border-border px-2 pt-1 pb-2">
                 <span className="flex items-center gap-1.5 rounded-sm bg-muted px-2 py-1 text-foreground text-xs">
                   <TerminalIcon className="size-3 shrink-0" />
-                  <span className="max-w-[8rem] truncate">
-                    {activeTerminal.name}
-                  </span>
+                  <span className="max-w-[8rem] truncate">{activeTerminal.name}</span>
                   <span className="shrink-0 text-muted-foreground/60">
                     · {activeTerminal.session}
                   </span>

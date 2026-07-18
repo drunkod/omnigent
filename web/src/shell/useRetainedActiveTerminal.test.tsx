@@ -24,11 +24,7 @@ describe("useRetainedActiveTerminal", () => {
   it("retains and marks an exited shell when deletion beats terminal_state", async () => {
     const { result, rerender } = renderHook(
       ({ terminals }) =>
-        useRetainedActiveTerminal(
-          "conv_abc",
-          terminals,
-          "terminal:terminal_bash_s1",
-        ),
+        useRetainedActiveTerminal("conv_abc", terminals, "terminal:terminal_bash_s1"),
       { initialProps: { terminals: [SHELL] as TerminalInfo[] } },
     );
 
@@ -39,8 +35,7 @@ describe("useRetainedActiveTerminal", () => {
     expect(result.current.isExitedTombstone).toBe(true);
     await waitFor(() =>
       expect(
-        useTerminalLifecycleStore.getState().byConversation.conv_abc
-          ?.terminalStateById[SHELL.id],
+        useTerminalLifecycleStore.getState().byConversation.conv_abc?.terminalStateById[SHELL.id],
       ).toBe("terminal_exited"),
     );
   });
@@ -55,11 +50,7 @@ describe("useRetainedActiveTerminal", () => {
 
     const { result, rerender } = renderHook(
       ({ terminals }) =>
-        useRetainedActiveTerminal(
-          "conv_abc",
-          terminals,
-          "terminal:terminal_bash_s1",
-        ),
+        useRetainedActiveTerminal("conv_abc", terminals, "terminal:terminal_bash_s1"),
       { initialProps: { terminals: [SHELL] as TerminalInfo[] } },
     );
 
@@ -68,8 +59,7 @@ describe("useRetainedActiveTerminal", () => {
     expect(result.current.activeTerminal).toBeNull();
     expect(result.current.isExitedTombstone).toBe(false);
     expect(
-      useTerminalLifecycleStore.getState().byConversation.conv_abc
-        ?.terminalStateById[SHELL.id],
+      useTerminalLifecycleStore.getState().byConversation.conv_abc?.terminalStateById[SHELL.id],
     ).toBeUndefined();
   });
 });

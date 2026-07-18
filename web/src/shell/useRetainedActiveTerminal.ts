@@ -38,15 +38,10 @@ export function useRetainedActiveTerminal(
   const retainedState = useTerminalLifecycleStore(
     selectTerminalState(conversationId, retainedMatches ? lastActiveTerminal.id : ""),
   );
-  const inferredExited =
-    liveTerminal === null && retainedMatches && runnerState === "online";
+  const inferredExited = liveTerminal === null && retainedMatches && runnerState === "online";
 
   useEffect(() => {
-    if (
-      !inferredExited ||
-      lastActiveTerminal === null ||
-      retainedState === "terminal_exited"
-    ) {
+    if (!inferredExited || lastActiveTerminal === null || retainedState === "terminal_exited") {
       return;
     }
     useTerminalLifecycleStore.getState().applyTerminalState({

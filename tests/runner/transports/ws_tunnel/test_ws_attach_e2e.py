@@ -153,9 +153,7 @@ async def test_valid_unadvertised_transport_is_rejected_before_channel_allocatio
     conn = _TunneledWSConn(
         registry=registry,
         session=session,
-        runner_path=(
-            "/v1/sessions/conv/resources/terminals/terminal_x/attach?transport=pty"
-        ),
+        runner_path=("/v1/sessions/conv/resources/terminals/terminal_x/attach?transport=pty"),
     )
 
     with pytest.raises(OmnigentError) as exc_info:

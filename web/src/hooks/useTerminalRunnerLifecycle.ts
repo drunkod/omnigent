@@ -1,9 +1,6 @@
 import { useEffect } from "react";
 import { useSessionRunnerOnline } from "@/hooks/RunnerHealthProvider";
-import {
-  type RunnerUiState,
-  useTerminalLifecycleStore,
-} from "@/store/terminalLifecycleStore";
+import { type RunnerUiState, useTerminalLifecycleStore } from "@/store/terminalLifecycleStore";
 
 const HEALTH_POLL_RUNNER_ID = "runner_health_poll";
 
@@ -21,9 +18,7 @@ const HEALTH_POLL_RUNNER_ID = "runner_health_poll";
  *
  * `undefined` means the poll has not resolved and never overrides SSE state.
  */
-export function useTerminalRunnerLifecycle(
-  conversationId: string | undefined,
-): RunnerUiState {
+export function useTerminalRunnerLifecycle(conversationId: string | undefined): RunnerUiState {
   const polledOnline = useSessionRunnerOnline(conversationId);
   const lifecycle = useTerminalLifecycleStore((state) =>
     conversationId ? state.byConversation[conversationId] : undefined,

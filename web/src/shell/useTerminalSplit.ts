@@ -2,15 +2,8 @@
 
 import { useEffect, useMemo } from "react";
 import { useResizableColumn } from "@/hooks/useResizableColumn";
-import {
-  inventoryTerminals,
-  terminalTabKey,
-  useTerminals,
-} from "@/hooks/useTerminals";
-import {
-  selectRunnerState,
-  useTerminalLifecycleStore,
-} from "@/store/terminalLifecycleStore";
+import { inventoryTerminals, terminalTabKey, useTerminals } from "@/hooks/useTerminals";
+import { selectRunnerState, useTerminalLifecycleStore } from "@/store/terminalLifecycleStore";
 import { useTerminalFirst } from "./TerminalFirstContext";
 import { usePersistentActiveKey } from "./usePersistentActiveKey";
 import { useRetainedActiveTerminal } from "./useRetainedActiveTerminal";
@@ -30,22 +23,15 @@ export function useTerminalSplit(conversationId: string) {
   // shell row here.
   const terminalFirstCtx = useTerminalFirst();
   const terminals = useMemo(
-    () =>
-      inventoryTerminals(
-        allTerminals,
-        terminalFirstCtx?.isTerminalFirst ?? false,
-      ),
+    () => inventoryTerminals(allTerminals, terminalFirstCtx?.isTerminalFirst ?? false),
     [allTerminals, terminalFirstCtx?.isTerminalFirst],
   );
-  const [activeKey, setActiveKey] = usePersistentActiveKey(
+  const [activeKey, setActiveKey] = usePersistentActiveKey(conversationId, "rail");
+  const runnerState = useTerminalLifecycleStore(selectRunnerState(conversationId));
+  const { getStatus, setTerminalConnectionState, markTerminalActive } = useTerminalStatuses(
+    terminals,
     conversationId,
-    "rail",
   );
-  const runnerState = useTerminalLifecycleStore(
-    selectRunnerState(conversationId),
-  );
-  const { getStatus, setTerminalConnectionState, markTerminalActive } =
-    useTerminalStatuses(terminals, conversationId);
 
   const { activeTerminal, isExitedTombstone } = useRetainedActiveTerminal(
     conversationId,
@@ -64,20 +50,10 @@ export function useTerminalSplit(conversationId: string) {
   // empty list is transient and must not erase the key needed after reload.
   useEffect(() => {
     if (activeKey === null || isLoading || runnerState !== "online") return;
-    if (
-      !terminals.some((t) => terminalTabKey(t) === activeKey) &&
-      !isExitedTombstone
-    ) {
+    if (!terminals.some((t) => terminalTabKey(t) === activeKey) && !isExitedTombstone) {
       setActiveKey(null);
     }
-  }, [
-    terminals,
-    activeKey,
-    isExitedTombstone,
-    isLoading,
-    runnerState,
-    setActiveKey,
-  ]);
+  }, [terminals, activeKey, isExitedTombstone, isLoading, runnerState, setActiveKey]);
 
   return {
     terminals,
