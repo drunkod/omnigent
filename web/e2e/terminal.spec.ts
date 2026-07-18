@@ -18,29 +18,45 @@ interface SessionSummary {
 
 interface SessionListResponse {
   data?: SessionSummary[];
+  first_id?: string | null;
+  last_id?: string | null;
   has_more?: boolean;
 }
 
 interface ProcessRow {
   pid: number;
+  parentPid: number;
   processGroupId: number;
   command: string;
 }
 
+interface OwnedRunner {
+  pid: number;
+  processGroupId: number;
+}
+
 interface PreparedAgent {
   directory: string;
+  dataDirectory: string;
   agentName: string;
 }
 
-let ownedProcessGroupId: number | null = null;
+let cliProcessGroupId: number | null = null;
+let daemonProcessGroupId: number | null = null;
+let ownedRunner: OwnedRunner | null = null;
 let createdSessionId: string | null = null;
 let generatedAgentDir: string | null = null;
+let generatedDataDir: string | null = null;
 let testFilePath: string | null = null;
 
 function sleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, milliseconds);
   });
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -58,8 +74,40 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 async function listSessions(): Promise<SessionSummary[]> {
-  const result = await fetchJson<SessionListResponse>(`${API_URL}/v1/sessions?limit=100`);
-  return Array.isArray(result.data) ? result.data : [];
+  const sessions: SessionSummary[] = [];
+  let after: string | null = null;
+
+  while (true) {
+    const params = new URLSearchParams({
+      limit: "1000",
+      order: "desc",
+    });
+
+    if (after !== null) {
+      params.set("after", after);
+    }
+
+    const page = await fetchJson<SessionListResponse>(
+      `${API_URL}/v1/sessions?${params.toString()}`,
+    );
+    const pageSessions = Array.isArray(page.data) ? page.data : [];
+
+    sessions.push(...pageSessions);
+
+    if (!page.has_more) {
+      return sessions;
+    }
+
+    const nextAfter = page.last_id ?? pageSessions.at(-1)?.id ?? null;
+
+    if (nextAfter === null || nextAfter === after) {
+      throw new Error(
+        "Session pagination reported has_more without a usable next cursor",
+      );
+    }
+
+    after = nextAfter;
+  }
 }
 
 async function waitForValue<T>(
@@ -85,60 +133,208 @@ async function waitForValue<T>(
 }
 
 function readProcessTable(): ProcessRow[] {
-  const output = execFileSync("ps", ["-axo", "pid=,pgid=,command="], { encoding: "utf8" });
+  const output = execFileSync(
+    "ps",
+    ["-axo", "pid=,ppid=,pgid=,command="],
+    { encoding: "utf8" },
+  );
   const rows: ProcessRow[] = [];
 
   for (const line of output.split("\n")) {
-    const match = line.match(/^\s*(\d+)\s+(\d+)\s+(.*)$/);
+    const match = line.match(
+      /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/,
+    );
     if (!match) continue;
 
     rows.push({
       pid: Number.parseInt(match[1], 10),
-      processGroupId: Number.parseInt(match[2], 10),
-      command: match[3],
+      parentPid: Number.parseInt(match[2], 10),
+      processGroupId: Number.parseInt(match[3], 10),
+      command: match[4],
     });
   }
 
   return rows;
 }
 
-function findOwnedRunnerPid(processGroupId: number): number | null {
-  const candidates = readProcessTable().filter(
+function readHostDaemonPid(dataDirectory: string): number | null {
+  const pidFilePath = path.join(dataDirectory, "host.pid");
+
+  if (!fs.existsSync(pidFilePath)) {
+    return null;
+  }
+
+  const firstLine = fs
+    .readFileSync(pidFilePath, "utf8")
+    .trim()
+    .split(/\r?\n/, 1)[0];
+
+  const pid = Number.parseInt(firstLine, 10);
+
+  if (!Number.isSafeInteger(pid) || pid <= 1) {
+    throw new Error(
+      `Invalid host daemon PID in ${pidFilePath}: ${firstLine}`,
+    );
+  }
+
+  return pid;
+}
+
+function isDescendantOf(
+  candidatePid: number,
+  ancestorPid: number,
+  rowsByPid: Map<number, ProcessRow>,
+): boolean {
+  let current = rowsByPid.get(candidatePid);
+  const visited = new Set<number>();
+
+  while (current !== undefined && !visited.has(current.pid)) {
+    if (current.parentPid === ancestorPid) {
+      return true;
+    }
+
+    visited.add(current.pid);
+    current = rowsByPid.get(current.parentPid);
+  }
+
+  return false;
+}
+
+function findOwnedRunner(daemonPid: number): OwnedRunner | null {
+  const rows = readProcessTable();
+  const rowsByPid = new Map(
+    rows.map((row): [number, ProcessRow] => [row.pid, row]),
+  );
+
+  const candidates = rows.filter(
     (row) =>
-      row.processGroupId === processGroupId && row.command.includes("omnigent.runner._entry"),
+      row.command.includes("omnigent.runner._entry") &&
+      isDescendantOf(row.pid, daemonPid, rowsByPid),
   );
 
   if (candidates.length > 1) {
     throw new Error(
-      "More than one runner exists in the test process group: " +
-        candidates.map((candidate) => `${candidate.pid}: ${candidate.command}`).join(", "),
+      `More than one runner belongs to daemon ${daemonPid}: ` +
+        candidates
+          .map(
+            (candidate) =>
+              `${candidate.pid}/${candidate.processGroupId}: ${candidate.command}`,
+          )
+          .join(", "),
     );
   }
 
-  return candidates[0]?.pid ?? null;
+  const candidate = candidates[0];
+
+  return candidate
+    ? {
+        pid: candidate.pid,
+        processGroupId: candidate.processGroupId,
+      }
+    : null;
 }
 
-function signalOwnedGroup(signal: NodeJS.Signals): void {
-  if (ownedProcessGroupId === null) return;
-
+function processGroupExists(processGroupId: number): boolean {
   try {
-    process.kill(-ownedProcessGroupId, signal);
+    process.kill(-processGroupId, 0);
+    return true;
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
-    if (code !== "ESRCH") throw error;
+
+    if (code === "ESRCH") {
+      return false;
+    }
+
+    throw error;
   }
 }
 
-async function terminateOwnedGroup(): Promise<void> {
-  if (ownedProcessGroupId === null) return;
+function signalProcessGroup(
+  processGroupId: number,
+  signal: NodeJS.Signals,
+): void {
+  try {
+    process.kill(-processGroupId, signal);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
 
-  // A runner left in SIGSTOP cannot process SIGTERM.
-  signalOwnedGroup("SIGCONT");
-  signalOwnedGroup("SIGTERM");
-  await sleep(1_000);
+    if (code !== "ESRCH") {
+      throw error;
+    }
+  }
+}
 
-  signalOwnedGroup("SIGKILL");
-  ownedProcessGroupId = null;
+async function waitForProcessGroupExit(
+  processGroupId: number,
+  timeoutMs: number,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    if (!processGroupExists(processGroupId)) {
+      return true;
+    }
+
+    await sleep(200);
+  }
+
+  return !processGroupExists(processGroupId);
+}
+
+async function terminateProcessGroup(
+  processGroupId: number,
+): Promise<void> {
+  // A runner paused with SIGSTOP cannot process SIGTERM.
+  signalProcessGroup(processGroupId, "SIGCONT");
+  signalProcessGroup(processGroupId, "SIGTERM");
+
+  if (await waitForProcessGroupExit(processGroupId, 10_000)) {
+    return;
+  }
+
+  signalProcessGroup(processGroupId, "SIGKILL");
+
+  if (!(await waitForProcessGroupExit(processGroupId, 2_000))) {
+    throw new Error(
+      `Process group ${processGroupId} remained alive after SIGKILL`,
+    );
+  }
+}
+
+async function terminateOwnedProcesses(): Promise<void> {
+  const processGroups = new Set<number>();
+
+  // Stop the actual runner first, then the CLI and its isolated daemon.
+  if (ownedRunner !== null) {
+    processGroups.add(ownedRunner.processGroupId);
+  }
+  if (cliProcessGroupId !== null) {
+    processGroups.add(cliProcessGroupId);
+  }
+  if (daemonProcessGroupId !== null) {
+    processGroups.add(daemonProcessGroupId);
+  }
+
+  const errors: unknown[] = [];
+
+  for (const processGroupId of processGroups) {
+    try {
+      await terminateProcessGroup(processGroupId);
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+
+  ownedRunner = null;
+  cliProcessGroupId = null;
+  daemonProcessGroupId = null;
+
+  if (errors.length > 0) {
+    throw new AggregateError(
+      errors,
+      "Failed to terminate test-owned process groups",
+    );
+  }
 }
 
 async function deleteOwnedSession(): Promise<void> {
@@ -180,8 +376,19 @@ function removeGeneratedFiles(): void {
   }
 
   if (generatedAgentDir !== null) {
-    fs.rmSync(generatedAgentDir, { recursive: true, force: true });
+    fs.rmSync(generatedAgentDir, {
+      recursive: true,
+      force: true,
+    });
     generatedAgentDir = null;
+  }
+
+  if (generatedDataDir !== null) {
+    fs.rmSync(generatedDataDir, {
+      recursive: true,
+      force: true,
+    });
+    generatedDataDir = null;
   }
 }
 
@@ -196,10 +403,15 @@ function prepareAgent(): PreparedAgent {
   );
   const baseConfig = fs.readFileSync(baseConfigPath, "utf8");
   const agentName = `terminal-e2e-${randomUUID()}`;
-  const namedConfig = baseConfig.replace(/^name:\s*.*$/m, `name: ${agentName}`);
+  const namedConfig = baseConfig.replace(
+    /^name:\s*.*$/m,
+    `name: ${agentName}`,
+  );
 
   if (namedConfig === baseConfig) {
-    throw new Error(`Agent config has no replaceable name field: ${baseConfigPath}`);
+    throw new Error(
+      `Agent config has no replaceable name field: ${baseConfigPath}`,
+    );
   }
 
   const terminalsBlock = `
@@ -214,16 +426,27 @@ terminals:
         type: none
 `;
 
-  generatedAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "omnigent-terminal-e2e-agent-"));
+  generatedAgentDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "omnigent-terminal-e2e-agent-"),
+  );
+  generatedDataDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "omnigent-terminal-e2e-data-"),
+  );
+
   fs.writeFileSync(
     path.join(generatedAgentDir, "config.yaml"),
     `${namedConfig}\n${terminalsBlock}`,
     "utf8",
   );
-  return { directory: generatedAgentDir, agentName };
+
+  return {
+    directory: generatedAgentDir,
+    dataDirectory: generatedDataDir,
+    agentName,
+  };
 }
 
-function startCli(agentDirectory: string): number {
+function startCli(preparedAgent: PreparedAgent): void {
   const child = spawn(
     "nix",
     [
@@ -234,26 +457,39 @@ function startCli(agentDirectory: string): number {
       "--frozen",
       "omnigent",
       "run",
-      agentDirectory,
+      preparedAgent.directory,
       "--server",
       API_URL,
     ],
     {
       cwd: REPO_ROOT,
-      env: { ...process.env, TERM: "xterm-256color" },
-      // Create one process group containing only this test's CLI and descendants.
+      env: {
+        ...process.env,
+        TERM: "xterm-256color",
+        // Gives this test its own daemon pidfile, runner identity, logs,
+        // registration state, and other per-user Omnigent state.
+        OMNIGENT_DATA_DIR: preparedAgent.dataDirectory,
+      },
       detached: true,
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
 
-  if (child.pid === undefined) throw new Error("Failed to obtain the spawned CLI PID");
+  if (child.pid === undefined) {
+    throw new Error("Failed to obtain the spawned CLI PID");
+  }
 
-  ownedProcessGroupId = child.pid;
-  child.stdout?.on("data", (data: Buffer) => console.log(`[CLI] ${data.toString()}`));
-  child.stderr?.on("data", (data: Buffer) => console.error(`[CLI STDERR] ${data.toString()}`));
-  child.on("exit", (code, signal) => console.log(`CLI exited: code=${code}, signal=${signal}`));
-  return child.pid;
+  cliProcessGroupId = child.pid;
+
+  child.stdout?.on("data", (data: Buffer) => {
+    console.log(`[CLI] ${data.toString()}`);
+  });
+  child.stderr?.on("data", (data: Buffer) => {
+    console.error(`[CLI STDERR] ${data.toString()}`);
+  });
+  child.on("exit", (code, signal) => {
+    console.log(`CLI exited: code=${code}, signal=${signal}`);
+  });
 }
 
 async function waitForCreatedSession(
@@ -289,16 +525,9 @@ test.skip(
 test.afterEach(async () => {
   const cleanupErrors: unknown[] = [];
 
+  // Stop every process before deleting durable session and daemon state.
   try {
-    signalOwnedGroup("SIGCONT");
-  } catch (error) {
-    cleanupErrors.push(error);
-  }
-
-  // Stop the owned runner before deleting its durable session, preventing late
-  // callbacks from racing with deletion.
-  try {
-    await terminateOwnedGroup();
+    await terminateOwnedProcesses();
   } catch (error) {
     cleanupErrors.push(error);
   }
@@ -316,31 +545,68 @@ test.afterEach(async () => {
   }
 
   if (cleanupErrors.length > 0) {
-    throw new AggregateError(cleanupErrors, "Terminal E2E cleanup failed");
+    throw new AggregateError(
+      cleanupErrors,
+      "Terminal E2E cleanup failed",
+    );
   }
 });
 
-test("same-process terminal reconnect and 404 cleanup", async ({ page }) => {
-  // Fail immediately with a useful error when the explicit backend prerequisite is absent.
-  await fetchJson<SessionListResponse>(`${API_URL}/v1/sessions?limit=1`);
+test("same-process terminal reconnect and 404 cleanup", async ({
+  page,
+}) => {
+  test.setTimeout(600_000);
 
-  const existingSessionIds = new Set((await listSessions()).map((session) => session.id));
+  // Fail immediately when the explicit backend prerequisite is absent.
+  await fetchJson<SessionListResponse>(
+    `${API_URL}/v1/sessions?limit=1`,
+  );
+
+  const existingSessionIds = new Set(
+    (await listSessions()).map((session) => session.id),
+  );
   const preparedAgent = prepareAgent();
-  testFilePath = path.join(os.tmpdir(), `omnigent-same-process-${process.pid}-${Date.now()}.txt`);
 
-  startCli(preparedAgent.directory);
-  const createdSession = await waitForCreatedSession(existingSessionIds, preparedAgent.agentName);
+  testFilePath = path.join(
+    os.tmpdir(),
+    `omnigent-same-process-${process.pid}-${Date.now()}.txt`,
+  );
+
+  startCli(preparedAgent);
+
+  const daemonPid = await waitForValue(
+    () => readHostDaemonPid(preparedAgent.dataDirectory),
+    {
+      timeoutMs: 60_000,
+      description: "the isolated host daemon PID file",
+    },
+  );
+
+  const daemonRow = await waitForValue(
+    () =>
+      readProcessTable().find((row) => row.pid === daemonPid) ??
+      null,
+    {
+      timeoutMs: 30_000,
+      description: `host daemon process ${daemonPid}`,
+    },
+  );
+  daemonProcessGroupId = daemonRow.processGroupId;
+
+  const createdSession = await waitForCreatedSession(
+    existingSessionIds,
+    preparedAgent.agentName,
+  );
   createdSessionId = createdSession.id;
 
-  if (ownedProcessGroupId === null) {
-    throw new Error("The test process group was not initialized");
-  }
-
-  const processGroupId = ownedProcessGroupId;
-  const ownedRunnerPid = await waitForValue(() => findOwnedRunnerPid(processGroupId), {
-    timeoutMs: 60_000,
-    description: "the runner in the test-owned process group",
-  });
+  const runner = await waitForValue(
+    () => findOwnedRunner(daemonPid),
+    {
+      timeoutMs: 60_000,
+      description: `runner owned by host daemon ${daemonPid}`,
+    },
+  );
+  ownedRunner = runner;
 
   await page.goto(`/c/${encodeURIComponent(createdSessionId)}`);
   await page.keyboard.press("Escape");
@@ -370,7 +636,7 @@ test("same-process terminal reconnect and 404 cleanup", async ({ page }) => {
   await page.keyboard.type("echo 'same-process test starting'");
   await page.keyboard.press("Enter");
 
-  process.kill(ownedRunnerPid, "SIGSTOP");
+  signalProcessGroup(ownedRunner.processGroupId, "SIGSTOP");
 
   const offlineOverlay = page.getByTestId("terminal-runner-offline").first();
   await expect(offlineOverlay).toBeVisible({ timeout: 140_000 });
@@ -384,14 +650,19 @@ test("same-process terminal reconnect and 404 cleanup", async ({ page }) => {
     .poll(() => page.evaluate((key) => sessionStorage.getItem(key), snapshotKey))
     .not.toBeNull();
 
-  process.kill(ownedRunnerPid, "SIGCONT");
+  signalProcessGroup(ownedRunner.processGroupId, "SIGCONT");
   await expect(page.getByTestId("terminal-runner-offline").first()).not.toBeVisible({
     timeout: 45_000,
   });
 
   const resumedTerminal = page.locator("div.xterm").first();
   await resumedTerminal.click();
-  await page.keyboard.type(`printf 'same-process-ok\\n' > ${testFilePath}`);
+  if (testFilePath === null) {
+    throw new Error("The terminal test output path was not initialized");
+  }
+  await page.keyboard.type(
+    `printf '%s\\n' 'same-process-ok' > ${shellQuote(testFilePath)}`,
+  );
   await page.keyboard.press("Enter");
 
   await expect
