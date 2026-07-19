@@ -106,21 +106,21 @@ def _tmux_temp_root(
         )
     )
 
-    _validate_tmux_socket_path(root)
-
-    monkeypatch.setenv("TMPDIR", str(root))
-    monkeypatch.setenv("TEMP", str(root))
-    monkeypatch.setenv("TMP", str(root))
-    monkeypatch.setattr(tempfile, "tempdir", str(root))
-
-    # This is the path actually consulted by create_terminal_instance().
-    monkeypatch.setattr(
-        terminal_mod,
-        "_terminals_tmp_root",
-        lambda: root,
-    )
-
     try:
+        _validate_tmux_socket_path(root)
+
+        monkeypatch.setenv("TMPDIR", str(root))
+        monkeypatch.setenv("TEMP", str(root))
+        monkeypatch.setenv("TMP", str(root))
+        monkeypatch.setattr(tempfile, "tempdir", str(root))
+
+        # This is the path actually consulted by create_terminal_instance().
+        monkeypatch.setattr(
+            terminal_mod,
+            "_terminals_tmp_root",
+            lambda: root,
+        )
+
         yield root
     finally:
         shutil.rmtree(root, ignore_errors=True)
