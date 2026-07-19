@@ -48,6 +48,12 @@ _MACOS_UNIX_SOCKET_PATH_MAX_BYTES = 104
 # "omnigent-terminal-<random>/tmux.sock" beneath this directory.
 _TMUX_TEST_TEMP_PREFIX = "ogt-"
 
+# CPython's tempfile candidate names use eight characters in the Python
+# versions supported by this repository. The real-path regression below still
+# creates a directory through tempfile.mkdtemp, so a future change cannot pass
+# silently merely because this validation model becomes stale.
+_TEMPFILE_RANDOM_SUFFIX = "12345678"
+
 
 def _short_writable_temp_base() -> Path:
     """Return a short writable base for tmux Unix-domain sockets."""
@@ -71,24 +77,15 @@ def _short_writable_temp_base() -> Path:
 
 def _validate_tmux_socket_path(root: Path) -> None:
     """Verify a production-shaped tmux socket fits the macOS limit."""
-    private_dir = Path(
-        tempfile.mkdtemp(
-            prefix=terminal_mod._TERMINAL_DIR_PREFIX,
-            dir=str(root),
+    private_dir_name = f"{terminal_mod._TERMINAL_DIR_PREFIX}{_TEMPFILE_RANDOM_SUFFIX}"
+    socket_path = root.resolve() / private_dir_name / "tmux.sock"
+    encoded_path = os.fsencode(socket_path)
+
+    if len(encoded_path) >= _MACOS_UNIX_SOCKET_PATH_MAX_BYTES:
+        raise RuntimeError(
+            "terminal E2E tmux socket path exceeds the macOS limit: "
+            f"{len(encoded_path)} bytes: {socket_path}"
         )
-    )
-
-    try:
-        socket_path = private_dir / "tmux.sock"
-        encoded_path = os.fsencode(socket_path)
-
-        if len(encoded_path) >= _MACOS_UNIX_SOCKET_PATH_MAX_BYTES:
-            raise RuntimeError(
-                "terminal E2E tmux socket path exceeds the macOS limit: "
-                f"{len(encoded_path)} bytes: {socket_path}"
-            )
-    finally:
-        shutil.rmtree(private_dir, ignore_errors=True)
 
 
 @pytest.fixture
