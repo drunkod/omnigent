@@ -25,7 +25,7 @@ def test_production_tmux_socket_path_fits_macos_limit(
     )
 
     try:
-        socket_path = private_dir / "tmux.sock"
+        socket_path = (private_dir / "tmux.sock").resolve()
         encoded_path = os.fsencode(socket_path)
 
         assert terminal_mod._terminals_tmp_root() == _tmux_temp_root
