@@ -8,6 +8,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import i18n from "@/i18n";
 import type { Conversation } from "@/hooks/useConversations";
 
 const mocks = vi.hoisted(() => ({
@@ -64,16 +65,18 @@ vi.mock("@/pages/PoliciesPage", () => ({
 // a native <select>; lets the color-theme dropdown be exercised via change.
 vi.mock("@/components/ui/select", () => ({
   Select: ({
+    name,
     value,
     onValueChange,
     children,
   }: {
+    name?: string;
     value: string;
     onValueChange: (v: string) => void;
     children: ReactNode;
   }) => (
     <select
-      data-testid="color-theme-select"
+      data-testid={name === "ui-language" ? "language-select" : "color-theme-select"}
       value={value}
       onChange={(e) => onValueChange(e.target.value)}
     >
@@ -114,6 +117,7 @@ function renderPage(path = "/settings") {
 }
 
 beforeEach(() => {
+  void i18n.changeLanguage("en");
   mocks.setTheme.mockReset();
   mocks.archiveMutate.mockReset();
   mocks.deleteMutate.mockReset();
@@ -142,6 +146,29 @@ describe("SettingsPage", () => {
     expect(screen.getByTestId("theme-system")).toHaveAttribute("aria-checked", "true");
     fireEvent.click(screen.getByTestId("theme-dark"));
     expect(mocks.setTheme).toHaveBeenCalledWith("dark");
+  });
+
+  it("switches the Settings page to Russian and persists the locale", () => {
+    renderPage("/settings/appearance");
+
+    const language = screen.getByTestId("language-select") as HTMLSelectElement;
+    expect(language.value).toBe("en");
+
+    fireEvent.change(language, { target: { value: "ru" } });
+
+    expect(screen.getByRole("heading", { name: "Внешний вид" })).toBeInTheDocument();
+    expect(screen.getByText("Тема терминала")).toBeInTheDocument();
+    expect(localStorage.getItem("omnigent:ui-locale")).toBe(JSON.stringify("ru"));
+  });
+
+  it("restores a persisted Russian locale when Settings mounts", () => {
+    localStorage.setItem("omnigent:ui-locale", JSON.stringify("ru"));
+    void i18n.changeLanguage("ru");
+
+    renderPage("/settings/appearance");
+
+    expect(screen.getByRole("heading", { name: "Внешний вид" })).toBeInTheDocument();
+    expect(screen.getByTestId("language-select")).toHaveValue("ru");
   });
 
   it("renders the Terminal theme radiogroup with auto selected by default", () => {

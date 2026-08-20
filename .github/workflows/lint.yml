@@ -125,3 +125,16 @@ jobs:
       - name: Type-check web
         working-directory: web
         run: npm run type-check
+
+      # Frontend behavior changes must include colocated Vitest coverage. Run the
+      # complete suite here so new Settings/i18n tests and future UI unit tests
+      # cannot be added without being exercised by a required CI check.
+      - name: Run web unit tests
+        working-directory: web
+        run: npm test
+
+      # e2e-ui.yml builds the standalone SPA. The embed has its own Vite config
+      # and must remain self-contained, so validate that build separately here.
+      - name: Build embedded web UI
+        working-directory: web
+        run: npm run build:embed

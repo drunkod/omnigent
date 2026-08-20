@@ -5,11 +5,12 @@
 // on a plain tap (no onNavClick) so mobile lands back on the conversation list
 // instead of the homepage. Section links still close it.
 
-import { cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import i18n from "@/i18n";
 
 const mocks = vi.hoisted(() => ({
   accountsEnabled: false,
@@ -53,6 +54,7 @@ function renderBody(opts: { onNavClick?: () => void; onClose?: () => void } = {}
 }
 
 beforeEach(() => {
+  void i18n.changeLanguage("en");
   mocks.accountsEnabled = false;
   mocks.loginUrl = null;
   mocks.isAdmin = false;
@@ -159,6 +161,18 @@ describe("SettingsSidebarBody", () => {
       "href",
       "/c/conv_123?file=foo.ts",
     );
+  });
+
+  it("rerenders navigation labels in Russian when the language changes", () => {
+    renderBody();
+
+    act(() => {
+      void i18n.changeLanguage("ru");
+    });
+
+    expect(screen.getByTestId("settings-nav-appearance")).toHaveTextContent("Внешний вид");
+    expect(screen.getByRole("link", { name: "Назад в Omnigent" })).toBeInTheDocument();
+    expect(screen.getByText("Основные")).toBeInTheDocument();
   });
 
   it("DOES close the sidebar when a section is tapped (drills into content)", () => {
