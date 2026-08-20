@@ -2,7 +2,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
+import { I18nextProvider } from "react-i18next";
 import App from "./App.tsx";
+import i18n from "./i18n";
 import { PWAUpdateBanner } from "./components/pwa/PWAUpdateBanner";
 import { ThemeProvider } from "./components/theme/ThemeProvider";
 import { TooltipProvider } from "./components/ui/tooltip";
@@ -97,20 +99,22 @@ void _bootProbe.then((info) => {
       <CapabilitiesProvider info={info}>
         <QueryClientProvider client={queryClient}>
           <ThemeProvider>
-            <PWAUpdateBanner />
-            <TooltipProvider>
-              <ImageLightboxProvider>
-                <BrowserRouter>
-                  <SessionUpdatesProvider>
-                    <RunnerHealthProvider>
-                      <QueueFlushProvider>
-                        <App />
-                      </QueueFlushProvider>
-                    </RunnerHealthProvider>
-                  </SessionUpdatesProvider>
-                </BrowserRouter>
-              </ImageLightboxProvider>
-            </TooltipProvider>
+            <I18nextProvider i18n={i18n}>
+              <PWAUpdateBanner />
+              <TooltipProvider>
+                <ImageLightboxProvider>
+                  <BrowserRouter>
+                    <SessionUpdatesProvider>
+                      <RunnerHealthProvider>
+                        <QueueFlushProvider>
+                          <App />
+                        </QueueFlushProvider>
+                      </RunnerHealthProvider>
+                    </SessionUpdatesProvider>
+                  </BrowserRouter>
+                </ImageLightboxProvider>
+              </TooltipProvider>
+            </I18nextProvider>
           </ThemeProvider>
         </QueryClientProvider>
       </CapabilitiesProvider>

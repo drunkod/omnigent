@@ -1,0 +1,128 @@
+{
+  "settings": {
+    "language": { "title": "Language", "helper": "Choose the language used in Settings." },
+    "nav": {
+      "back": "Back to Omnigent",
+      "closeSidebar": "Close sidebar",
+      "collapseSidebar": "Collapse sidebar",
+      "groups": {
+        "desktop": "Desktop",
+        "general": "General",
+        "infrastructure": "Infrastructure",
+        "admin": "Admin",
+        "archived": "Archived"
+      },
+      "items": {
+        "appearance": "Appearance",
+        "git": "Git",
+        "shortcuts": "Keyboard shortcuts",
+        "account": "Account",
+        "members": "Members",
+        "policies": "Policies",
+        "archived": "Archived sessions",
+        "cli": "Local CLI",
+        "runners": "Runners"
+      }
+    },
+    "runners": {
+      "title": "Runners",
+      "description": "Inspect paired machines and their reported capabilities."
+    },
+    "appearance": {
+      "title": "Appearance",
+      "description": "Choose how Omnigent looks on this device.",
+      "hostThemeTitle": "Theme",
+      "hostThemeHelper": "Theme is controlled by the host application."
+    },
+    "mode": {
+      "title": "Mode",
+      "helper": "Follow your system, or force light or dark.",
+      "options": { "system": "System", "light": "Light", "dark": "Dark" }
+    },
+    "terminalTheme": {
+      "title": "Terminal theme",
+      "helper": "Use a light or dark terminal, or match the app.",
+      "options": { "auto": "Match app", "light": "Light", "dark": "Dark" }
+    },
+    "colorTheme": { "title": "Color theme", "helper": "Applies on top of your chosen mode." },
+    "fontSize": {
+      "title": "Font size",
+      "helper": "Scale the interface text and spacing on this device.",
+      "decrease": "Decrease font size",
+      "input": "Font size in pixels",
+      "increase": "Increase font size"
+    },
+    "fontFamily": {
+      "title": "Font family",
+      "helper": "Use any font installed on this device. Leave blank for the system default.",
+      "input": "UI font family",
+      "placeholder": "System default",
+      "reset": "Reset"
+    },
+    "codeFontSize": {
+      "title": "Code font size",
+      "helper": "Size of code in the editor and terminal.",
+      "decrease": "Decrease code font size",
+      "input": "Code font size in pixels",
+      "increase": "Increase code font size"
+    },
+    "codeFontFamily": {
+      "title": "Code font family",
+      "helper": "Font for the code editor and terminal. Leave blank for the default.",
+      "input": "Code font family",
+      "placeholder": "Editor default",
+      "reset": "Reset"
+    },
+    "git": {
+      "title": "Git",
+      "description": "Configure how Omnigent works with Git.",
+      "baseBranchTitle": "Default base branch",
+      "baseBranchHelper": "Auto-filled as the base when you name a new worktree branch. Leave blank to not auto-fill.",
+      "baseBranchPlaceholder": "e.g. main"
+    },
+    "shortcuts": {
+      "title": "Keyboard shortcuts",
+      "description": "Speed up common actions with the keyboard."
+    },
+    "cli": {
+      "title": "Local CLI",
+      "checking": "Checking…",
+      "description": "The Omnigent command-line tool this app uses to run a local server and connect this machine as a runner.",
+      "unavailable": "CLI status is unavailable.",
+      "found": "Found",
+      "foundVersion": "Found · {{version}}",
+      "notFound": "Not found",
+      "pathCustom": "Path (custom)",
+      "pathAuto": "Path (auto-detected)",
+      "missing": "The Omnigent CLI wasn't found. Install it, then set its path from the connect screen:",
+      "security": "For security, a custom path can only be set from the connect screen — this prevents a connected server from pointing the app at a different binary. Open it from the Server menu (Change Server…) and use the settings gear.",
+      "reset": "Reset to auto-detected"
+    },
+    "account": {
+      "title": "Account",
+      "admin": "admin",
+      "changePassword": "Change password",
+      "signOut": "Sign out",
+      "passwordMismatch": "New passwords don't match.",
+      "passwordChanged": "Your password has been changed.",
+      "passwordInstructions": "Enter your current password and choose a new one.",
+      "currentPassword": "Current password",
+      "newPassword": "New password",
+      "confirmPassword": "Confirm new password",
+      "changing": "Changing…",
+      "done": "Done"
+    },
+    "archived": {
+      "title": "Archived sessions",
+      "description": "Sessions you've archived. Restore one to the sidebar, or delete it for good.",
+      "loading": "Loading…",
+      "empty": "No archived sessions.",
+      "deleteSession": "Delete session",
+      "unarchive": "Unarchive",
+      "deleteTitle": "Delete session?",
+      "deleteHistory": "and all of its history will be removed. This cannot be undone.",
+      "cancel": "Cancel",
+      "delete": "Delete"
+    }
+  }
+}
