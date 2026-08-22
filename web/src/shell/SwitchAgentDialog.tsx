@@ -134,7 +134,13 @@ export function SwitchAgentDialog({
       await queryClient.invalidateQueries({ queryKey: ["conversations"] });
       handleOpenChange(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't switch the agent. Try again.");
+      setError(
+        e instanceof Error
+          ? e.message
+          : t("misc.residual.switchAgentDialog.switchErrorFallback", {
+              defaultValue: "Couldn't switch the agent. Try again.",
+            }),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -145,10 +151,10 @@ export function SwitchAgentDialog({
       <DialogContent data-testid="switch-agent-dialog" className="flex flex-col gap-4 sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {t("dialogs.switchAgent.title", { defaultValue: "Switch agent" })}
+            {t("misc.residual.switchAgentDialog.title", { defaultValue: "Switch agent" })}
           </DialogTitle>
           <DialogDescription>
-            {t("dialogs.switchAgent.description", {
+            {t("misc.residual.switchAgentDialog.description", {
               defaultValue:
                 "Continue this session on a different agent. The conversation, comments, and files stay; the next message runs on the new agent.",
             })}
@@ -160,7 +166,7 @@ export function SwitchAgentDialog({
             htmlFor="switch-agent-select"
             className="text-xs font-medium text-muted-foreground"
           >
-            {t("dialogs.switchAgent.agent", { defaultValue: "Agent" })}
+            {t("misc.residual.switchAgentDialog.agent", { defaultValue: "Agent" })}
           </label>
           <Select value={agentChoice || undefined} onValueChange={setAgentChoice}>
             <SelectTrigger
@@ -173,10 +179,16 @@ export function SwitchAgentDialog({
                   currentDisplay ? (
                     <span data-testid="switch-agent-current">
                       <span className="text-foreground">{currentDisplay}</span>{" "}
-                      <span className="text-muted-foreground">(current agent)</span>
+                      <span className="text-muted-foreground">
+                        {t("misc.residual.switchAgentDialog.currentAgent", {
+                          defaultValue: "(current agent)",
+                        })}
+                      </span>
                     </span>
                   ) : (
-                    t("dialogs.switchAgent.chooseAgent", { defaultValue: "Choose an agent" })
+                    t("misc.residual.switchAgentDialog.chooseAgent", {
+                      defaultValue: "Choose an agent",
+                    })
                   )
                 }
               />
@@ -198,7 +210,7 @@ export function SwitchAgentDialog({
 
         {resetsModelSettings && (
           <p data-testid="switch-agent-reset-warning" className="text-xs text-muted-foreground">
-            {t("dialogs.switchAgent.resetWarning", {
+            {t("misc.residual.switchAgentDialog.resetWarning", {
               defaultValue:
                 "Model & reasoning effort will reset to {{agent}}'s defaults (different provider).",
               agent: chosen?.display_name ?? "",
@@ -214,7 +226,7 @@ export function SwitchAgentDialog({
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => handleOpenChange(false)} disabled={submitting}>
-            {t("common.cancel")}
+            {t("misc.residual.switchAgentDialog.cancel", { defaultValue: "Cancel" })}
           </Button>
           <Button
             data-testid="switch-agent-submit"
@@ -222,8 +234,8 @@ export function SwitchAgentDialog({
             disabled={submitting || agentChoice === NONE_CHOSEN}
           >
             {submitting
-              ? t("dialogs.switchAgent.switching", { defaultValue: "Switching…" })
-              : t("dialogs.switchAgent.switch", { defaultValue: "Switch" })}
+              ? t("misc.residual.switchAgentDialog.switching", { defaultValue: "Switching…" })
+              : t("misc.residual.switchAgentDialog.switch", { defaultValue: "Switch" })}
           </Button>
         </DialogFooter>
       </DialogContent>

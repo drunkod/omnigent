@@ -14,6 +14,7 @@
 // own DOM node, making native DnD unreliable.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
 // Type-only import: activates @tiptap/extension-table's TypeScript module
@@ -296,6 +297,7 @@ export function TableHandles({
   editor: Editor;
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
 }) {
+  const { t } = useTranslation();
   const [rowHandle, setRowHandle] = useState<HandlePos | null>(null);
   const [colHandle, setColHandle] = useState<HandlePos | null>(null);
   const [rowMenu, setRowMenu] = useState<{
@@ -565,8 +567,7 @@ export function TableHandles({
           // Scope hit-testing to the source table's rows only — prevents the
           // ghost/indicator from jumping to rows in other tables.
           const sourceRow = dom.querySelectorAll("tr")[tableRowIndex] as
-            | HTMLTableRowElement
-            | undefined;
+            HTMLTableRowElement | undefined;
           const sourceTableEl = sourceRow?.closest("table");
           if (!sourceTableEl) return;
           const tableRows = Array.from(sourceTableEl.querySelectorAll("tr"));
@@ -602,8 +603,7 @@ export function TableHandles({
         } else {
           // Look up target column by X band within the source table only.
           const sourceRow = dom.querySelectorAll("tr")[tableRowIndex] as
-            | HTMLTableRowElement
-            | undefined;
+            HTMLTableRowElement | undefined;
           const tableEl = sourceRow?.closest("table");
           const firstRow = tableEl?.querySelector("tr") as HTMLTableRowElement | null;
           if (!firstRow) return;
@@ -687,7 +687,9 @@ export function TableHandles({
   // Build row menu items (Insert / Delete only — drag handles Move)
   const buildRowItems = (h: HandlePos): MenuItemDef[] => [
     {
-      label: "Insert row above",
+      label: t("misc.residual.tableBubbleMenu.insertRowAbove", {
+        defaultValue: "Insert row above",
+      }),
       icon: <span className="text-[10px] font-bold">↑</span>,
       onClick: () => {
         setCursorToCell(editor, h.rowIndex, 0);
@@ -695,7 +697,9 @@ export function TableHandles({
       },
     },
     {
-      label: "Insert row below",
+      label: t("misc.residual.tableBubbleMenu.insertRowBelow", {
+        defaultValue: "Insert row below",
+      }),
       icon: <span className="text-[10px] font-bold">↓</span>,
       onClick: () => {
         setCursorToCell(editor, h.rowIndex, 0);
@@ -704,7 +708,7 @@ export function TableHandles({
     },
     { separator: true },
     {
-      label: "Delete row",
+      label: t("misc.residual.tableBubbleMenu.deleteRow", { defaultValue: "Delete row" }),
       icon: <Trash2 className="size-3.5" />,
       destructive: true,
       onClick: () => {
@@ -717,7 +721,9 @@ export function TableHandles({
   // Build column menu items (Insert / Delete only — drag handles Move)
   const buildColItems = (h: HandlePos): MenuItemDef[] => [
     {
-      label: "Insert column before",
+      label: t("misc.residual.tableBubbleMenu.insertColumnBefore", {
+        defaultValue: "Insert column before",
+      }),
       icon: <span className="text-[10px] font-bold">←</span>,
       onClick: () => {
         setCursorToCell(editor, h.rowIndex, h.colIndex);
@@ -725,7 +731,9 @@ export function TableHandles({
       },
     },
     {
-      label: "Insert column after",
+      label: t("misc.residual.tableBubbleMenu.insertColumnAfter", {
+        defaultValue: "Insert column after",
+      }),
       icon: <span className="text-[10px] font-bold">→</span>,
       onClick: () => {
         setCursorToCell(editor, h.rowIndex, h.colIndex);
@@ -734,7 +742,9 @@ export function TableHandles({
     },
     { separator: true },
     {
-      label: "Delete column",
+      label: t("misc.residual.tableBubbleMenu.deleteColumn", {
+        defaultValue: "Delete column",
+      }),
       icon: <Trash2 className="size-3.5" />,
       destructive: true,
       onClick: () => {
@@ -802,7 +812,9 @@ export function TableHandles({
           <div
             role="button"
             tabIndex={0}
-            aria-label="Row options"
+            aria-label={t("misc.residual.tableBubbleMenu.rowOptions", {
+              defaultValue: "Row options",
+            })}
             className={cn(
               "fixed z-50 flex cursor-grab items-center justify-center rounded-md",
               "border border-primary/30 bg-primary/10 text-primary shadow-sm transition-colors",
@@ -881,7 +893,9 @@ export function TableHandles({
           <div
             role="button"
             tabIndex={0}
-            aria-label="Column options"
+            aria-label={t("misc.residual.tableBubbleMenu.columnOptions", {
+              defaultValue: "Column options",
+            })}
             className={cn(
               "fixed z-50 flex cursor-grab items-center justify-center rounded-md",
               "border border-primary/30 bg-primary/10 text-primary shadow-sm transition-colors",
@@ -974,7 +988,9 @@ export function TableHandles({
         <HandleMenu
           items={[
             {
-              label: "Delete table",
+              label: t("misc.residual.tableBubbleMenu.deleteTable", {
+                defaultValue: "Delete table",
+              }),
               icon: <Trash2 className="size-3.5" />,
               destructive: true,
               onClick: () => {

@@ -16,6 +16,7 @@ import {
   useState,
 } from "react";
 import { CheckIcon, LinkIcon, Trash2Icon, UserPlusIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -54,6 +55,7 @@ interface PermissionsModalProps {
 }
 
 export function PermissionsModal({ sessionId, open, onOpenChange }: PermissionsModalProps) {
+  const { t } = useTranslation();
   const { data: permissions, isLoading } = usePermissions(open ? sessionId : null);
   const grant = useGrantPermission(sessionId);
   const revoke = useRevokePermission(sessionId);
@@ -110,17 +112,27 @@ export function PermissionsModal({ sessionId, open, onOpenChange }: PermissionsM
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">Share this session</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            {t("misc.residual.permissionsModal.title", { defaultValue: "Share this session" })}
+          </DialogTitle>
           <DialogDescription>
-            Invite others to view or collaborate on this session.
+            {t("misc.residual.permissionsModal.description", {
+              defaultValue: "Invite others to view or collaborate on this session.",
+            })}
           </DialogDescription>
         </DialogHeader>
 
         {/* Public toggle */}
         <div className="flex items-center justify-between rounded-lg border px-3 py-2">
           <div>
-            <p className="text-sm font-medium">Public access</p>
-            <p className="text-xs text-muted-foreground">Anyone can view this session</p>
+            <p className="text-sm font-medium">
+              {t("misc.residual.permissionsModal.publicAccess", { defaultValue: "Public access" })}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {t("misc.residual.permissionsModal.publicDescription", {
+                defaultValue: "Anyone can view this session",
+              })}
+            </p>
           </div>
           <Switch
             checked={isPublic}
@@ -134,18 +146,22 @@ export function PermissionsModal({ sessionId, open, onOpenChange }: PermissionsM
             track's min-content and pushes every row past the dialog edge. */}
         <div className="min-w-0" data-testid="share-grants">
           {isLoading ? (
-            <p className="text-sm text-muted-foreground py-2">Loading…</p>
+            <p className="text-sm text-muted-foreground py-2">
+              {t("misc.residual.permissionsModal.loading", { defaultValue: "Loading…" })}
+            </p>
           ) : userGrants.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-2">No grants yet.</p>
+            <p className="text-sm text-muted-foreground py-2">
+              {t("misc.residual.permissionsModal.noGrants", { defaultValue: "No grants yet." })}
+            </p>
           ) : (
             <>
               {/* Column headers */}
               <div className="flex items-center gap-2 px-2 pb-0.5">
                 <span className="flex-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Name
+                  {t("misc.residual.permissionsModal.name", { defaultValue: "Name" })}
                 </span>
                 <span className="w-28 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Permission
+                  {t("misc.residual.permissionsModal.permission", { defaultValue: "Permission" })}
                 </span>
                 <span className="size-7 shrink-0" aria-hidden="true" />
               </div>
@@ -168,27 +184,31 @@ export function PermissionsModal({ sessionId, open, onOpenChange }: PermissionsM
         <form onSubmit={handleGrant} className="flex items-end gap-2">
           <div className="flex-1">
             <label htmlFor="perm-user" className="text-xs font-medium text-muted-foreground">
-              User ID
+              {t("misc.residual.permissionsModal.userId", { defaultValue: "User ID" })}
             </label>
             <AddUserField value={newUserId} onChange={setNewUserId} />
           </div>
           <div>
             <label htmlFor="perm-level" className="text-xs font-medium text-muted-foreground">
-              Level
+              {t("misc.residual.permissionsModal.level", { defaultValue: "Level" })}
             </label>
             <Select value={newLevel} onValueChange={setNewLevel}>
               <SelectTrigger className="mt-1 w-24">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="1">Read</SelectItem>
-                <SelectItem value="2">Edit</SelectItem>
+                <SelectItem value="1">
+                  {t("misc.residual.permissionsModal.read", { defaultValue: "Read" })}
+                </SelectItem>
+                <SelectItem value="2">
+                  {t("misc.residual.permissionsModal.edit", { defaultValue: "Edit" })}
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
           <Button type="submit" size="sm" disabled={!newUserId.trim() || grant.isPending}>
             <UserPlusIcon className="mr-1 size-3.5" />
-            Grant
+            {t("misc.residual.permissionsModal.grant", { defaultValue: "Grant" })}
           </Button>
         </form>
 
@@ -197,7 +217,7 @@ export function PermissionsModal({ sessionId, open, onOpenChange }: PermissionsM
         <DialogFooter className="flex-row justify-between sm:justify-between">
           <CopyLinkButton sessionId={sessionId} />
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Done
+            {t("misc.residual.permissionsModal.done", { defaultValue: "Done" })}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -248,6 +268,7 @@ function AddUserField({ value, onChange }: AddUserFieldProps) {
 // it inside the scroll-lock's allow-list (wheel works) and lets us own the
 // combobox a11y roles + keyboard handling directly.
 function AddUserCombobox({ value, onChange }: AddUserFieldProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const { suggestions, isLoading } = useUserSearch(value);
@@ -337,9 +358,13 @@ function AddUserCombobox({ value, onChange }: AddUserFieldProps) {
         // Wider than the (narrow) field so suggested emails aren't truncated.
         <div className="absolute left-0 top-full z-50 mt-1 w-96 rounded-lg border bg-popover p-1 text-popover-foreground shadow-md">
           {isLoading ? (
-            <div className="py-6 text-center text-sm text-muted-foreground">Searching…</div>
+            <div className="py-6 text-center text-sm text-muted-foreground">
+              {t("misc.residual.permissionsModal.searching", { defaultValue: "Searching…" })}
+            </div>
           ) : suggestions.length === 0 ? (
-            <div className="py-6 text-center text-sm text-muted-foreground">No matches</div>
+            <div className="py-6 text-center text-sm text-muted-foreground">
+              {t("misc.residual.permissionsModal.noMatches", { defaultValue: "No matches" })}
+            </div>
           ) : (
             <div ref={listRef} id={listId} role="listbox" className="max-h-72 overflow-y-auto">
               {suggestions.map((s, index) => (
@@ -390,6 +415,7 @@ function getShareableLink(sessionId: string, rebasePath: (path: string) => strin
 }
 
 function CopyLinkButton({ sessionId }: { sessionId: string }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const rebasePath = useRebasePath();
 
@@ -412,7 +438,9 @@ function CopyLinkButton({ sessionId }: { sessionId: string }) {
   return (
     <Button variant="ghost" size="sm" onClick={handleCopy} className="gap-1.5 text-primary">
       {copied ? <CheckIcon className="size-3.5" /> : <LinkIcon className="size-3.5" />}
-      {copied ? "Copied!" : "Copy link"}
+      {copied
+        ? t("misc.residual.permissionsModal.copied", { defaultValue: "Copied!" })
+        : t("misc.residual.permissionsModal.copyLink", { defaultValue: "Copy link" })}
     </Button>
   );
 }
@@ -428,6 +456,7 @@ function GrantRow({
   onChangeLevel: (userId: string, level: number) => void;
   busy: boolean;
 }) {
+  const { t } = useTranslation();
   const isOwner = permission.level === 4;
   // Manage is not grantable from the UI, so a pre-existing manage grant
   // renders as a fixed label rather than a dropdown choice. Unlike the
@@ -444,7 +473,9 @@ function GrantRow({
       </span>
       {isOwner || isManage ? (
         <span className="flex h-8 w-28 items-center px-3 text-sm text-muted-foreground">
-          {isOwner ? "Owner" : "Manage"}
+          {isOwner
+            ? t("misc.residual.permissionsModal.owner", { defaultValue: "Owner" })
+            : t("misc.residual.permissionsModal.manage", { defaultValue: "Manage" })}
         </span>
       ) : (
         <Select
@@ -454,13 +485,20 @@ function GrantRow({
         >
           <SelectTrigger
             className="h-8 w-28"
-            aria-label={`Permission level for ${permission.user_id}`}
+            aria-label={t("misc.residual.permissionsModal.permissionLevelFor", {
+              defaultValue: "Permission level for {{userId}}",
+              userId: permission.user_id,
+            })}
           >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="1">Read</SelectItem>
-            <SelectItem value="2">Edit</SelectItem>
+            <SelectItem value="1">
+              {t("misc.residual.permissionsModal.read", { defaultValue: "Read" })}
+            </SelectItem>
+            <SelectItem value="2">
+              {t("misc.residual.permissionsModal.edit", { defaultValue: "Edit" })}
+            </SelectItem>
           </SelectContent>
         </Select>
       )}
@@ -475,7 +513,9 @@ function GrantRow({
           className="shrink-0 text-muted-foreground hover:text-destructive"
         >
           <Trash2Icon className="size-3.5" />
-          <span className="sr-only">Revoke</span>
+          <span className="sr-only">
+            {t("misc.residual.permissionsModal.revoke", { defaultValue: "Revoke" })}
+          </span>
         </Button>
       )}
     </div>

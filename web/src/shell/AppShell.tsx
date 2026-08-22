@@ -353,7 +353,9 @@ export function AppShell() {
     !!conversationId && isKnownTopLevel && (permissionLevel === null || permissionLevel >= 3);
   const shareDisabled = canShare && isCurrentServerLocal();
   const shareDisabledReason = shareDisabled
-    ? "Sharing is unavailable from a local server."
+    ? translate("misc.residual.appShell.shareUnavailableLocalServer", {
+        defaultValue: "Sharing is unavailable from a local server.",
+      })
     : undefined;
   // Any viewer can fork a shared session; top-level only (the server
   // rejects forking a sub-agent). Surfaced as ForkDialogContext.canFork —
@@ -1337,9 +1339,13 @@ export function AppShell() {
             <Dialog open={agentInfoOpen} onOpenChange={setAgentInfoOpen}>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Agent</DialogTitle>
+                  <DialogTitle>
+                    {translate("misc.residual.appShell.agentTitle", { defaultValue: "Agent" })}
+                  </DialogTitle>
                   <DialogDescription className="sr-only">
-                    Tools and policies configured for the active agent.
+                    {translate("misc.residual.appShell.agentDescription", {
+                      defaultValue: "Tools and policies configured for the active agent.",
+                    })}
                   </DialogDescription>
                 </DialogHeader>
                 <AgentInfoContent agent={boundAgent} sessionId={conversationId} />

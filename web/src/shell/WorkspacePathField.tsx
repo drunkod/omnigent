@@ -267,7 +267,7 @@ export function WorkspacePathField({
           autoCapitalize="off"
           autoCorrect="off"
           role="combobox"
-          aria-label={t("dialogs.newChat.workspace.workingDirectoryPath", {
+          aria-label={t("misc.residual.workspacePathField.workingDirectoryPath", {
             defaultValue: "Working directory path",
           })}
           aria-autocomplete="list"
@@ -280,7 +280,7 @@ export function WorkspacePathField({
         <button
           type="button"
           onClick={onBrowse}
-          aria-label={t("dialogs.newChat.workspace.browseDirectories", {
+          aria-label={t("misc.residual.workspacePathField.browseDirectories", {
             defaultValue: "Browse directories",
           })}
           className="flex size-9 shrink-0 items-center justify-center rounded-md border border-input bg-background text-muted-foreground transition hover:bg-muted hover:text-foreground"
@@ -304,7 +304,7 @@ export function WorkspacePathField({
           {filteredRecent.length > 0 && (
             <>
               <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                {t("dialogs.newChat.workspace.recent", { defaultValue: "Recent" })}
+                {t("misc.residual.workspacePathField.recent", { defaultValue: "Recent" })}
               </div>
               {filteredRecent.map((path, i) => (
                 <PathRow
@@ -320,7 +320,7 @@ export function WorkspacePathField({
           {matches.length > 0 && (
             <>
               <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                {t("dialogs.newChat.workspace.matches", { defaultValue: "Matches" })}
+                {t("misc.residual.workspacePathField.matches", { defaultValue: "Matches" })}
               </div>
               {matches.map((path, j) => (
                 <PathRow
@@ -336,7 +336,7 @@ export function WorkspacePathField({
                   className="px-3 py-2 text-xs text-muted-foreground"
                   data-testid="workspace-match-overflow"
                 >
-                  {t("dialogs.newChat.workspace.moreMatches", {
+                  {t("misc.residual.workspacePathField.moreMatches", {
                     count: hiddenMatchCount,
                     defaultValue: "+{{count}} more — keep typing to narrow",
                   })}
@@ -346,7 +346,7 @@ export function WorkspacePathField({
           )}
           {showLoading && (
             <div className="px-3 py-2 text-xs text-muted-foreground">
-              {t("common.loading", { defaultValue: "Loading…" })}
+              {t("misc.residual.workspacePathField.loading", { defaultValue: "Loading…" })}
             </div>
           )}
         </div>

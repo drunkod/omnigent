@@ -5,6 +5,7 @@
 // editor.storage.markdown.getMarkdown() for copy / save.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useEditorState } from "@tiptap/react";
 import {
@@ -83,6 +84,7 @@ export function Divider() {
 }
 
 function TableBtn({ editor }: { editor: Editor | null }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [hovered, setHovered] = useState({ rows: 0, cols: 0 });
   const MAX = 6;
@@ -90,8 +92,8 @@ function TableBtn({ editor }: { editor: Editor | null }) {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        title="Insert table"
-        aria-label="Insert table"
+        title={t("panels.markdown.insertTable", { defaultValue: "Insert table" })}
+        aria-label={t("panels.markdown.insertTable", { defaultValue: "Insert table" })}
         disabled={!editor}
         onMouseDown={(e) => e.preventDefault()}
         className="min-w-[1.75rem] rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
@@ -182,6 +184,7 @@ function setColumnAlign(editor: Editor, align: ColumnAlign | null): boolean {
 }
 
 function TableAlignControls({ editor }: { editor: Editor }) {
+  const { t } = useTranslation();
   const state = useEditorState({
     editor,
     selector: (ctx) => ({
@@ -202,21 +205,21 @@ function TableAlignControls({ editor }: { editor: Editor }) {
       <Divider />
       <ToolbarBtn
         active={current === "left"}
-        title="Align column left"
+        title={t("panels.markdown.alignColumnLeft", { defaultValue: "Align column left" })}
         onClick={() => setColumnAlign(editor, "left")}
       >
         <AlignLeft className="size-3.5" />
       </ToolbarBtn>
       <ToolbarBtn
         active={current === "center"}
-        title="Align column center"
+        title={t("panels.markdown.alignColumnCenter", { defaultValue: "Align column center" })}
         onClick={() => setColumnAlign(editor, "center")}
       >
         <AlignCenter className="size-3.5" />
       </ToolbarBtn>
       <ToolbarBtn
         active={current === "right"}
-        title="Align column right"
+        title={t("panels.markdown.alignColumnRight", { defaultValue: "Align column right" })}
         onClick={() => setColumnAlign(editor, "right")}
       >
         <AlignRight className="size-3.5" />
@@ -245,6 +248,7 @@ export function ToolbarPlugin({
   // picking Keep mine / Load latest.
   hasExternalUpdate: boolean;
 }) {
+  const { t } = useTranslation();
   // Re-render only when the values that drive the toolbar UI actually change.
   const editorState = useEditorState({
     editor,
@@ -330,21 +334,37 @@ export function ToolbarPlugin({
   // dead "Retry" — fall through to "Saved" instead.
   const saveStatus = saveDisabled
     ? {
-        label: "Offline",
-        title: "Runner offline — your changes will save when it reconnects",
+        label: t("panels.markdown.offline", { defaultValue: "Offline" }),
+        title: t("panels.markdown.offlineTitle", {
+          defaultValue: "Runner offline — your changes will save when it reconnects",
+        }),
         tone: "offline" as const,
       }
     : saveError && isDirty
-      ? { label: "Retry", title: "Save failed — click to retry", tone: "error" as const }
+      ? {
+          label: t("panels.markdown.retry", { defaultValue: "Retry" }),
+          title: t("panels.markdown.retryTitle", { defaultValue: "Save failed — click to retry" }),
+          tone: "error" as const,
+        }
       : isSaving
-        ? { label: "Saving…", title: "Saving…", tone: "pending" as const }
+        ? {
+            label: t("panels.markdown.saving", { defaultValue: "Saving…" }),
+            title: t("panels.markdown.saving", { defaultValue: "Saving…" }),
+            tone: "pending" as const,
+          }
         : isDirty
           ? {
-              label: "Unsaved",
-              title: "Unsaved changes — ⌘S to save now",
+              label: t("panels.markdown.unsaved", { defaultValue: "Unsaved" }),
+              title: t("panels.markdown.unsavedTitle", {
+                defaultValue: "Unsaved changes — ⌘S to save now",
+              }),
               tone: "pending" as const,
             }
-          : { label: "Saved", title: "All changes saved", tone: "saved" as const };
+          : {
+              label: t("panels.markdown.saved", { defaultValue: "Saved" }),
+              title: t("panels.markdown.savedTitle", { defaultValue: "All changes saved" }),
+              tone: "saved" as const,
+            };
   // Clickable only when there are unsaved edits and a write can land: never
   // while offline, mid-conflict, or when there's nothing to persist.
   const saveClickable = !saveDisabled && !hasExternalUpdate && isDirty;
@@ -352,14 +372,14 @@ export function ToolbarPlugin({
   return (
     <div className="flex flex-wrap items-center gap-0.5 border-b border-border bg-card px-2 py-1 shrink-0">
       <ToolbarBtn
-        title="Undo (⌘Z)"
+        title={t("panels.markdown.undo", { defaultValue: "Undo (⌘Z)" })}
         onClick={() => editor?.chain().focus().undo().run()}
         className={!canUndo ? "opacity-30 cursor-default" : ""}
       >
         <Undo2 className="size-3.5" />
       </ToolbarBtn>
       <ToolbarBtn
-        title="Redo (⌘⇧Z)"
+        title={t("panels.markdown.redo", { defaultValue: "Redo (⌘⇧Z)" })}
         onClick={() => editor?.chain().focus().redo().run()}
         className={!canRedo ? "opacity-30 cursor-default" : ""}
       >
@@ -368,35 +388,35 @@ export function ToolbarPlugin({
       <Divider />
       <ToolbarBtn
         active={isParagraph}
-        title="Normal"
+        title={t("panels.markdown.normal", { defaultValue: "Normal" })}
         onClick={() => editor?.chain().focus().setParagraph().run()}
       >
         <Pilcrow className="size-3.5" />
       </ToolbarBtn>
       <ToolbarBtn
         active={isH1}
-        title="Heading 1"
+        title={t("panels.markdown.heading1", { defaultValue: "Heading 1" })}
         onClick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()}
       >
         <Heading1 className="size-3.5" />
       </ToolbarBtn>
       <ToolbarBtn
         active={isH2}
-        title="Heading 2"
+        title={t("panels.markdown.heading2", { defaultValue: "Heading 2" })}
         onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}
       >
         <Heading2 className="size-3.5" />
       </ToolbarBtn>
       <ToolbarBtn
         active={isH3}
-        title="Heading 3"
+        title={t("panels.markdown.heading3", { defaultValue: "Heading 3" })}
         onClick={() => editor?.chain().focus().toggleHeading({ level: 3 }).run()}
       >
         <Heading3 className="size-3.5" />
       </ToolbarBtn>
       <ToolbarBtn
         active={isBlockquote}
-        title="Quote"
+        title={t("panels.markdown.quote", { defaultValue: "Quote" })}
         onClick={() => editor?.chain().focus().toggleBlockquote().run()}
       >
         <Quote className="size-3.5" />
@@ -404,48 +424,48 @@ export function ToolbarPlugin({
       <Divider />
       <ToolbarBtn
         active={isBold}
-        title="Bold (⌘B)"
+        title={t("panels.markdown.bold", { defaultValue: "Bold (⌘B)" })}
         onClick={() => editor?.chain().focus().toggleBold().run()}
       >
         <Bold className="size-3.5" />
       </ToolbarBtn>
       <ToolbarBtn
         active={isItalic}
-        title="Italic (⌘I)"
+        title={t("panels.markdown.italic", { defaultValue: "Italic (⌘I)" })}
         onClick={() => editor?.chain().focus().toggleItalic().run()}
       >
         <Italic className="size-3.5" />
       </ToolbarBtn>
       <ToolbarBtn
         active={isStrike}
-        title="Strikethrough"
+        title={t("panels.markdown.strikethrough", { defaultValue: "Strikethrough" })}
         onClick={() => editor?.chain().focus().toggleStrike().run()}
       >
         <Strikethrough className="size-3.5" />
       </ToolbarBtn>
       <ToolbarBtn
         active={isCode}
-        title="Inline code"
+        title={t("panels.markdown.inlineCode", { defaultValue: "Inline code" })}
         onClick={() => editor?.chain().focus().toggleCode().run()}
       >
         <Code className="size-3.5" />
       </ToolbarBtn>
       <Divider />
       <ToolbarBtn
-        title="Bullet list"
+        title={t("panels.markdown.bulletList", { defaultValue: "Bullet list" })}
         onClick={() => editor?.chain().focus().toggleBulletList().run()}
       >
         <List className="size-3.5" />
       </ToolbarBtn>
       <ToolbarBtn
-        title="Numbered list"
+        title={t("panels.markdown.numberedList", { defaultValue: "Numbered list" })}
         onClick={() => editor?.chain().focus().toggleOrderedList().run()}
       >
         <ListOrdered className="size-3.5" />
       </ToolbarBtn>
       <ToolbarBtn
         active={isTaskList}
-        title="Task list"
+        title={t("panels.markdown.taskList", { defaultValue: "Task list" })}
         onClick={() => editor?.chain().focus().toggleTaskList().run()}
       >
         <ListTodo className="size-3.5" />
@@ -454,7 +474,10 @@ export function ToolbarPlugin({
       <TableBtn editor={editor} />
       {editor && <TableAlignControls editor={editor} />}
       <div className="ml-auto flex items-center gap-2">
-        <ToolbarBtn title="Copy" onClick={handleCopy}>
+        <ToolbarBtn
+          title={t("panels.markdown.copy", { defaultValue: "Copy" })}
+          onClick={handleCopy}
+        >
           {isCopied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
         </ToolbarBtn>
         <button

@@ -16,6 +16,7 @@
 // (offsets must match the saved server content).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Editor, type EditorProps, type OnChange, type OnMount } from "@monaco-editor/react";
 import { useTheme } from "next-themes";
 import { AlertTriangleIcon, MessageSquareOffIcon } from "lucide-react";
@@ -200,6 +201,7 @@ function MonacoCodeEditorInner({
   onSetActiveSelection,
   pendingBodyRef,
 }: InnerProps) {
+  const { t } = useTranslation();
   const lang = detectLang(path);
   const { resolvedTheme } = useTheme();
   const monacoTheme = resolvedThemeToMonaco(normalizeResolvedTheme(resolvedTheme));
@@ -434,38 +436,44 @@ function MonacoCodeEditorInner({
           <div className="flex items-center gap-2 border-b border-border bg-warning/10 px-4 py-1.5 text-xs text-foreground shrink-0">
             <AlertTriangleIcon className="size-3.5 shrink-0 text-warning" />
             <span className="flex-1">
-              This file was modified externally while you were editing.
+              {t("panels.codeViewer.modifiedExternally", {
+                defaultValue: "This file was modified externally while you were editing.",
+              })}
             </span>
             <button
               type="button"
               className="rounded px-2 py-0.5 font-medium hover:bg-muted transition-colors"
               onClick={dismissExternalUpdate}
             >
-              Keep mine
+              {t("panels.codeViewer.keepMine", { defaultValue: "Keep mine" })}
             </button>
             <button
               type="button"
               className="rounded bg-primary px-2 py-0.5 font-medium text-primary-foreground hover:opacity-90 transition-opacity"
               onClick={discardAndApplyExternal}
             >
-              Load latest
+              {t("panels.codeViewer.loadLatest", { defaultValue: "Load latest" })}
             </button>
           </div>
         ) : (
           <div className="flex items-center gap-1.5 border-b border-border bg-muted/50 px-4 py-1.5 text-xs text-muted-foreground shrink-0">
             <MessageSquareOffIcon className="size-3.5 shrink-0" />
-            Save your changes to enable commenting on selections.
+            {t("panels.codeViewer.saveToComment", {
+              defaultValue: "Save your changes to enable commenting on selections.",
+            })}
           </div>
         ))}
       <div className="relative min-h-0 flex-1">
         {loadError && (
           <div className="flex items-center justify-center p-8 text-destructive text-sm">
-            Failed to load the editor.
+            {t("panels.codeViewer.editorLoadFailed", {
+              defaultValue: "Failed to load the editor.",
+            })}
           </div>
         )}
         {!loadError && !ready && (
           <div className="flex items-center justify-center p-8 text-muted-foreground text-sm">
-            Loading…
+            {t("panels.codeViewer.loading", { defaultValue: "Loading…" })}
           </div>
         )}
         {!loadError && ready && (

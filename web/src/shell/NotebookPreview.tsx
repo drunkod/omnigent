@@ -1,4 +1,5 @@
 import type { BundledLanguage } from "shiki";
+import { useTranslation } from "react-i18next";
 import AnsiDefault from "ansi-to-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -134,6 +135,7 @@ function AnsiText({ text, className }: { text: string; className?: string }) {
 }
 
 function OutputView({ output }: { output: NotebookOutput }) {
+  const { t } = useTranslation();
   if (output.output_type === "stream") {
     return (
       <AnsiText
@@ -161,14 +163,19 @@ function OutputView({ output }: { output: NotebookOutput }) {
       return (
         <img
           src={`data:${imageMime};base64,${b64}`}
-          alt="notebook output"
+          alt={t("misc.residual.notebookPreview.notebookOutput", {
+            defaultValue: "notebook output",
+          })}
           className="max-w-full my-1"
         />
       );
     }
     // Corrupt payload: don't emit a broken <img> — note it and fall through to
     // the text/plain repr below (matplotlib etc. usually include one).
-    imageError = `Image output (${imageMime}) could not be decoded.`;
+    imageError = t("misc.residual.notebookPreview.imageOutputCouldNotBeDecoded", {
+      mime: imageMime,
+      defaultValue: "Image output ({{mime}}) could not be decoded.",
+    });
   }
 
   const plain = data["text/plain"] !== undefined ? joinSource(data["text/plain"]) : undefined;
@@ -181,7 +188,9 @@ function OutputView({ output }: { output: NotebookOutput }) {
       )}
       {suppressedHtml && (
         <div className="text-xs text-muted-foreground italic px-2 pt-1">
-          Rich HTML output hidden — showing plain text.
+          {t("misc.residual.notebookPreview.richHtmlOutputHidden", {
+            defaultValue: "Rich HTML output hidden — showing plain text.",
+          })}
         </div>
       )}
       {plain !== undefined && <AnsiText text={plain} />}
@@ -210,14 +219,22 @@ function CodeCell({ cell, language }: { cell: NotebookCell; language: BundledLan
 }
 
 export function NotebookPreview({ content }: { content: string }) {
+  const { t } = useTranslation();
   const { notebook, error } = parseNotebook(content);
 
   if (error || !notebook) {
     return (
       <div className="p-8 text-sm">
-        <div className="text-destructive">Cannot render notebook: {error}</div>
+        <div className="text-destructive">
+          {t("misc.residual.notebookPreview.cannotRenderNotebook", {
+            error,
+            defaultValue: "Cannot render notebook: {{error}}",
+          })}
+        </div>
         <div className="mt-1 text-muted-foreground">
-          Switch to the source view to inspect the raw file.
+          {t("misc.residual.notebookPreview.switchToSourceView", {
+            defaultValue: "Switch to the source view to inspect the raw file.",
+          })}
         </div>
       </div>
     );

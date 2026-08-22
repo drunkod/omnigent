@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ImageIcon } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
@@ -37,6 +38,7 @@ export function SessionImage({ path, alt, className }: SessionImageProps) {
 type LoadState = "loading" | "loaded" | "error";
 
 function EmbeddedSessionImage({ path, alt, className }: SessionImageProps) {
+  const { t } = useTranslation();
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [state, setState] = useState<LoadState>("loading");
 
@@ -86,7 +88,7 @@ function EmbeddedSessionImage({ path, alt, className }: SessionImageProps) {
     return (
       <div
         role="status"
-        aria-label="Loading image"
+        aria-label={t("misc.residual.sessionImage.loading", { defaultValue: "Loading image" })}
         // Square placeholder keeps the bubble from collapsing before the
         // (unknown-dimension) image resolves.
         className={cn(

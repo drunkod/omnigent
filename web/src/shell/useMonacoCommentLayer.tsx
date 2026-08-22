@@ -12,6 +12,7 @@
 // button as a portal node for the caller to render.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import { AtSignIcon, MessageSquarePlusIcon } from "lucide-react";
 import type { OnMount } from "@monaco-editor/react";
@@ -124,6 +125,7 @@ export function useMonacoCommentLayer({
   pendingBodyRef,
   path,
 }: UseMonacoCommentLayerOptions): React.ReactNode {
+  const { t } = useTranslation();
   const sessionHarness = useChatStore((s) => s.sessionHarness);
   const canAttachToAgent = !!path && nativeCodingAgentForHarness(sessionHarness) !== undefined;
   const decorationsRef = useRef<DecorationsCollection | null>(null);
@@ -331,7 +333,7 @@ export function useMonacoCommentLayer({
         className="flex items-center gap-1.5 rounded-md border border-border bg-popover backdrop-blur-xl backdrop-saturate-150 px-2.5 py-1 text-xs font-medium text-foreground shadow-md hover:bg-secondary transition-colors"
       >
         <MessageSquarePlusIcon className="size-3.5" />
-        Add comment
+        {t("panels.codeViewer.addComment", { defaultValue: "Add comment" })}
       </button>
       {canAttachToAgent && (
         <button
@@ -344,7 +346,7 @@ export function useMonacoCommentLayer({
           className="flex items-center gap-1.5 rounded-md border border-border bg-popover backdrop-blur-xl backdrop-saturate-150 px-2.5 py-1 text-xs font-medium text-foreground shadow-md hover:bg-secondary transition-colors"
         >
           <AtSignIcon className="size-3.5" />
-          Attach to agent
+          {t("panels.codeViewer.attachToAgent", { defaultValue: "Attach to agent" })}
         </button>
       )}
     </div>,

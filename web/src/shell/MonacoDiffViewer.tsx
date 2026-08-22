@@ -7,6 +7,7 @@
 // click-to-navigate), anchored by char offset into the current ("after") file.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { DiffEditor, type DiffEditorProps, type DiffOnMount } from "@monaco-editor/react";
 import { useTheme } from "next-themes";
 import { normalizeResolvedTheme } from "@/components/theme/themeMode";
@@ -68,6 +69,7 @@ export function MonacoDiffViewer({
   onSetActiveSelection,
   pendingBodyRef,
 }: MonacoDiffViewerProps) {
+  const { t } = useTranslation();
   const canEdit = useCanEdit(conversationId);
   const lang = detectLang(path);
   const { resolvedTheme } = useTheme();
@@ -190,12 +192,12 @@ export function MonacoDiffViewer({
       <div className="relative min-h-0 flex-1">
         {loadError && (
           <div className="flex items-center justify-center p-8 text-destructive text-sm">
-            Failed to load the diff.
+            {t("panels.codeViewer.diffLoadFailed", { defaultValue: "Failed to load the diff." })}
           </div>
         )}
         {!loadError && !ready && (
           <div className="flex items-center justify-center p-8 text-muted-foreground text-sm">
-            Loading diff…
+            {t("panels.codeViewer.loadingDiff", { defaultValue: "Loading diff…" })}
           </div>
         )}
         {!loadError && ready && (

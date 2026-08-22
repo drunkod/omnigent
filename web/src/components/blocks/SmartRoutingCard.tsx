@@ -7,6 +7,7 @@
 
 import { BrainIcon, ChevronRightIcon } from "lucide-react";
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { CodeBlock, CodeBlockHeader, CodeBlockTitle } from "@/components/ai-elements/code-block";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -121,7 +122,13 @@ interface SmartRoutingCardProps {
 }
 
 /** Shimmer verbs cycled per task row while the router judges (wraps past 4). */
-const ROUTING_VERBS = ["weighing", "matching", "tuning", "sizing up"] as const;
+const ROUTING_VERB_KEYS = [
+  "permissions.cards.routing.weighing",
+  "permissions.cards.routing.matching",
+  "permissions.cards.routing.tuning",
+  "permissions.cards.routing.sizingUp",
+] as const;
+const ROUTING_VERB_DEFAULTS = ["weighing", "matching", "tuning", "sizing up"] as const;
 
 /**
  * Render a `sys_advise_models` call as a Smart-routing plan card.
@@ -135,6 +142,7 @@ const ROUTING_VERBS = ["weighing", "matching", "tuning", "sizing up"] as const;
  * not pretend a plan exists.
  */
 export function SmartRoutingCard({ arguments: args, output, state }: SmartRoutingCardProps) {
+  const { t } = useTranslation();
   const plannedTasks = useMemo(() => parsePlannedTasks(args), [args]);
   const recommendations = useMemo(
     () => (output === null ? null : parseRecommendations(output)),
@@ -160,7 +168,10 @@ export function SmartRoutingCard({ arguments: args, output, state }: SmartRoutin
     }
   }, [output]);
 
-  const taskNoun = tasks.length === 1 ? "task" : "tasks";
+  const taskNoun = t("permissions.cards.routing.tasks", {
+    count: tasks.length,
+    defaultValue: tasks.length === 1 ? "task" : "tasks",
+  });
   return (
     <Collapsible
       defaultOpen={false}
@@ -173,20 +184,36 @@ export function SmartRoutingCard({ arguments: args, output, state }: SmartRoutin
     >
       <div className="flex items-center gap-1.5 text-xs">
         <BrainIcon className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="font-medium">Intelligent routing</span>
+        <span className="font-medium">
+          {t("permissions.cards.routing.intelligentRouting", {
+            defaultValue: "Intelligent routing",
+          })}
+        </span>
         {judging ? (
           <Shimmer as="span" className="text-xs">
-            {`Weighing ${tasks.length} ${taskNoun}…`}
+            {t("permissions.cards.routing.weighingTasks", {
+              defaultValue: "Weighing {{count}} {{noun}}…",
+              count: tasks.length,
+              noun: taskNoun,
+            })}
           </Shimmer>
         ) : (
           <span className="text-muted-foreground">
-            {failed ? "· unavailable" : `· sized ${recommendations!.size} ${taskNoun}`}
+            {failed
+              ? t("permissions.cards.routing.unavailable", { defaultValue: "· unavailable" })
+              : t("permissions.cards.routing.sized", {
+                  defaultValue: "· sized {{count}} {{noun}}",
+                  count: recommendations!.size,
+                  noun: taskNoun,
+                })}
           </span>
         )}
         {prettyOutput !== null && (
           <CollapsibleTrigger
             className="ml-auto cursor-pointer rounded p-0.5 text-muted-foreground hover:text-foreground"
-            aria-label="Show raw routing response"
+            aria-label={t("permissions.cards.routing.showRawResponse", {
+              defaultValue: "Show raw routing response",
+            })}
             data-testid="smart-routing-raw-toggle"
           >
             <ChevronRightIcon className="size-3 transition-transform group-data-[state=open]:rotate-90" />
@@ -195,7 +222,10 @@ export function SmartRoutingCard({ arguments: args, output, state }: SmartRoutin
       </div>
       {failed ? (
         <p className="text-xs text-muted-foreground" data-testid="smart-routing-error">
-          {output ?? "No routing decision was recorded for this fan-out."}
+          {output ??
+            t("permissions.cards.routing.noDecision", {
+              defaultValue: "No routing decision was recorded for this fan-out.",
+            })}
         </p>
       ) : (
         tasks.map((task, i) => {
@@ -216,7 +246,9 @@ export function SmartRoutingCard({ arguments: args, output, state }: SmartRoutin
                     </span>
                   ) : judging ? (
                     <Shimmer as="span" className="text-xs">
-                      {`${ROUTING_VERBS[i % ROUTING_VERBS.length]}…`}
+                      {`${t(ROUTING_VERB_KEYS[i % ROUTING_VERB_KEYS.length], {
+                        defaultValue: ROUTING_VERB_DEFAULTS[i % ROUTING_VERB_DEFAULTS.length],
+                      })}…`}
                     </Shimmer>
                   ) : (
                     <span className="text-muted-foreground/60">—</span>
@@ -235,7 +267,9 @@ export function SmartRoutingCard({ arguments: args, output, state }: SmartRoutin
           <CodeBlock code={prettyOutput} language="json">
             <CodeBlockHeader>
               <CodeBlockTitle className="min-w-0">
-                <span className="truncate font-medium uppercase tracking-wide">Response</span>
+                <span className="truncate font-medium uppercase tracking-wide">
+                  {t("permissions.cards.routing.response", { defaultValue: "Response" })}
+                </span>
               </CodeBlockTitle>
             </CodeBlockHeader>
           </CodeBlock>

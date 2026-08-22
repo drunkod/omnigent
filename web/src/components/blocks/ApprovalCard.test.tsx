@@ -1,10 +1,16 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import i18n from "@/i18n";
 import { useChatStore } from "@/store/chatStore";
 import { ApprovalCard } from "./ApprovalCard";
 
-afterEach(() => {
+beforeEach(async () => {
+  await i18n.changeLanguage("en");
+});
+
+afterEach(async () => {
   cleanup();
+  await i18n.changeLanguage("en");
 });
 
 describe("ApprovalCard — binary approve/reject", () => {
@@ -33,6 +39,28 @@ describe("ApprovalCard — binary approve/reject", () => {
 
     expect(screen.getByText("Run shell command requires approval.")).toBeDefined();
     expect(screen.queryByText(secret)).toBeNull();
+  });
+
+  it("renders the approval action in Russian", async () => {
+    await i18n.changeLanguage("ru");
+    try {
+      render(
+        <ApprovalCard
+          elicitationId="elic_ru"
+          message="Разрешить выполнение команды?"
+          phase="tool_call"
+          policyName="approve_shell_commands"
+          contentPreview="echo hello"
+          requestedSchema={{}}
+          status="pending"
+          response={null}
+        />,
+      );
+
+      expect(screen.getByRole("button", { name: "Подтвердить" })).toBeDefined();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 
   it("renders Approve and Reject buttons when requestedSchema has no enum", () => {

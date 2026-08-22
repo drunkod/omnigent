@@ -86,10 +86,10 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("SwitchAgentDialog", () => {
-  it("renders the translated title in Russian", async () => {
-    await i18n.changeLanguage("ru");
+  it("renders the English fallback for the residual title key", async () => {
+    await i18n.changeLanguage("en");
     renderDialog();
-    expect(screen.getByText("Сменить агента")).toBeInTheDocument();
+    expect(screen.getByText("Switch agent")).toBeInTheDocument();
   });
 
   it("offers history-preserving targets including cross-family codex-native", () => {

@@ -9,6 +9,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import type { ParsedSystemMessage, SystemMessageKind } from "@/lib/systemMessage";
 
@@ -37,6 +38,7 @@ interface SystemMessageViewProps {
  * because the Agents rail already owns that status.
  */
 export function SystemMessageView({ message }: SystemMessageViewProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   if (message.kind === "subagent_wake") return null;
   const Icon = KIND_ICON[message.kind];
@@ -57,7 +59,10 @@ export function SystemMessageView({ message }: SystemMessageViewProps) {
         >
           <Icon className="size-3.5 shrink-0" />
           <span>
-            <strong className="font-semibold">System:</strong> {message.label}
+            <strong className="font-semibold">
+              {t("permissions.cards.system.label", { defaultValue: "System:" })}
+            </strong>{" "}
+            {message.label}
           </span>
           <ChevronRightIcon
             className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-90")}
@@ -67,7 +72,10 @@ export function SystemMessageView({ message }: SystemMessageViewProps) {
         <div className="flex items-center gap-1.5 px-1.5 py-0.5">
           <Icon className="size-3.5 shrink-0" />
           <span>
-            <strong className="font-semibold">System:</strong> {message.label}
+            <strong className="font-semibold">
+              {t("permissions.cards.system.label", { defaultValue: "System:" })}
+            </strong>{" "}
+            {message.label}
           </span>
         </div>
       )}

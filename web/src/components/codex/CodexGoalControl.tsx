@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { TargetIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -21,6 +22,7 @@ export function CodexGoalControl({
   goal,
   onGoalChange,
 }: CodexGoalControlProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -41,16 +43,28 @@ export function CodexGoalControl({
             )}
             disabled={!conversationId}
             aria-pressed={goal != null}
-            aria-label={goal ? "View Codex goal" : "Set Codex goal"}
+            aria-label={t(
+              goal
+                ? "misc.residual.codexGoalControl.viewGoal"
+                : "misc.residual.codexGoalControl.setGoal",
+              { defaultValue: goal ? "View Codex goal" : "Set Codex goal" },
+            )}
             data-testid="codex-goal-toggle"
             data-active={goal ? "true" : undefined}
             onClick={() => setOpen(true)}
           >
             <TargetIcon className="size-3.5" />
-            <span>Goal</span>
+            <span>{t("misc.residual.codexGoalControl.goal", { defaultValue: "Goal" })}</span>
           </Button>
         </TooltipTrigger>
-        <TooltipContent>{goal ? "View Codex goal" : "Set Codex goal"}</TooltipContent>
+        <TooltipContent>
+          {t(
+            goal
+              ? "misc.residual.codexGoalControl.viewGoal"
+              : "misc.residual.codexGoalControl.setGoal",
+            { defaultValue: goal ? "View Codex goal" : "Set Codex goal" },
+          )}
+        </TooltipContent>
       </Tooltip>
       <CodexGoalDialog
         open={open}
@@ -66,13 +80,17 @@ export function CodexGoalControl({
 
 /** Compact status-line indicator for the current Codex goal. */
 export function CodexGoalStatusPill({ goal }: { goal: CodexGoal }) {
+  const { t } = useTranslation();
   return (
     <span
       data-testid="composer-goal-mode"
       className="inline-flex items-center gap-1 text-xs font-medium text-foreground"
     >
       <TargetIcon className="size-3.5 shrink-0" />
-      <span>Goal {formatCodexGoalStatus(goal.status)}</span>
+      <span>
+        {t("misc.residual.codexGoalControl.goal", { defaultValue: "Goal" })}{" "}
+        {formatCodexGoalStatus(goal.status)}
+      </span>
     </span>
   );
 }

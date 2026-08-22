@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "react-i18next";
 import {
   type AskUserQuestionPayload,
   castAskUserQuestionPayload,
@@ -179,6 +180,7 @@ export function ApprovalCard({
   rememberScope,
   onSubmit,
 }: ApprovalCardProps) {
+  const { t } = useTranslation();
   const submit: SubmitApprovalFn =
     onSubmit ??
     ((id, action, content) => {
@@ -247,9 +249,11 @@ export function ApprovalCard({
   const isCodexCommandApproval = codexCommand !== null && codexCommand !== undefined;
   const localActionLabel =
     localAction?.kind === "write_file"
-      ? "Write file"
+      ? t("permissions.approval.localAction.writeFile", { defaultValue: "Write file" })
       : localAction?.kind === "run_shell"
-        ? "Run shell command"
+        ? t("permissions.approval.localAction.runShellCommand", {
+            defaultValue: "Run shell command",
+          })
         : null;
   // External URL: the elicitation points to a third-party page (OAuth,
   // external MCP server, etc.) — show a link. Our own /approve/...
@@ -257,12 +261,14 @@ export function ApprovalCard({
   const isExternalUrl = typeof url === "string" && url.length > 0 && !url.startsWith("/approve/");
   const askUserQuestionTitle =
     policyName.startsWith("agy_") || phase.startsWith("agy_")
-      ? "Antigravity needs your input"
+      ? t("permissions.approval.askUser.antigravityTitle", {
+          defaultValue: "Antigravity needs your input",
+        })
       : policyName.startsWith("codex_") || phase.startsWith("codex_")
-        ? "Codex needs input"
+        ? t("permissions.approval.askUser.codexTitle", { defaultValue: "Codex needs input" })
         : policyName.startsWith("cursor_") || phase.startsWith("cursor_")
-          ? "Cursor has questions"
-          : "Claude has questions";
+          ? t("permissions.approval.askUser.cursorTitle", { defaultValue: "Cursor has questions" })
+          : t("permissions.approval.askUser.claudeTitle", { defaultValue: "Claude has questions" });
 
   // Hide the raw JSON preview for AskUserQuestion (the form already
   // renders the questions + options structurally) and for option-
@@ -291,19 +297,25 @@ export function ApprovalCard({
   // than letting the short button label imply a narrower scope.
   const rememberTitle = rememberScope
     ? rememberScope.host
-      ? `Won't ask again for ${rememberScope.host} for the rest of this session`
-      : `Won't ask again for any ${rememberScope.tool} call for the rest of this session`
+      ? t("permissions.approval.rememberTitle.host", {
+          defaultValue: "Won't ask again for {{host}} for the rest of this session",
+          host: rememberScope.host,
+        })
+      : t("permissions.approval.rememberTitle.tool", {
+          defaultValue: "Won't ask again for any {{tool}} call for the rest of this session",
+          tool: rememberScope.tool,
+        })
     : undefined;
   const binaryButtons = (
     <div className="flex flex-wrap gap-2 pt-1">
       <Button size="sm" onClick={() => submitBinary("accept")}>
         <CheckIcon className="mr-1 size-3.5" />
-        Approve
+        {t("permissions.approval.approve", { defaultValue: "Approve" })}
       </Button>
       {allowAllEdits && (
         <Button size="sm" variant="outline" onClick={submitAllowAllEdits}>
           <CheckIcon className="mr-1 size-3.5" />
-          Accept & allow all edits
+          {t("permissions.approval.acceptAllEdits", { defaultValue: "Accept & allow all edits" })}
         </Button>
       )}
       {rememberTarget && (
@@ -315,12 +327,15 @@ export function ApprovalCard({
           data-testid="approval-card-remember"
         >
           <CheckIcon className="mr-1 size-3.5" />
-          Approve &amp; don't ask again for {rememberTarget}
+          {t("permissions.approval.approveAndRememberFor", {
+            defaultValue: "Approve & don't ask again for {{target}}",
+            target: rememberTarget,
+          })}
         </Button>
       )}
       <Button size="sm" variant="outline" onClick={() => submitBinary("decline")}>
         <XIcon className="mr-1 size-3.5" />
-        Reject
+        {t("permissions.approval.reject", { defaultValue: "Reject" })}
       </Button>
     </div>
   );
@@ -328,7 +343,7 @@ export function ApprovalCard({
     <div className="flex flex-wrap items-center gap-2 pt-1" data-testid="codex-command-actions">
       <Button size="sm" onClick={() => submitBinary("accept")}>
         <CheckIcon className="mr-1 size-3.5" />
-        Approve
+        {t("permissions.approval.approve", { defaultValue: "Approve" })}
       </Button>
       {execPolicyAmendment && (
         <Button
@@ -337,12 +352,12 @@ export function ApprovalCard({
           onClick={() => submitExecPolicyAmendment(execPolicyAmendment)}
         >
           <CheckIcon className="mr-1 size-3.5" />
-          Approve and remember
+          {t("permissions.approval.approveAndRemember", { defaultValue: "Approve and remember" })}
         </Button>
       )}
       <Button size="sm" variant="outline" onClick={() => submitBinary("decline")}>
         <XIcon className="mr-1 size-3.5" />
-        Reject
+        {t("permissions.approval.reject", { defaultValue: "Reject" })}
       </Button>
     </div>
   );
@@ -379,7 +394,9 @@ export function ApprovalCard({
         : null;
 
     let icon = <XIcon className="size-4 text-destructive" />;
-    let label = isExitPlanMode ? "Plan rejected" : "Rejected";
+    let label = isExitPlanMode
+      ? t("permissions.approval.planRejected", { defaultValue: "Plan rejected" })
+      : t("permissions.approval.rejected", { defaultValue: "Rejected" });
     if (autoResolved) {
       // Card was cleared by the chat store when the gated tool's
       // function_call_output arrived without a UI verdict —
@@ -388,27 +405,45 @@ export function ApprovalCard({
       // verdict, so render a neutral pill rather than implying an
       // accept/reject decision the UI never witnessed.
       icon = <InfoIcon className="size-4 text-muted-foreground" />;
-      label = "Resolved elsewhere";
+      label = t("permissions.approval.resolvedElsewhere", { defaultValue: "Resolved elsewhere" });
     } else if (submittedAnswers !== null) {
       icon = <CheckIcon className="size-4 text-success" />;
-      label = "Submitted";
+      label = t("permissions.approval.submitted", { defaultValue: "Submitted" });
     } else if (selectedAnswer !== null) {
       icon = <CheckIcon className="size-4 text-success" />;
-      label = `Selected: ${selectedAnswer}`;
+      label = t("permissions.approval.selected", {
+        defaultValue: "Selected: {{answer}}",
+        answer: selectedAnswer,
+      });
     } else if (acceptedWithExecPolicy) {
       icon = <CheckIcon className="size-4 text-success" />;
-      label = "Approved and remembered";
+      label = t("permissions.approval.approvedAndRemembered", {
+        defaultValue: "Approved and remembered",
+      });
     } else if (acceptedAllEdits) {
       icon = <CheckIcon className="size-4 text-success" />;
-      label = isExitPlanMode ? "Plan approved · auto mode" : "Approved · auto-accepting edits";
+      label = isExitPlanMode
+        ? t("permissions.approval.planApprovedAutoMode", {
+            defaultValue: "Plan approved · auto mode",
+          })
+        : t("permissions.approval.approvedAutoAcceptingEdits", {
+            defaultValue: "Approved · auto-accepting edits",
+          });
     } else if (acceptedRemember) {
       icon = <CheckIcon className="size-4 text-success" />;
       label = rememberTarget
-        ? `Approved · won't ask again for ${rememberTarget}`
-        : "Approved · won't ask again";
+        ? t("permissions.approval.approvedRememberFor", {
+            defaultValue: "Approved · won't ask again for {{target}}",
+            target: rememberTarget,
+          })
+        : t("permissions.approval.approvedRemember", {
+            defaultValue: "Approved · won't ask again",
+          });
     } else if (accepted) {
       icon = <CheckIcon className="size-4 text-success" />;
-      label = isExitPlanMode ? "Plan approved" : "Approved";
+      label = isExitPlanMode
+        ? t("permissions.approval.planApproved", { defaultValue: "Plan approved" })
+        : t("permissions.approval.approved", { defaultValue: "Approved" });
     }
 
     return (
@@ -431,7 +466,9 @@ export function ApprovalCard({
               </pre>
               {codexCommand.cwd && (
                 <span>
-                  <span className="text-muted-foreground">cwd: </span>
+                  <span className="text-muted-foreground">
+                    {t("permissions.approval.cwd", { defaultValue: "cwd:" })}{" "}
+                  </span>
                   <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
                     {codexCommand.cwd}
                   </code>
@@ -439,7 +476,12 @@ export function ApprovalCard({
               )}
             </>
           ) : localAction ? (
-            <span>{localActionLabel} request resolved.</span>
+            <span>
+              {t("permissions.approval.localAction.requestResolved", {
+                defaultValue: "{{action}} request resolved.",
+                action: localActionLabel,
+              })}
+            </span>
           ) : (
             <span>{message}</span>
           )}
@@ -479,14 +521,15 @@ export function ApprovalCard({
           <MessageCircleQuestionMark className="size-4 text-yellow-600 dark:text-yellow-400" />
         )}
         {isCodexCommandApproval
-          ? "Command approval"
+          ? t("permissions.approval.commandApproval", { defaultValue: "Command approval" })
           : isExitPlanMode
-            ? "Plan review"
+            ? t("permissions.approval.planReview", { defaultValue: "Plan review" })
             : isAskUserQuestion
               ? askUserQuestionTitle
               : isMultiChoice
-                ? "Choose an option"
-                : (localActionLabel ?? "Approval required")}
+                ? t("permissions.approval.chooseOption", { defaultValue: "Choose an option" })
+                : (localActionLabel ??
+                  t("permissions.approval.required", { defaultValue: "Approval required" }))}
         {policyName && !isAskUserQuestion && !isExitPlanMode && (
           <span className="text-muted-foreground text-xs">· {policyName}</span>
         )}
@@ -497,7 +540,11 @@ export function ApprovalCard({
       <AlertDescription className="flex flex-col gap-2">
         {isExitPlanMode ? (
           <>
-            <span>Claude finished planning and wants to proceed.</span>
+            <span>
+              {t("permissions.approval.planProceed", {
+                defaultValue: "Claude finished planning and wants to proceed.",
+              })}
+            </span>
             <ExitPlanModeReview
               plan={exitPlanModePlan}
               onAcceptAuto={submitAllowAllEdits}
@@ -513,14 +560,18 @@ export function ApprovalCard({
           />
         ) : isCodexCommandApproval ? (
           <>
-            <span>Codex wants to run this command.</span>
+            <span>
+              {t("permissions.approval.codexWantsToRun", {
+                defaultValue: "Codex wants to run this command.",
+              })}
+            </span>
             {codexCommand.reason && <span className="text-foreground">{codexCommand.reason}</span>}
             <pre className="overflow-x-auto rounded bg-muted px-2 py-1 font-mono text-xs text-foreground whitespace-pre-wrap">
               {codexCommand.command}
             </pre>
             {codexCommand.cwd && (
               <span className="text-xs">
-                cwd:{" "}
+                {t("permissions.approval.cwd", { defaultValue: "cwd:" })}{" "}
                 <code className="rounded bg-muted px-1 py-0.5 font-mono">{codexCommand.cwd}</code>
               </span>
             )}
@@ -528,7 +579,14 @@ export function ApprovalCard({
           </>
         ) : (
           <>
-            <span>{localActionLabel ? `${localActionLabel} requires approval.` : message}</span>
+            <span>
+              {localActionLabel
+                ? t("permissions.approval.localAction.requiresApproval", {
+                    defaultValue: "{{action}} requires approval.",
+                    action: localActionLabel,
+                  })
+                : message}
+            </span>
             {localAction && <LocalActionApprovalDetails approval={localAction} />}
             {formattedPreview && (
               <pre className="max-h-64 overflow-y-auto rounded bg-muted px-2 py-1 font-mono text-xs whitespace-pre-wrap break-words">
@@ -540,7 +598,9 @@ export function ApprovalCard({
                 <Button size="sm" asChild>
                   <a href={url!} target="_blank" rel="noopener noreferrer">
                     <ExternalLinkIcon className="mr-1 size-3.5" />
-                    Open approval page
+                    {t("permissions.approval.openApprovalPage", {
+                      defaultValue: "Open approval page",
+                    })}
                   </a>
                 </Button>
               </div>
