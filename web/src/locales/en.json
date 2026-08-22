@@ -1406,6 +1406,15 @@
       "nextTooltip": "Next message (⌘⌥↓)"
     }
   },
+  "time": {
+    "now": "now",
+    "minutesShort": "{{count}}m",
+    "hoursShort": "{{count}}h",
+    "daysShort": "{{count}}d",
+    "weeksShort": "{{count}}w",
+    "monthsShort": "{{count}}mo",
+    "yearsShort": "{{count}}y"
+  },
   "misc": {
     "untitledConversation": "New session",
     "agentType": {

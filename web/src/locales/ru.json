@@ -1419,6 +1419,15 @@
       "nextTooltip": "Следующее сообщение (⌘⌥↓)"
     }
   },
+  "time": {
+    "now": "сейчас",
+    "minutesShort": "{{count}} мин",
+    "hoursShort": "{{count}} ч",
+    "daysShort": "{{count}} дн",
+    "weeksShort": "{{count}} нед",
+    "monthsShort": "{{count}} мес",
+    "yearsShort": "{{count}} г"
+  },
   "misc": {
     "untitledConversation": "Новая сессия",
     "agentType": {

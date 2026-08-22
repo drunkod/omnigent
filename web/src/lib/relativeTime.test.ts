@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { relativeTime } from "./relativeTime";
+import { describe, expect, it, vi } from "vitest";
+import i18n from "@/i18n";
+import { absoluteTime, relativeTime } from "./relativeTime";
 
 const NOW = new Date("2026-05-28T12:00:00Z").getTime();
 const MIN = 60_000;
@@ -63,5 +64,23 @@ describe("relativeTime", () => {
     expect(relativeTime(NOW - DAY, NOW)).toBe("1d");
     expect(relativeTime(NOW - (WEEK - 1), NOW)).toBe("6d");
     expect(relativeTime(NOW - WEEK, NOW)).toBe("1w");
+  });
+
+  it("uses the active Russian locale", async () => {
+    await i18n.changeLanguage("ru");
+    expect(relativeTime(NOW - 5 * MIN, NOW)).toBe("5 мин");
+    expect(relativeTime(NOW - 30_000, NOW)).toBe("сейчас");
+  });
+
+  it("formats absolute timestamps with the active locale", async () => {
+    await i18n.changeLanguage("ru");
+    const toLocaleString = vi
+      .spyOn(Date.prototype, "toLocaleString")
+      .mockReturnValue("localized timestamp");
+
+    expect(absoluteTime(NOW)).toBe("localized timestamp");
+    expect(toLocaleString).toHaveBeenCalledWith(i18n.language);
+
+    toLocaleString.mockRestore();
   });
 });
