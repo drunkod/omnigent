@@ -126,6 +126,11 @@ jobs:
         working-directory: web
         run: npm run type-check
 
+      # Prevent new user-facing JSX literals from bypassing the localization layer.
+      - name: Check web i18n literal coverage
+        working-directory: web
+        run: npm run i18n:literals
+
       # Keep bundled locale resources structurally aligned. The script also
       # verifies that translated messages preserve interpolation variables.
       - name: Check web locale resources

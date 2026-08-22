@@ -1193,6 +1193,10 @@
     }
   },
   "misc": {
+    "untitledConversation": "New session",
+    "agentType": {
+      "other": "Other"
+    },
     "notFound": {
       "title": "Page not found",
       "description": "The URL you followed doesn't match any route in this app.",

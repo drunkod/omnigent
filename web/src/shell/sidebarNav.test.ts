@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import i18n from "@/i18n";
 import type { Conversation } from "@/hooks/useConversations";
 import {
   type ActiveChatOverride,
@@ -12,6 +13,14 @@ import {
   resolveSidebarDrop,
   togglePinnedConversationId,
 } from "./sidebarNav";
+
+beforeEach(async () => {
+  await i18n.changeLanguage("en");
+});
+
+afterEach(async () => {
+  await i18n.changeLanguage("en");
+});
 
 function conversation(
   id: string,
@@ -32,6 +41,13 @@ function conversation(
 }
 
 describe("conversationDisplayLabel", () => {
+  it("uses the active locale for the default untitled fallback", async () => {
+    await i18n.changeLanguage("ru");
+    expect(conversationDisplayLabel(conversation("conv_untitled", null, new Date()))).toBe(
+      "Новая сессия",
+    );
+  });
+
   it("accepts a localized fallback without changing native or user labels", () => {
     const untitled = conversation("conv_untitled", null, new Date(2026, 4, 14, 8));
     const titled = conversation("conv_titled", "User title", new Date(2026, 4, 14, 8));
@@ -169,6 +185,12 @@ describe("orderByPinnedSequence", () => {
 });
 
 describe("getConversationAgentType", () => {
+  it("localizes the catch-all agent type", async () => {
+    await i18n.changeLanguage("ru");
+    const conv = conversation("conv_plain", "Some chat", new Date());
+    expect(getConversationAgentType(conv)).toBe("Другое");
+  });
+
   it("returns 'Claude Code' for claude-native-ui sessions", () => {
     const conv = conversation("conv_native", null, new Date(2026, 4, 14, 9), {
       labels: { "omnigent.wrapper": "claude-code-native-ui" },

@@ -1,3 +1,4 @@
+import i18n from "@/i18n";
 import type { Conversation } from "@/hooks/useConversations";
 import { nativeCodingAgentForWrapper, WRAPPER_LABEL_KEY } from "@/lib/nativeCodingAgents";
 
@@ -42,10 +43,6 @@ export type ConversationIconKind =
   | "nessie"
   | null;
 
-// Display label for a session with no title and no native-wrapper name —
-// shown in the sidebar row and as the browser tab title fallback.
-export const UNTITLED_CONVERSATION_LABEL = "New session";
-
 function wrapperLabel(conversation: Conversation): string | undefined {
   return conversation.labels?.[WRAPPER_LABEL_KEY];
 }
@@ -69,12 +66,12 @@ export function getConversationAgentType(conversation: Conversation): string {
   if (conversation.agent_name) {
     return conversation.agent_name;
   }
-  return "Other";
+  return i18n.t("misc.agentType.other");
 }
 
 export function conversationDisplayLabel(
   conversation: Conversation,
-  untitledLabel = UNTITLED_CONVERSATION_LABEL,
+  untitledLabel = i18n.t("misc.untitledConversation"),
 ): string {
   if (conversation.title) return conversation.title;
   const label = nativeWrapperLabel(conversation);
