@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { FolderIcon, FolderOpenIcon } from "lucide-react";
 
 import { useHostFilesystem } from "@/hooks/useHostFilesystem";
@@ -126,6 +127,7 @@ export function WorkspacePathField({
   recent,
   dropdownDisabled = false,
 }: WorkspacePathFieldProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   // Index into the combined [recent..., matches...] list, or -1 for
   // "nothing highlighted" (typing in the input).
@@ -265,7 +267,9 @@ export function WorkspacePathField({
           autoCapitalize="off"
           autoCorrect="off"
           role="combobox"
-          aria-label="Working directory path"
+          aria-label={t("dialogs.newChat.workspace.workingDirectoryPath", {
+            defaultValue: "Working directory path",
+          })}
           aria-autocomplete="list"
           aria-expanded={dropdownOpen}
           aria-controls="workspace-path-listbox"
@@ -276,7 +280,9 @@ export function WorkspacePathField({
         <button
           type="button"
           onClick={onBrowse}
-          aria-label="Browse directories"
+          aria-label={t("dialogs.newChat.workspace.browseDirectories", {
+            defaultValue: "Browse directories",
+          })}
           className="flex size-9 shrink-0 items-center justify-center rounded-md border border-input bg-background text-muted-foreground transition hover:bg-muted hover:text-foreground"
           data-testid="workspace-browse-toggle"
         >
@@ -298,7 +304,7 @@ export function WorkspacePathField({
           {filteredRecent.length > 0 && (
             <>
               <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Recent
+                {t("dialogs.newChat.workspace.recent", { defaultValue: "Recent" })}
               </div>
               {filteredRecent.map((path, i) => (
                 <PathRow
@@ -314,7 +320,7 @@ export function WorkspacePathField({
           {matches.length > 0 && (
             <>
               <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Matches
+                {t("dialogs.newChat.workspace.matches", { defaultValue: "Matches" })}
               </div>
               {matches.map((path, j) => (
                 <PathRow
@@ -330,12 +336,19 @@ export function WorkspacePathField({
                   className="px-3 py-2 text-xs text-muted-foreground"
                   data-testid="workspace-match-overflow"
                 >
-                  +{hiddenMatchCount} more — keep typing to narrow
+                  {t("dialogs.newChat.workspace.moreMatches", {
+                    count: hiddenMatchCount,
+                    defaultValue: "+{{count}} more — keep typing to narrow",
+                  })}
                 </div>
               )}
             </>
           )}
-          {showLoading && <div className="px-3 py-2 text-xs text-muted-foreground">Loading…</div>}
+          {showLoading && (
+            <div className="px-3 py-2 text-xs text-muted-foreground">
+              {t("common.loading", { defaultValue: "Loading…" })}
+            </div>
+          )}
         </div>
       )}
     </div>

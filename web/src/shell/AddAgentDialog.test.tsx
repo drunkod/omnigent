@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AddAgentDialog } from "./AddAgentDialog";
 import { useAvailableAgents, type AvailableAgent } from "@/hooks/useAvailableAgents";
 import { createSession } from "@/lib/sessionsApi";
+import i18n from "@/i18n";
 
 const navigateMock = vi.fn();
 vi.mock("react-router-dom", async (importOriginal) => {
@@ -66,6 +67,12 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("AddAgentDialog", () => {
+  it("renders the translated title in Russian", async () => {
+    await i18n.changeLanguage("ru");
+    renderDialog();
+    expect(screen.getByText("Добавить агента")).toBeInTheDocument();
+  });
+
   it("lists the available agents from the catalog", () => {
     renderDialog();
     expect(screen.getByTestId("agent-card-ag_claude")).toHaveTextContent("Claude Code");

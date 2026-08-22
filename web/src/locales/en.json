@@ -3,6 +3,10 @@
     "archive": "Archive",
     "cancel": "Cancel",
     "clear": "Clear",
+    "close": "Close",
+    "copy": "Copy",
+    "copyCommand": "Copy command",
+    "copied": "Copied",
     "delete": "Delete",
     "loading": "Loading…",
     "pin": "Pin",
@@ -289,13 +293,19 @@
     "title": "Inbox",
     "summary": {
       "approvals_one": "1 approval",
+      "approvals_few": "{{count}} approvals",
+      "approvals_many": "{{count}} approvals",
       "approvals_other": "{{count}} approvals",
       "comments_one": "1 comment",
+      "comments_few": "{{count}} comments",
+      "comments_many": "{{count}} comments",
       "comments_other": "{{count}} comments",
       "separator": " · ",
       "waiting": "waiting"
     },
     "loadError_one": "Couldn’t load inbox items from {{count}} session.",
+    "loadError_few": "Couldn’t load inbox items from {{count}} sessions.",
+    "loadError_many": "Couldn’t load inbox items from {{count}} sessions.",
     "loadError_other": "Couldn’t load inbox items from {{count}} sessions.",
     "retry": "Retry",
     "loading": "Loading inbox…",
@@ -398,6 +408,313 @@
         "adding": "Adding...",
         "add": "Add"
       }
+    }
+  },
+  "dialogs": {
+    "addAgent": {
+      "title": "Add agent",
+      "pickAgent": "Pick an agent",
+      "empty": "No agents available on this server. Register one with {{command}}.",
+      "name": "Name",
+      "namePlaceholder": "Name this agent",
+      "nameRequired": "Enter a name for the agent.",
+      "error": "Couldn't add the agent. Try again.",
+      "adding": "Adding…",
+      "add": "Add"
+    },
+    "createAgent": {
+      "title": "Create custom agent",
+      "name": "Name",
+      "description": "Description",
+      "descriptionPlaceholder": "A short summary of what this agent does",
+      "harness": "Harness",
+      "model": "Model",
+      "systemInstructions": "System instructions",
+      "instructionsPlaceholder": "You are a helpful assistant that...",
+      "mcpTools": "MCP Tools",
+      "addServer": "Add server",
+      "commandPlaceholder": "command (e.g. {{command}})",
+      "argsPlaceholder": "args (e.g. {{args}})",
+      "environmentPlaceholder": "Environment variables (KEY=VALUE per line)\ne.g. {{example}}",
+      "headersPlaceholder": "HTTP headers (KEY=VALUE per line)\ne.g. {{example}}",
+      "create": "Create"
+    },
+    "switchAgent": {
+      "title": "Switch agent",
+      "description": "Continue this session on a different agent. The conversation, comments, and files stay; the next message runs on the new agent.",
+      "agent": "Agent",
+      "chooseAgent": "Choose an agent",
+      "currentAgent": "(current agent)",
+      "resetWarning": "Model & reasoning effort will reset to {{agent}}'s defaults (different provider).",
+      "switching": "Switching…",
+      "switch": "Switch"
+    },
+    "fork": {
+      "title": "Clone session",
+      "titleFromResponse": "Fork from this response",
+      "infoLabel": "What does cloning do?",
+      "description": {
+        "full": "Copies this session's history into a new session you own. Comments aren't copied, and changes in the clone won't affect the original.",
+        "truncated": "Copies this session's history up to the selected response into a new session you own — messages after it aren't carried over. Comments aren't copied, and changes in the clone won't affect the original.",
+        "fullWithDirectory": "Copies this session's history into a new session you own, then starts it on the host and directory you pick. Comments aren't copied, and changes in the clone won't affect the original.",
+        "truncatedWithDirectory": "Copies this session's history up to the selected response into a new session you own — messages after it aren't carried over, then starts it on the host and directory you pick. Comments aren't copied, and changes in the clone won't affect the original."
+      },
+      "forkOf": "Fork of",
+      "namePlaceholder": "Name the cloned session",
+      "host": "Host",
+      "loadingHosts": "Loading hosts…",
+      "noHosts": "No hosts connected yet. Connect one from your terminal:",
+      "noHostsOnline": "No hosts online. Reconnect from your terminal to start the clone:",
+      "selectHost": "Select a host",
+      "connectAnotherHost": "Connect another host from your terminal",
+      "agent": "Agent",
+      "sameAsOriginal": "(same as original session)",
+      "originalAgent": "the original agent",
+      "reuseOriginalDirectory": "By default the clone reuses the original session's",
+      "workingDirectory": "working directory",
+      "changeAdvanced": ". Open Advanced settings to change it.",
+      "conflictHint_one": "1 other agent is working in this directory, so writes may conflict. Name a git branch under Advanced settings to work in an isolated copy.",
+      "conflictHint_few": "{{count}} other agents are working in this directory, so writes may conflict. Name a git branch under Advanced settings to work in an isolated copy.",
+      "conflictHint_many": "{{count}} other agents are working in this directory, so writes may conflict. Name a git branch under Advanced settings to work in an isolated copy.",
+      "conflictHint_other": "{{count}} other agents are working in this directory, so writes may conflict. Name a git branch under Advanced settings to work in an isolated copy.",
+      "advancedSettings": "Advanced settings",
+      "nameOptional": "Name (optional)",
+      "directoryMismatch": "This directory differs from the original session's. Earlier file references in the transcript may not apply — the agent will need to re-orient.",
+      "selectHostForDirectory": "Select a host to choose a directory.",
+      "gitWorktreeOptional": "Git worktree (optional)",
+      "baseBranchPlaceholder": "Base branch (defaults to the current branch)",
+      "baseBranchAriaLabel": "Base branch",
+      "worktreeDescription": "Creates a git worktree for a new branch in an isolated directory — keeps the clone from fighting the original over the same files. Leave blank to start in the picked directory.",
+      "starting": "Starting…",
+      "cloning": "Cloning…",
+      "cloneAndStart": "Clone & start",
+      "clone": "Clone",
+      "error": "Couldn't clone the session. Try again."
+    },
+    "reconnect": {
+      "title": {
+        "hostOffline": "Host is offline",
+        "agentDisconnected": "Agent disconnected"
+      },
+      "description": {
+        "hostOwner": "This session's host is offline. Run the command below from the host machine to reconnect.",
+        "hostViewer": "This session's host machine is offline and only its owner can reconnect it. Clone the session to continue in a copy you own.",
+        "localStranded": "Run the command below from the machine where you started this session to reconnect."
+      },
+      "tabs": { "reconnect": "Reconnect", "clone": "Clone" }
+    },
+    "resumeDir": {
+      "title": "Resume this session",
+      "description": "This clone hasn't picked a working directory yet. Choose a host and directory to continue the conversation against your files.",
+      "loading": "Loading the original session's directory…",
+      "hostOffline": "The original session's host is offline, so there's nothing to launch a runner on. Reconnect it from your terminal — then send your message again to pick a directory.",
+      "host": "Host",
+      "selectHost": "Select a host",
+      "workingDirectory": "Working directory",
+      "selectHostForDirectory": "Select a host to choose a directory.",
+      "conflictHint_one": "1 other agent is working in this directory. Write operations may conflict. Name a git branch below to work in an isolated copy.",
+      "conflictHint_few": "{{count}} other agents are working in this directory. Write operations may conflict. Name a git branch below to work in an isolated copy.",
+      "conflictHint_many": "{{count}} other agents are working in this directory. Write operations may conflict. Name a git branch below to work in an isolated copy.",
+      "conflictHint_other": "{{count}} other agents are working in this directory. Write operations may conflict. Name a git branch below to work in an isolated copy.",
+      "directoryMismatch": "This directory differs from the original session's. Earlier file references in the transcript may not apply — the agent will need to re-orient.",
+      "gitWorktreeOptional": "Git worktree (optional)",
+      "baseBranchPlaceholder": "Base branch (defaults to the current branch)",
+      "baseBranchAriaLabel": "Base branch",
+      "worktreeDescription": "Creates a git worktree for a new branch in an isolated directory — keeps the clone from fighting the original over the same files. Leave blank to start in the picked directory.",
+      "starting": "Starting…",
+      "start": "Start session",
+      "error": "Couldn't start the session. Try again."
+    },
+    "newChat": {
+      "landingTitle": "What should we do?",
+      "dropFilesHere": "Drop files here",
+      "attachFiles": "Attach files",
+      "startSession": "Start session",
+      "promptPlaceholder": "Describe a task to start a new session…",
+      "promptAriaLabel": "Describe a task to start a new session",
+      "skillPrompt": "Describe a task, or try a skill",
+      "agentDescriptions": { "polly": "Multi-agent coding", "debby": "Multi-agent debate" },
+      "picker": {
+        "permissionMode": "Permission Mode",
+        "agentHarness": "Agent Harness",
+        "model": "Model",
+        "effort": "Effort",
+        "harnesses": "Harnesses",
+        "agents": "Agents",
+        "custom": "Custom",
+        "createCustomAgent": "Create custom agent",
+        "noAgents": "No agents",
+        "selectAgent": "Select agent"
+      },
+      "efforts": {
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High",
+        "xhigh": "xHigh",
+        "max": "Max"
+      },
+      "claudeModes": {
+        "default": { "label": "Default", "description": "Prompts before edits and commands" },
+        "auto": { "label": "Auto", "description": "Auto-runs; a classifier blocks risky actions" },
+        "acceptEdits": {
+          "label": "Accept edits",
+          "description": "Auto-applies file edits; commands still prompt"
+        },
+        "plan": { "label": "Plan", "description": "Plans only; makes no edits" },
+        "dontAsk": { "label": "Don't ask", "description": "Auto-denies anything not pre-approved" },
+        "bypassPermissions": {
+          "label": "Bypass permissions",
+          "description": "Runs everything; no prompts or safety checks"
+        }
+      },
+      "codexModes": {
+        "default": {
+          "label": "Default",
+          "description": "Read/edit/run in workspace; approval for external edits or network"
+        },
+        "full-access": {
+          "label": "Full access",
+          "description": "Edit any file and access the internet without approval"
+        },
+        "read-only": {
+          "label": "Read only",
+          "description": "Read files only; approval required for edits, commands, or network"
+        }
+      },
+      "cursorModes": {
+        "default": {
+          "label": "Default",
+          "description": "Normal agent mode; prompts before running commands"
+        },
+        "auto-review": {
+          "label": "Auto-review",
+          "description": "Smart Auto: auto-runs safe tool calls and prompts for the rest"
+        },
+        "plan": {
+          "label": "Plan",
+          "description": "Read-only planning; analyzes and proposes plans, no edits"
+        },
+        "ask": {
+          "label": "Ask",
+          "description": "Q&A style; explains and answers questions (read-only)"
+        },
+        "yolo": {
+          "label": "Yolo",
+          "description": "Runs everything without prompts or safety checks"
+        }
+      },
+      "bypass": {
+        "label": "Bypass approvals & sandbox",
+        "ariaLabel": "Bypass approvals and sandbox",
+        "instructions": "Runs Codex with no approval prompts and no command sandbox. To enable, type {{phrase}} below.",
+        "confirmAriaLabel": "Type the confirmation phrase to enable bypass",
+        "danger": "Danger: this session runs Codex with approvals and the sandbox disabled. It can edit any file and run any command without asking."
+      },
+      "projects": {
+        "none": "No project",
+        "search": "Search projects",
+        "empty": "No projects yet.",
+        "namePlaceholder": "Project name…",
+        "new": "New project…"
+      },
+      "connectHost": {
+        "title": "Connect a host",
+        "label": "Run this on the machine you want to use, then pick it from the host menu:",
+        "localMachine": "Local machine",
+        "lakebox": "Databricks Lakebox"
+      },
+      "hosts": {
+        "noHosts": "No hosts",
+        "selectHost": "Select host",
+        "newSandbox": "New Sandbox",
+        "sandboxProvider": "{{provider}} Sandbox",
+        "sandboxUnavailable": "Why New Sandbox is unavailable",
+        "localRunner": "Local runner",
+        "offline": "offline",
+        "connectingLabel": "Connecting…",
+        "missing": "missing {{harness}}",
+        "workspaceCount_one": "1 workspace",
+        "workspaceCount_few": "{{count}} workspaces",
+        "workspaceCount_many": "{{count}} workspaces",
+        "workspaceCount_other": "{{count}} workspaces",
+        "noConnected": "No hosts connected yet.",
+        "thisMachine": "this machine",
+        "connecting": "connecting…",
+        "thisMachineConnect": "this machine · select to connect",
+        "connectingThisMachine": "Connecting this machine…",
+        "runThisMachine": "Run on this machine",
+        "connectNew": "Connect new host",
+        "runnerVersion": "Runner {{version}}"
+      },
+      "repository": {
+        "label": "Repository (optional)",
+        "credentials": "How to set up Databricks git credentials",
+        "branchPlaceholder": "Branch (defaults to the repo's default)",
+        "branchAriaLabel": "Repository branch",
+        "description": "Cloned into the sandbox as the session's working directory. Leave blank to start in an empty workspace."
+      },
+      "workspace": {
+        "workingDirectory": "Working directory",
+        "workingDirectoryPath": "Working directory path",
+        "browseDirectories": "Browse directories",
+        "recent": "Recent",
+        "matches": "Matches",
+        "moreMatches": "+{{count}} more — keep typing to narrow",
+        "selectHostFirst": "Select a host first.",
+        "selectWorkspace": "Select workspace",
+        "workspace": "Workspace",
+        "noCapabilities": "No capabilities reported"
+      },
+      "workspacePicker": {
+        "upOneLevel": "Up one level",
+        "home": "Home",
+        "hideHidden": "Hide hidden",
+        "showHidden": "Show hidden",
+        "newFolder": "New folder",
+        "select": "Select",
+        "close": "Close",
+        "newFolderName": "New folder name",
+        "createFolder": "Create folder",
+        "cancelNewFolder": "Cancel new folder",
+        "createFolderError": "Failed to create folder",
+        "conflict_one": "1 other agent is working in this directory. Write operations may conflict — name a git branch to work in an isolated copy.",
+        "conflict_few": "{{count}} other agents are working in this directory. Write operations may conflict — name a git branch to work in an isolated copy.",
+        "conflict_many": "{{count}} other agents are working in this directory. Write operations may conflict — name a git branch to work in an isolated copy.",
+        "conflict_other": "{{count}} other agents are working in this directory. Write operations may conflict — name a git branch to work in an isolated copy.",
+        "loadError": "Failed to load directory",
+        "noMatches": "No matching entries",
+        "empty": "(empty directory)",
+        "tooMany": "Too many entries to list fully — type a path above to jump directly."
+      },
+      "worktree": {
+        "label": "Git worktree branch (optional)",
+        "description": "New branch name, or pick an existing worktree. Leave blank to start directly in the working directory.",
+        "generate": "Generate a unique branch name",
+        "existing": "Existing worktrees",
+        "detached": "(detached)",
+        "basePlaceholder": "Base branch (defaults to current)",
+        "baseAriaLabel": "Base branch",
+        "existingWarning": "Starts in existing worktree, edit the name to create a new one."
+      },
+      "validation": {
+        "repositoryUrl": "Please enter a valid repository URL",
+        "hostWorkspace": "Please choose a host and working directory",
+        "message": "Enter a message to get started"
+      },
+      "errors": {
+        "createHttp": "Couldn't create the session (HTTP {{status}}).",
+        "reachServer": "Couldn't reach the server. Check your connection and try again."
+      },
+      "harnessWarning": {
+        "badgeBinaryMissing": "binary missing",
+        "badgeNeedsAuth": "needs auth",
+        "badgeNeedsSetup": "needs setup",
+        "needsAuth": "{{agent}} needs Codex authentication on {{host}} — run codex login on that machine.",
+        "binaryMissing": "{{agent}} is missing the Codex binary on {{host}} — run omnigent setup on that machine.",
+        "unconfigured": "{{agent}} isn't configured on {{host}} — run omnigent setup on that machine."
+      },
+      "activeBanner": "Codex will run with approvals and the sandbox disabled — it can edit any file and run any command without asking.",
+      "remove": "Remove {{name}}"
     }
   },
   "settings": {

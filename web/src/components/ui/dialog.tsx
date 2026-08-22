@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { Dialog as DialogPrimitive } from "radix-ui";
 
 import { getEmbedRoot } from "@/lib/host";
@@ -63,6 +64,7 @@ function DialogContent({
   // pin both the centering origin and the height cap to it (less the safe-area
   // insets) via inline style — inline beats callers' `max-h-[85vh]`/`top`
   // Tailwind classes (which `cn`'s twMerge would otherwise keep). No-op off iOS.
+  const { t } = useTranslation();
   const iosViewportStyle: React.CSSProperties = isIOSShell()
     ? {
         // Center within the visible viewport (not the full layout height).
@@ -90,7 +92,7 @@ function DialogContent({
           <DialogPrimitive.Close data-slot="dialog-close" asChild>
             <Button variant="ghost" className="absolute top-2 right-2" size="icon-sm">
               <XIcon />
-              <span className="sr-only">Close</span>
+              <span className="sr-only">{t("common.close", { defaultValue: "Close" })}</span>
             </Button>
           </DialogPrimitive.Close>
         )}
@@ -113,6 +115,7 @@ function DialogFooter({
 }: React.ComponentProps<"div"> & {
   showCloseButton?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       data-slot="dialog-footer"
@@ -125,7 +128,7 @@ function DialogFooter({
       {children}
       {showCloseButton && (
         <DialogPrimitive.Close asChild>
-          <Button variant="outline">Close</Button>
+          <Button variant="outline">{t("common.close", { defaultValue: "Close" })}</Button>
         </DialogPrimitive.Close>
       )}
     </div>

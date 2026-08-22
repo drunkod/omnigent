@@ -7,6 +7,8 @@ import {
   useRef,
   useState,
 } from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "@/lib/routing";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -131,6 +133,16 @@ const AGENT_PICKER_DESCRIPTIONS: Record<string, string> = {
   polly: "Multi-agent coding",
   debby: "Multi-agent debate",
 };
+
+function translateMode(
+  t: TFunction,
+  group: string,
+  value: string,
+  field: "label" | "description",
+  fallback: string,
+): string {
+  return t(`dialogs.newChat.${group}.${value}.${field}`, { defaultValue: fallback });
+}
 
 // Agents whose bundled skills render as always-visible pills under the
 // landing composer. Deliberately an allowlist while the pattern proves
@@ -314,6 +326,7 @@ export function ConnectHostInstructions({
   serverUrl: string;
   label?: string;
 }) {
+  const { t } = useTranslation();
   // Databricks/internal deployments add the "Databricks Lakebox" connect
   // path; OSS deployments (where the lakebox launcher is excluded) show
   // only the plain `omni host` command. Driven by /v1/info.
@@ -328,10 +341,10 @@ export function ConnectHostInstructions({
         <Tabs defaultValue="local">
           <TabsList className="w-full">
             <TabsTrigger value="local" className="text-xs">
-              Local machine
+              {t("dialogs.newChat.connectHost.localMachine", { defaultValue: "Local machine" })}
             </TabsTrigger>
             <TabsTrigger value="lakebox" className="text-xs">
-              Databricks Lakebox
+              {t("dialogs.newChat.connectHost.lakebox", { defaultValue: "Databricks Lakebox" })}
             </TabsTrigger>
           </TabsList>
           <TabsContent value="local">
@@ -476,7 +489,7 @@ export function sessionsSharingDirectory(
  * @returns A message to show the user; falls back to the status code
  *   when the body isn't a recognizable error shape.
  */
-export async function describeCreateError(res: Response): Promise<string> {
+export async function describeCreateError(res: Response, t?: TFunction): Promise<string> {
   try {
     const body: unknown = await res.json();
     if (body && typeof body === "object") {
@@ -504,7 +517,12 @@ export async function describeCreateError(res: Response): Promise<string> {
   } catch {
     // Non-JSON body — fall through to the generic message.
   }
-  return `Couldn't create the session (HTTP ${res.status}).`;
+  return (
+    t?.("dialogs.newChat.errors.createHttp", {
+      defaultValue: "Couldn't create the session (HTTP {{status}}).",
+      status: res.status,
+    }) ?? `Couldn't create the session (HTTP ${res.status}).`
+  );
 }
 
 /**
@@ -572,32 +590,22 @@ export function harnessWarningMessageText(
 }
 
 function harnessWarningMessage(
+  t: TFunction,
   agentName: string | undefined,
   hostName: string | undefined,
   reason: string | null,
-): ReactNode {
-  if (reason === "needs-auth") {
-    return (
-      <>
-        {agentName} needs Codex authentication on {hostName} — run <code>codex login</code> on that
-        machine.
-      </>
-    );
-  }
-  if (reason === "binary-missing") {
-    return (
-      <>
-        {agentName} is missing the Codex binary on {hostName} — run <code>omnigent setup</code> on
-        that machine.
-      </>
-    );
-  }
-  return (
-    <>
-      {agentName} isn&apos;t configured on {hostName} — run <code>omnigent setup</code> on that
-      machine.
-    </>
-  );
+): string {
+  const key =
+    reason === "needs-auth"
+      ? "needsAuth"
+      : reason === "binary-missing"
+        ? "binaryMissing"
+        : "unconfigured";
+  return t(`dialogs.newChat.harnessWarning.${key}`, {
+    defaultValue: harnessWarningMessageText(agentName, hostName, reason),
+    agent: agentName ?? "",
+    host: hostName ?? "",
+  });
 }
 
 /**
@@ -743,6 +751,7 @@ function LandingProjectPicker({
   value: string;
   onChange: (project: string) => void;
 }) {
+  const { t } = useTranslation();
   const { data: projects = [] } = useProjects();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -786,7 +795,7 @@ function LandingProjectPicker({
           {/* Label collapses to icon-only on narrow viewports (mobile),
               matching the host/workspace/worktree chips. */}
           <span className={`hidden max-w-32 truncate sm:block ${value ? "text-foreground" : ""}`}>
-            {value || "No project"}
+            {value || t("dialogs.newChat.projects.none", { defaultValue: "No project" })}
           </span>
           <ChevronDownIcon className="size-3.5 shrink-0 opacity-60" />
         </button>
@@ -805,14 +814,16 @@ function LandingProjectPicker({
           <SearchIcon className="size-3.5 shrink-0 text-muted-foreground" />
           <input
             className="w-full bg-transparent text-xs outline-none placeholder:text-muted-foreground"
-            placeholder="Search projects"
+            placeholder={t("dialogs.newChat.projects.search", { defaultValue: "Search projects" })}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
         <div className="max-h-48 overflow-y-auto">
           <button type="button" className={itemClass} onClick={() => pick("")}>
-            <span className="flex-1 truncate">No project</span>
+            <span className="flex-1 truncate">
+              {t("dialogs.newChat.projects.none", { defaultValue: "No project" })}
+            </span>
             {value === "" && <CheckIcon className="size-3.5 shrink-0 text-primary" />}
           </button>
           {filtered.map((name) => (
@@ -822,7 +833,9 @@ function LandingProjectPicker({
             </button>
           ))}
           {filtered.length === 0 && !creatingNew && (
-            <p className="px-2 py-1.5 text-xs text-muted-foreground">No projects yet.</p>
+            <p className="px-2 py-1.5 text-xs text-muted-foreground">
+              {t("dialogs.newChat.projects.empty", { defaultValue: "No projects yet." })}
+            </p>
           )}
         </div>
         <div className="border-t pt-1">
@@ -831,7 +844,9 @@ function LandingProjectPicker({
               <input
                 ref={newRef}
                 className="flex-1 bg-transparent text-xs outline-none"
-                placeholder="Project name…"
+                placeholder={t("dialogs.newChat.projects.namePlaceholder", {
+                  defaultValue: "Project name…",
+                })}
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => {
@@ -849,7 +864,7 @@ function LandingProjectPicker({
           ) : (
             <button type="button" className={itemClass} onClick={() => setCreatingNew(true)}>
               <PlusIcon className="size-3.5 shrink-0" />
-              New project…
+              {t("dialogs.newChat.projects.new", { defaultValue: "New project…" })}
             </button>
           )}
         </div>
@@ -885,10 +900,12 @@ function PermissionModeOptions({
   value: string;
   onValueChange: (mode: string) => void;
 }) {
+  const { t } = useTranslation();
   const [previewed, setPreviewed] = useState<string | null>(null);
-  const detail = CLAUDE_NATIVE_PERMISSION_MODES.find(
-    (m) => m.value === (previewed ?? value),
-  )?.description;
+  const detailMode = CLAUDE_NATIVE_PERMISSION_MODES.find((m) => m.value === (previewed ?? value));
+  const detail = detailMode
+    ? translateMode(t, "claudeModes", detailMode.value, "description", detailMode.description)
+    : undefined;
   return (
     <>
       <DropdownMenuRadioGroup value={value} onValueChange={onValueChange}>
@@ -908,7 +925,7 @@ function PermissionModeOptions({
             // text-xs matches the other footer-tray menus (host picker).
             className="rounded-sm pl-2 py-1 text-xs"
           >
-            {mode.label}
+            {translateMode(t, "claudeModes", mode.value, "label", mode.label)}
           </DropdownMenuRadioItem>
         ))}
       </DropdownMenuRadioGroup>
@@ -940,10 +957,12 @@ function ApprovalModeOptions({
   value: string;
   onValueChange: (mode: string) => void;
 }) {
+  const { t } = useTranslation();
   const [previewed, setPreviewed] = useState<string | null>(null);
-  const detail = CODEX_NATIVE_APPROVAL_MODES.find(
-    (m) => m.value === (previewed ?? value),
-  )?.description;
+  const detailMode = CODEX_NATIVE_APPROVAL_MODES.find((m) => m.value === (previewed ?? value));
+  const detail = detailMode
+    ? translateMode(t, "codexModes", detailMode.value, "description", detailMode.description)
+    : undefined;
   return (
     <>
       <DropdownMenuRadioGroup value={value} onValueChange={onValueChange}>
@@ -956,7 +975,7 @@ function ApprovalModeOptions({
             onPointerEnter={() => setPreviewed(mode.value)}
             className="rounded-sm pl-2 py-1 text-xs"
           >
-            {mode.label}
+            {translateMode(t, "codexModes", mode.value, "label", mode.label)}
           </DropdownMenuRadioItem>
         ))}
       </DropdownMenuRadioGroup>
@@ -994,6 +1013,7 @@ function BypassSandboxOption({
   enabled: boolean;
   onEnabledChange: (enabled: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const [confirmText, setConfirmText] = useState<string>("");
   // VERBATIM match — no trim, no case-folding. The user must type exactly the
   // phrase we display (CODEX_NATIVE_BYPASS_SANDBOX_CONFIRM_PHRASE); a stray
@@ -1008,14 +1028,18 @@ function BypassSandboxOption({
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 text-xs font-medium text-destructive">
           <TriangleAlertIcon className="size-3.5 shrink-0" />
-          <span>Bypass approvals &amp; sandbox</span>
+          <span>
+            {t("dialogs.newChat.bypass.label", { defaultValue: "Bypass approvals & sandbox" })}
+          </span>
         </div>
         <Switch
           size="sm"
           checked={enabled}
           disabled={!canToggleOn}
           data-testid="new-chat-landing-bypass-sandbox-switch"
-          aria-label="Bypass approvals and sandbox"
+          aria-label={t("dialogs.newChat.bypass.ariaLabel", {
+            defaultValue: "Bypass approvals and sandbox",
+          })}
           onCheckedChange={(next) => {
             // Guard: never let it arm without a verbatim confirmation.
             if (next && !phraseMatches) return;
@@ -1024,8 +1048,11 @@ function BypassSandboxOption({
         />
       </div>
       <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-        Runs Codex with no approval prompts and no command sandbox. To enable, type{" "}
-        <span className="font-semibold">{CODEX_NATIVE_BYPASS_SANDBOX_CONFIRM_PHRASE}</span> below.
+        {t("dialogs.newChat.bypass.instructions", {
+          defaultValue:
+            "Runs Codex with no approval prompts and no command sandbox. To enable, type {{phrase}} below.",
+          phrase: CODEX_NATIVE_BYPASS_SANDBOX_CONFIRM_PHRASE,
+        })}
       </p>
       {!enabled && (
         <Input
@@ -1037,7 +1064,9 @@ function BypassSandboxOption({
           autoCorrect="off"
           className="mt-1.5 h-7 text-xs"
           data-testid="new-chat-landing-bypass-sandbox-confirm"
-          aria-label="Type the confirmation phrase to enable bypass"
+          aria-label={t("dialogs.newChat.bypass.confirmAriaLabel", {
+            defaultValue: "Type the confirmation phrase to enable bypass",
+          })}
           // Don't let typing here steer the menu's typeahead focus.
           onKeyDown={(e) => e.stopPropagation()}
         />
@@ -1050,8 +1079,10 @@ function BypassSandboxOption({
         >
           <TriangleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
           <span>
-            Danger: this session runs Codex with approvals and the sandbox disabled. It can edit any
-            file and run any command without asking.
+            {t("dialogs.newChat.bypass.danger", {
+              defaultValue:
+                "Danger: this session runs Codex with approvals and the sandbox disabled. It can edit any file and run any command without asking.",
+            })}
           </span>
         </div>
       )}
@@ -1074,10 +1105,12 @@ function CursorModeOptions({
   value: string;
   onValueChange: (mode: string) => void;
 }) {
+  const { t } = useTranslation();
   const [previewed, setPreviewed] = useState<string | null>(null);
-  const detail = CURSOR_NATIVE_EXEC_MODES.find(
-    (m) => m.value === (previewed ?? value),
-  )?.description;
+  const detailMode = CURSOR_NATIVE_EXEC_MODES.find((m) => m.value === (previewed ?? value));
+  const detail = detailMode
+    ? translateMode(t, "cursorModes", detailMode.value, "description", detailMode.description)
+    : undefined;
   return (
     <>
       <DropdownMenuRadioGroup value={value} onValueChange={onValueChange}>
@@ -1090,7 +1123,7 @@ function CursorModeOptions({
             onPointerEnter={() => setPreviewed(mode.value)}
             className="rounded-sm pl-2 py-1 text-xs"
           >
-            {mode.label}
+            {translateMode(t, "cursorModes", mode.value, "label", mode.label)}
           </DropdownMenuRadioItem>
         ))}
       </DropdownMenuRadioGroup>
@@ -1125,10 +1158,11 @@ function BrainHarnessOptions({
   host: Host | undefined | null;
   labels: Record<string, string>;
 }) {
+  const { t } = useTranslation();
   return (
     <>
       <div className="px-2 pt-1.5 pb-0.5 text-[11px] font-medium text-muted-foreground">
-        Agent Harness
+        {t("dialogs.newChat.picker.agentHarness", { defaultValue: "Agent Harness" })}
       </div>
       <DropdownMenuRadioGroup value={value} onValueChange={onValueChange}>
         {Object.entries(labels).map(([id, label]) => (
@@ -1148,7 +1182,18 @@ function BrainHarnessOptions({
                 className="border-amber-300 bg-amber-50 text-[11px] text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400"
                 data-testid={`new-chat-landing-harness-warning-${id}`}
               >
-                {harnessWarningBadgeText(harnessUnavailableReasonOnHost(id, host))}
+                {(() => {
+                  const reason = harnessUnavailableReasonOnHost(id, host);
+                  const key =
+                    reason === "binary-missing"
+                      ? "badgeBinaryMissing"
+                      : reason === "needs-auth"
+                        ? "badgeNeedsAuth"
+                        : "badgeNeedsSetup";
+                  return t(`dialogs.newChat.harnessWarning.${key}`, {
+                    defaultValue: harnessWarningBadgeText(reason),
+                  });
+                })()}
               </Badge>
             )}
           </DropdownMenuRadioItem>
@@ -1176,9 +1221,12 @@ function ModelEffortOptions({
   onModelChange: (model: string) => void;
   onEffortChange: (effort: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <>
-      <div className="px-2 pt-1.5 pb-0.5 text-[11px] font-medium text-muted-foreground">Model</div>
+      <div className="px-2 pt-1.5 pb-0.5 text-[11px] font-medium text-muted-foreground">
+        {t("dialogs.newChat.picker.model", { defaultValue: "Model" })}
+      </div>
       <DropdownMenuRadioGroup value={model} onValueChange={onModelChange}>
         {CLAUDE_NATIVE_MODELS.map((m) => (
           <DropdownMenuRadioItem
@@ -1193,7 +1241,9 @@ function ModelEffortOptions({
         ))}
       </DropdownMenuRadioGroup>
       <DropdownMenuSeparator />
-      <div className="px-2 pt-1.5 pb-0.5 text-[11px] font-medium text-muted-foreground">Effort</div>
+      <div className="px-2 pt-1.5 pb-0.5 text-[11px] font-medium text-muted-foreground">
+        {t("dialogs.newChat.picker.effort", { defaultValue: "Effort" })}
+      </div>
       <DropdownMenuRadioGroup value={effort} onValueChange={onEffortChange}>
         {CLAUDE_NATIVE_EFFORTS.map((e) => (
           <DropdownMenuRadioItem
@@ -1203,7 +1253,7 @@ function ModelEffortOptions({
             onSelect={(event) => event.preventDefault()}
             className="rounded-sm py-1 pl-2 text-xs"
           >
-            {e.label}
+            {t(`dialogs.newChat.efforts.${e.value}`, { defaultValue: e.label })}
           </DropdownMenuRadioItem>
         ))}
       </DropdownMenuRadioGroup>
@@ -1298,6 +1348,7 @@ function AgentHarnessPicker({
   setPickedEffort: (effort: string) => void;
   setPickedHarness: (harness: string | null, agentId?: string) => void;
 }) {
+  const { t } = useTranslation();
   // Controlled so clicking a knobbed row can commit the pick and close the
   // menu (see the sub-trigger onClick below) without diving into the submenu.
   const [open, setOpen] = useState(false);
@@ -1350,7 +1401,11 @@ function AgentHarnessPicker({
     const inner = (
       <div className="flex min-w-0 flex-1 items-baseline gap-2.5">
         <span className="truncate">{agent.display_name}</span>
-        {blurb && <span className="truncate text-[11px] text-muted-foreground/70">{blurb}</span>}
+        {blurb && (
+          <span className="truncate text-[11px] text-muted-foreground/70">
+            {t(`dialogs.newChat.agentDescriptions.${agent.name}`, { defaultValue: blurb })}
+          </span>
+        )}
       </div>
     );
     return withTooltip ? <AgentRowTooltip agent={agent}>{inner}</AgentRowTooltip> : inner;
@@ -1363,7 +1418,18 @@ function AgentHarnessPicker({
         className="ml-auto self-center border-amber-300 bg-amber-50 text-[11px] text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400"
         data-testid={`new-chat-landing-agent-warning-${agent.id}`}
       >
-        {harnessWarningBadgeText(harnessUnavailableReasonOnHost(agent.harness, host))}
+        {(() => {
+          const reason = harnessUnavailableReasonOnHost(agent.harness, host);
+          const key =
+            reason === "binary-missing"
+              ? "badgeBinaryMissing"
+              : reason === "needs-auth"
+                ? "badgeNeedsAuth"
+                : "badgeNeedsSetup";
+          return t(`dialogs.newChat.harnessWarning.${key}`, {
+            defaultValue: harnessWarningBadgeText(reason),
+          });
+        })()}
       </Badge>
     ) : null;
 
@@ -1596,7 +1662,9 @@ function AgentHarnessPicker({
           className="h-8 gap-1.5 px-2.5 font-normal text-muted-foreground hover:text-foreground focus-visible:border-transparent focus-visible:ring-0"
         >
           <span className="max-w-[12rem] truncate text-xs text-foreground">
-            {hasAgents ? agentLabel : "No agents"}
+            {hasAgents
+              ? agentLabel
+              : t("dialogs.newChat.picker.noAgents", { defaultValue: "No agents" })}
           </span>
           <ChevronDownIcon className="size-3.5 opacity-60" />
         </Button>
@@ -1641,14 +1709,18 @@ function AgentHarnessPicker({
             the default), so the most-used picks lead. */}
             {harnessEntries.length > 0 && (
               <>
-                <PickerSectionHeader>Harnesses</PickerSectionHeader>
+                <PickerSectionHeader>
+                  {t("dialogs.newChat.picker.harnesses", { defaultValue: "Harnesses" })}
+                </PickerSectionHeader>
                 {harnessEntries.map(renderEntry)}
                 <DropdownMenuSeparator />
               </>
             )}
             {/* Agents group — SDK / bundle + custom agents. Always rendered so the
             "Create custom agent" action is reachable even with no bundle agents. */}
-            <PickerSectionHeader>Agents</PickerSectionHeader>
+            <PickerSectionHeader>
+              {t("dialogs.newChat.picker.agents", { defaultValue: "Agents" })}
+            </PickerSectionHeader>
             {agentEntries.map(renderEntry)}
             {pendingAgent && (
               <DropdownMenuItem
@@ -1660,7 +1732,9 @@ function AgentHarnessPicker({
               >
                 <div className="flex min-w-0 flex-1 items-baseline gap-2.5">
                   <span className="truncate">{pendingAgent.name}</span>
-                  <span className="truncate text-[11px] text-muted-foreground/70">Custom</span>
+                  <span className="truncate text-[11px] text-muted-foreground/70">
+                    {t("dialogs.newChat.picker.custom", { defaultValue: "Custom" })}
+                  </span>
                 </div>
               </DropdownMenuItem>
             )}
@@ -1670,7 +1744,9 @@ function AgentHarnessPicker({
               className="gap-2 rounded-sm px-2 py-1.5 text-13 text-muted-foreground"
             >
               <PlusIcon className="size-3.5" />
-              Create custom agent
+              {t("dialogs.newChat.picker.createCustomAgent", {
+                defaultValue: "Create custom agent",
+              })}
             </DropdownMenuItem>
           </>
         )}
@@ -1718,6 +1794,7 @@ export function NewChatLandingScreen() {
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const serverUrl = getCliServerUrl();
+  const { t } = useTranslation();
   const { data: agents } = useAvailableAgents();
   const brainHarnessLabels = useBrainHarnessLabels();
   const { data: hosts, isLoading: hostsLoading } = useHosts();
@@ -1817,7 +1894,14 @@ export function NewChatLandingScreen() {
   // Provider-named label for the sandbox option (e.g. "Modal Sandbox"),
   // falling back to the generic "New Sandbox" when the server names no
   // provider.
-  const sandboxLabel = sandboxOptionLabel(info !== "loading" ? info.sandbox_provider : null);
+  const sandboxProvider = info !== "loading" ? info.sandbox_provider : null;
+  const sandboxOption = sandboxOptionLabel(sandboxProvider);
+  const sandboxLabel = sandboxProvider
+    ? t("dialogs.newChat.hosts.sandboxProvider", {
+        defaultValue: "{{provider}} Sandbox",
+        provider: sandboxOption.replace(/\sSandbox$/, ""),
+      })
+    : t("dialogs.newChat.hosts.newSandbox", { defaultValue: "New Sandbox" });
   // Embed-only docs seam: when the host passes additional docs and managed
   // sandboxes are unavailable, keep the sandbox row visible but disabled and
   // attach a help tooltip with a clickable link.
@@ -2500,32 +2584,46 @@ export function NewChatLandingScreen() {
   const submitDisabledReason = canSubmit
     ? null
     : sandboxSelected && !sandboxRepoValid
-      ? "Please enter a valid repository URL"
+      ? t("dialogs.newChat.validation.repositoryUrl", {
+          defaultValue: "Please enter a valid repository URL",
+        })
       : !sandboxSelected &&
           (localRunnerSelected
             ? selectedRunnerWorkspaceId === null
             : !selectedHostId || !workspaceValid)
-        ? "Please choose a host and working directory"
+        ? t("dialogs.newChat.validation.hostWorkspace", {
+            defaultValue: "Please choose a host and working directory",
+          })
         : message.trim().length === 0
-          ? "Enter a message to get started"
+          ? t("dialogs.newChat.validation.message", {
+              defaultValue: "Enter a message to get started",
+            })
           : null;
 
   // Chip display labels.
   const workspaceLabel = workspaceTrimmed
     ? (workspaceTrimmed.split("/").filter(Boolean).pop() ?? workspaceTrimmed)
-    : "Working directory";
+    : t("dialogs.newChat.workspace.workingDirectory", { defaultValue: "Working directory" });
   const hostLabel = connectingThisMachine
-    ? "Connecting…"
+    ? t("dialogs.newChat.hosts.connectingLabel", { defaultValue: "Connecting…" })
     : sandboxSelected
       ? sandboxLabel
       : localRunnerSelected
         ? selectedRunner?.runner_version
-          ? `Runner ${selectedRunner.runner_version}`
-          : "Local runner"
-        : (selectedHost?.name ?? (onlineHosts.length === 0 ? "No hosts" : "Select host"));
+          ? t("dialogs.newChat.hosts.runnerVersion", {
+              defaultValue: "Runner {{version}}",
+              version: selectedRunner.runner_version,
+            })
+          : t("dialogs.newChat.hosts.localRunner", { defaultValue: "Local runner" })
+        : (selectedHost?.name ??
+          (onlineHosts.length === 0
+            ? t("dialogs.newChat.hosts.noHosts", { defaultValue: "No hosts" })
+            : t("dialogs.newChat.hosts.selectHost", { defaultValue: "Select host" })));
   // The chip shows just the branch (the "(existing)" distinction lives in the
   // popover's warning; appending it here only gets clipped by the chip's cap).
-  const worktreeLabel = branchName.trim() || "No worktree";
+  const worktreeLabel =
+    branchName.trim() ||
+    t("dialogs.newChat.worktree.label", { defaultValue: "Git worktree branch (optional)" });
   // Sandbox repository chip label: repo name (server's clone-dir rule)
   // plus the pinned branch, e.g. "repo#main"; placeholder when unset.
   const sandboxRepoName = deriveRepoName(sandboxRepoUrl);
@@ -2533,11 +2631,13 @@ export function NewChatLandingScreen() {
     ? sandboxRepoBranch.trim()
       ? `${sandboxRepoName}#${sandboxRepoBranch.trim()}`
       : sandboxRepoName
-    : "Repository";
+    : t("dialogs.newChat.repository.label", { defaultValue: "Repository (optional)" });
   // The trigger label is just the agent name; the run-config knobs live in
   // the picker's per-entry submenu, so duplicating their values here would be
   // redundant.
-  const agentLabel = selectedAgent ? selectedAgent.display_name : "Select agent";
+  const agentLabel = selectedAgent
+    ? selectedAgent.display_name
+    : t("dialogs.newChat.picker.selectAgent", { defaultValue: "Select agent" });
 
   // Wrap the harness setter so every explicit pick is persisted to
   // localStorage. The caller can pass an explicit `agentId` for the
@@ -2758,7 +2858,7 @@ export function NewChatLandingScreen() {
           }),
         });
         if (!res.ok) {
-          setCreateError(await describeCreateError(res));
+          setCreateError(await describeCreateError(res, t));
           return;
         }
         data = (await res.json()) as { id: string };
@@ -2821,7 +2921,11 @@ export function NewChatLandingScreen() {
       landingDraft = null;
       navigate(`/c/${data.id}`);
     } catch {
-      setCreateError("Couldn't reach the server. Check your connection and try again.");
+      setCreateError(
+        t("dialogs.newChat.errors.reachServer", {
+          defaultValue: "Couldn't reach the server. Check your connection and try again.",
+        }),
+      );
     } finally {
       setCreating(false);
     }
@@ -2865,7 +2969,7 @@ export function NewChatLandingScreen() {
         <div className="flex flex-col items-center gap-3.5 sm:flex-row">
           <OttoEyes className="h-18 w-auto shrink-0" />
           <h1 className="text-center text-3xl font-medium tracking-[-0.03em] text-foreground sm:text-left">
-            What should we do?
+            {t("dialogs.newChat.landingTitle", { defaultValue: "What should we do?" })}
           </h1>
         </div>
         <div className="relative flex w-full flex-col gap-3">
@@ -2894,7 +2998,9 @@ export function NewChatLandingScreen() {
           >
             {isDragActive && (
               <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-card/80">
-                <span className="text-sm font-medium text-ring">Drop files here</span>
+                <span className="text-sm font-medium text-ring">
+                  {t("dialogs.newChat.dropFilesHere", { defaultValue: "Drop files here" })}
+                </span>
               </div>
             )}
             {/* Skill suggestions — floats above the composer box. */}
@@ -3009,8 +3115,16 @@ export function NewChatLandingScreen() {
               }}
               // Suppress the native placeholder when the overlay supplies its
               // own prompt text; aria-label preserves the accessible name.
-              placeholder={pillSkills.length > 0 ? "" : "Describe a task to start a new session…"}
-              aria-label="Describe a task to start a new session"
+              placeholder={
+                pillSkills.length > 0
+                  ? ""
+                  : t("dialogs.newChat.promptPlaceholder", {
+                      defaultValue: "Describe a task to start a new session…",
+                    })
+              }
+              aria-label={t("dialogs.newChat.promptAriaLabel", {
+                defaultValue: "Describe a task to start a new session",
+              })}
               rows={1}
               autoFocus
               data-testid="new-chat-landing-input"
@@ -3029,7 +3143,9 @@ export function NewChatLandingScreen() {
             {pillSkills.length > 0 && message.length === 0 && (
               <div className="pointer-events-none absolute inset-x-4 top-4 flex flex-wrap items-center gap-2">
                 <span className="font-['SF_Pro_Text',-apple-system,BlinkMacSystemFont,system-ui,sans-serif] text-sm leading-5 text-muted-foreground">
-                  Describe a task, or try a skill
+                  {t("dialogs.newChat.skillPrompt", {
+                    defaultValue: "Describe a task, or try a skill",
+                  })}
                 </span>
                 <SkillPills skills={pillSkills} onPick={applySkillPill} />
               </div>
@@ -3073,7 +3189,10 @@ export function NewChatLandingScreen() {
                       type="button"
                       onClick={() => removeMentionedItem(i)}
                       className="ml-0.5 rounded-full hover:text-foreground"
-                      aria-label={`Remove ${item.path}`}
+                      aria-label={t("dialogs.newChat.remove", {
+                        defaultValue: "Remove {{name}}",
+                        name: item.path,
+                      })}
                     >
                       <XIcon className="size-3" />
                     </button>
@@ -3099,7 +3218,10 @@ export function NewChatLandingScreen() {
                       type="button"
                       onClick={() => removeFile(i)}
                       className="ml-0.5 rounded-full hover:text-foreground"
-                      aria-label={`Remove ${file.name || "image.png"}`}
+                      aria-label={t("dialogs.newChat.remove", {
+                        defaultValue: "Remove {{name}}",
+                        name: file.name || "image.png",
+                      })}
                     >
                       <XIcon className="size-3" />
                     </button>
@@ -3120,11 +3242,13 @@ export function NewChatLandingScreen() {
                   className="size-9 md:size-8"
                   disabled={creating}
                   onClick={() => fileInputRef.current?.click()}
-                  title="Attach files"
+                  title={t("dialogs.newChat.attachFiles", { defaultValue: "Attach files" })}
                   data-testid="new-chat-landing-attach"
                 >
                   <PaperclipIcon className="size-4" />
-                  <span className="sr-only">Attach files</span>
+                  <span className="sr-only">
+                    {t("dialogs.newChat.attachFiles", { defaultValue: "Attach files" })}
+                  </span>
                 </Button>
                 <ComposerMicButton
                   disabled={creating}
@@ -3181,7 +3305,9 @@ export function NewChatLandingScreen() {
                           type="submit"
                           size="icon"
                           disabled={!canSubmit}
-                          aria-label="Start session"
+                          aria-label={t("dialogs.newChat.startSession", {
+                            defaultValue: "Start session",
+                          })}
                           data-testid="new-chat-landing-submit"
                           className="size-8 rounded-full bg-foreground text-card transition-opacity hover:opacity-80 disabled:opacity-50"
                         >
@@ -3265,14 +3391,20 @@ export function NewChatLandingScreen() {
                         >
                           <span className="flex items-center gap-2">
                             <MonitorCloudIcon className="size-4 text-muted-foreground" />
-                            <span className="text-xs">New Sandbox</span>
+                            <span className="text-xs">
+                              {t("dialogs.newChat.hosts.newSandbox", {
+                                defaultValue: "New Sandbox",
+                              })}
+                            </span>
                           </span>
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <button
                                 type="button"
                                 className="inline-flex size-4 items-center justify-center rounded-sm text-muted-foreground/80 hover:text-foreground"
-                                aria-label="Why New Sandbox is unavailable"
+                                aria-label={t("dialogs.newChat.hosts.sandboxUnavailable", {
+                                  defaultValue: "Why New Sandbox is unavailable",
+                                })}
                                 onClick={(e) => e.stopPropagation()}
                                 onKeyDown={(e) => {
                                   if (e.key === "Enter" || e.key === " ") e.stopPropagation();
@@ -3308,14 +3440,24 @@ export function NewChatLandingScreen() {
                         >
                           <MonitorIcon className="size-4 shrink-0 text-muted-foreground" />
                           <span className="flex min-w-0 flex-col">
-                            <span className="truncate">Local runner</span>
+                            <span className="truncate">
+                              {t("dialogs.newChat.hosts.localRunner", {
+                                defaultValue: "Local runner",
+                              })}
+                            </span>
                             <span className="truncate text-[11px] text-muted-foreground">
                               {!runner.online
-                                ? "offline"
+                                ? t("dialogs.newChat.hosts.offline", { defaultValue: "offline" })
                                 : selectedRunnerHarness !== null &&
                                     !runner.harnesses.includes(selectedRunnerHarness)
-                                  ? `missing ${selectedRunnerHarness}`
-                                  : `${runner.workspaces.length} workspace(s)`}
+                                  ? t("dialogs.newChat.hosts.missing", {
+                                      defaultValue: "missing {{harness}}",
+                                      harness: selectedRunnerHarness,
+                                    })
+                                  : t("dialogs.newChat.hosts.workspaceCount", {
+                                      count: runner.workspaces.length,
+                                      defaultValue: "{{count}} workspaces",
+                                    })}
                             </span>
                           </span>
                         </DropdownMenuItem>
@@ -3325,7 +3467,9 @@ export function NewChatLandingScreen() {
                   )}
                   {allHosts.length === 0 && !showConnectThisMachine && (
                     <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                      No hosts connected yet.
+                      {t("dialogs.newChat.hosts.noConnected", {
+                        defaultValue: "No hosts connected yet.",
+                      })}
                     </div>
                   )}
                   {onlineHosts.map((host) => (
@@ -3338,7 +3482,13 @@ export function NewChatLandingScreen() {
                     >
                       <HostOption
                         host={host}
-                        subtitle={host.host_id === thisMachineHostId ? "this machine" : undefined}
+                        subtitle={
+                          host.host_id === thisMachineHostId
+                            ? t("dialogs.newChat.hosts.thisMachine", {
+                                defaultValue: "this machine",
+                              })
+                            : undefined
+                        }
                       />
                     </DropdownMenuItem>
                   ))}
@@ -3361,8 +3511,12 @@ export function NewChatLandingScreen() {
                             host={host}
                             subtitle={
                               connectingThisMachine
-                                ? "connecting…"
-                                : "this machine · select to connect"
+                                ? t("dialogs.newChat.hosts.connecting", {
+                                    defaultValue: "connecting…",
+                                  })
+                                : t("dialogs.newChat.hosts.thisMachineConnect", {
+                                    defaultValue: "this machine · select to connect",
+                                  })
                             }
                           />
                         </DropdownMenuItem>
@@ -3372,7 +3526,13 @@ export function NewChatLandingScreen() {
                       <DropdownMenuItem key={host.host_id} disabled className="text-xs">
                         <HostOption
                           host={host}
-                          subtitle={host.host_id === thisMachineHostId ? "this machine" : undefined}
+                          subtitle={
+                            host.host_id === thisMachineHostId
+                              ? t("dialogs.newChat.hosts.thisMachine", {
+                                  defaultValue: "this machine",
+                                })
+                              : undefined
+                          }
                         />
                       </DropdownMenuItem>
                     );
@@ -3390,7 +3550,13 @@ export function NewChatLandingScreen() {
                     >
                       <MonitorIcon className="size-4 shrink-0 text-muted-foreground" />
                       <span className="text-xs">
-                        {connectingThisMachine ? "Connecting this machine…" : "Run on this machine"}
+                        {connectingThisMachine
+                          ? t("dialogs.newChat.hosts.connectingThisMachine", {
+                              defaultValue: "Connecting this machine…",
+                            })
+                          : t("dialogs.newChat.hosts.runThisMachine", {
+                              defaultValue: "Run on this machine",
+                            })}
                       </span>
                     </DropdownMenuItem>
                   )}
@@ -3404,7 +3570,7 @@ export function NewChatLandingScreen() {
                     className="gap-2 text-xs text-muted-foreground"
                   >
                     <PlusIcon className="size-3.5" />
-                    Connect new host
+                    {t("dialogs.newChat.hosts.connectNew", { defaultValue: "Connect new host" })}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -3438,7 +3604,9 @@ export function NewChatLandingScreen() {
                           htmlFor="landing-repo-url"
                           className="text-xs font-medium text-foreground"
                         >
-                          Repository (optional)
+                          {t("dialogs.newChat.repository.label", {
+                            defaultValue: "Repository (optional)",
+                          })}
                         </label>
                         {databricksGitCredentialsTooltipContent && (
                           <Tooltip>
@@ -3446,7 +3614,9 @@ export function NewChatLandingScreen() {
                               <button
                                 type="button"
                                 className="inline-flex size-4 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:text-foreground"
-                                aria-label="How to set up Databricks git credentials"
+                                aria-label={t("dialogs.newChat.repository.credentials", {
+                                  defaultValue: "How to set up Databricks git credentials",
+                                })}
                               >
                                 <CircleHelpIcon className="size-3.5" />
                               </button>
@@ -3470,14 +3640,20 @@ export function NewChatLandingScreen() {
                         type="text"
                         value={sandboxRepoBranch}
                         onChange={(e) => setSandboxRepoBranch(e.target.value)}
-                        placeholder="Branch (defaults to the repo's default)"
-                        aria-label="Repository branch"
+                        placeholder={t("dialogs.newChat.repository.branchPlaceholder", {
+                          defaultValue: "Branch (defaults to the repo's default)",
+                        })}
+                        aria-label={t("dialogs.newChat.repository.branchAriaLabel", {
+                          defaultValue: "Repository branch",
+                        })}
                         className="rounded-md border border-input bg-background px-3 py-2 text-xs outline-none transition-colors focus-visible:border-ring"
                         data-testid="new-chat-landing-repo-branch-input"
                       />
                       <p className="text-xs text-muted-foreground">
-                        Cloned into the sandbox as the session's working directory. Leave blank to
-                        start in an empty workspace.
+                        {t("dialogs.newChat.repository.description", {
+                          defaultValue:
+                            "Cloned into the sandbox as the session's working directory. Leave blank to start in an empty workspace.",
+                        })}
                       </p>
                     </div>
                   </PopoverContent>
@@ -3516,7 +3692,11 @@ export function NewChatLandingScreen() {
                         }
                       />
                     ) : (
-                      <p className="p-3 text-xs text-muted-foreground">Select a host first.</p>
+                      <p className="p-3 text-xs text-muted-foreground">
+                        {t("dialogs.newChat.workspace.selectHostFirst", {
+                          defaultValue: "Select a host first.",
+                        })}
+                      </p>
                     )}
                   </PopoverContent>
                 </Popover>
@@ -3534,7 +3714,9 @@ export function NewChatLandingScreen() {
                       <span className="hidden max-w-40 truncate text-foreground sm:block">
                         {selectedRunnerWorkspace?.display_name ??
                           selectedRunnerWorkspace?.path_label ??
-                          "Select workspace"}
+                          t("dialogs.newChat.workspace.selectWorkspace", {
+                            defaultValue: "Select workspace",
+                          })}
                       </span>
                       <ChevronDownIcon className="size-3.5 shrink-0 opacity-60" />
                     </button>
@@ -3555,10 +3737,15 @@ export function NewChatLandingScreen() {
                           <span className="truncate">
                             {workspaceOption.display_name ??
                               workspaceOption.path_label ??
-                              "Workspace"}
+                              t("dialogs.newChat.workspace.workspace", {
+                                defaultValue: "Workspace",
+                              })}
                           </span>
                           <span className="truncate text-[11px] text-muted-foreground">
-                            {workspaceOption.capabilities.join(", ") || "No capabilities reported"}
+                            {workspaceOption.capabilities.join(", ") ||
+                              t("dialogs.newChat.workspace.noCapabilities", {
+                                defaultValue: "No capabilities reported",
+                              })}
                           </span>
                         </span>
                       </DropdownMenuItem>
@@ -3599,14 +3786,18 @@ export function NewChatLandingScreen() {
                         htmlFor="landing-branch-name"
                         className="text-xs font-medium text-foreground"
                       >
-                        Git worktree branch (optional)
+                        {t("dialogs.newChat.worktree.label", {
+                          defaultValue: "Git worktree branch (optional)",
+                        })}
                       </label>
                       {/* Help text sits above the field. The warning for a picked
                         existing worktree stays below the input (contextual to the
                         selection). */}
                       <p className="text-xs text-muted-foreground">
-                        New branch name, or pick an existing worktree. Leave blank to start directly
-                        in the working directory.
+                        {t("dialogs.newChat.worktree.description", {
+                          defaultValue:
+                            "New branch name, or pick an existing worktree. Leave blank to start directly in the working directory.",
+                        })}
                       </p>
                       {/* The branch field is a combobox: focusing it reveals the
                         repo's existing worktrees, and typing filters them.
@@ -3650,8 +3841,12 @@ export function NewChatLandingScreen() {
                             e.preventDefault();
                             generateBranchName();
                           }}
-                          title="Generate a unique branch name"
-                          aria-label="Generate a unique branch name"
+                          title={t("dialogs.newChat.worktree.generate", {
+                            defaultValue: "Generate a unique branch name",
+                          })}
+                          aria-label={t("dialogs.newChat.worktree.generate", {
+                            defaultValue: "Generate a unique branch name",
+                          })}
                           className="absolute top-0 right-0 flex h-9 w-9 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
                           data-testid="new-chat-landing-branch-generate"
                         >
@@ -3666,7 +3861,9 @@ export function NewChatLandingScreen() {
                             data-testid="new-chat-landing-worktree-dropdown"
                           >
                             <span className="px-2 pt-1 pb-0.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-                              Existing worktrees
+                              {t("dialogs.newChat.worktree.existing", {
+                                defaultValue: "Existing worktrees",
+                              })}
                             </span>
                             <ul className="flex flex-col gap-0.5">
                               {filteredWorktrees.map((w) => {
@@ -3692,7 +3889,10 @@ export function NewChatLandingScreen() {
                                       data-testid="new-chat-landing-worktree-option"
                                     >
                                       <span className="font-medium text-foreground">
-                                        {w.branch ?? "(detached)"}
+                                        {w.branch ??
+                                          t("dialogs.newChat.worktree.detached", {
+                                            defaultValue: "(detached)",
+                                          })}
                                       </span>
                                       {/* Tail-truncated so the disambiguating
                                       folder shows, not a shared prefix; full
@@ -3719,8 +3919,12 @@ export function NewChatLandingScreen() {
                           type="text"
                           value={baseBranch}
                           onChange={(e) => setBaseBranch(e.target.value)}
-                          placeholder="Base branch (defaults to current)"
-                          aria-label="Base branch"
+                          placeholder={t("dialogs.newChat.worktree.basePlaceholder", {
+                            defaultValue: "Base branch (defaults to current)",
+                          })}
+                          aria-label={t("dialogs.newChat.worktree.baseAriaLabel", {
+                            defaultValue: "Base branch",
+                          })}
                           className="rounded-md border border-input bg-background px-3 py-2 text-xs outline-none transition-colors focus-visible:border-ring"
                           data-testid="new-chat-landing-base-branch-input"
                         />
@@ -3730,7 +3934,10 @@ export function NewChatLandingScreen() {
                           className="text-xs text-amber-600 dark:text-amber-500"
                           data-testid="new-chat-landing-existing-worktree-warning"
                         >
-                          Starts in existing worktree, edit the name to create a new one.
+                          {t("dialogs.newChat.worktree.existingWarning", {
+                            defaultValue:
+                              "Starts in existing worktree, edit the name to create a new one.",
+                          })}
                         </p>
                       )}
                     </div>
@@ -3766,6 +3973,7 @@ export function NewChatLandingScreen() {
               <TriangleAlertIcon className="size-3.5 shrink-0" />
               <span>
                 {harnessWarningMessage(
+                  t,
                   selectedAgent?.display_name,
                   harnessWarningHost?.name,
                   selectedAgentUnavailableReason,
@@ -3787,8 +3995,10 @@ export function NewChatLandingScreen() {
             >
               <TriangleAlertIcon className="size-3.5 shrink-0" />
               <span>
-                Codex will run with approvals and the sandbox disabled — it can edit any file and
-                run any command without asking.
+                {t("dialogs.newChat.activeBanner", {
+                  defaultValue:
+                    "Codex will run with approvals and the sandbox disabled — it can edit any file and run any command without asking.",
+                })}
               </span>
             </p>
           )}
@@ -3806,11 +4016,16 @@ export function NewChatLandingScreen() {
       <Dialog open={connectOpen} onOpenChange={setConnectOpen}>
         <DialogContent className="sm:max-w-lg" data-testid="connect-host-dialog">
           <DialogHeader>
-            <DialogTitle>Connect a host</DialogTitle>
+            <DialogTitle>
+              {t("dialogs.newChat.connectHost.title", { defaultValue: "Connect a host" })}
+            </DialogTitle>
           </DialogHeader>
           <ConnectHostInstructions
             serverUrl={serverUrl}
-            label="Run this on the machine you want to use, then pick it from the host menu:"
+            label={t("dialogs.newChat.connectHost.label", {
+              defaultValue:
+                "Run this on the machine you want to use, then pick it from the host menu:",
+            })}
           />
         </DialogContent>
       </Dialog>

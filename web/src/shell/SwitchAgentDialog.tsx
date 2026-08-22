@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
@@ -59,6 +60,7 @@ export function SwitchAgentDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [agentChoice, setAgentChoice] = useState<string>(NONE_CHOSEN);
   const [submitting, setSubmitting] = useState(false);
@@ -142,10 +144,14 @@ export function SwitchAgentDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent data-testid="switch-agent-dialog" className="flex flex-col gap-4 sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Switch agent</DialogTitle>
+          <DialogTitle>
+            {t("dialogs.switchAgent.title", { defaultValue: "Switch agent" })}
+          </DialogTitle>
           <DialogDescription>
-            Continue this session on a different agent. The conversation, comments, and files stay;
-            the next message runs on the new agent.
+            {t("dialogs.switchAgent.description", {
+              defaultValue:
+                "Continue this session on a different agent. The conversation, comments, and files stay; the next message runs on the new agent.",
+            })}
           </DialogDescription>
         </DialogHeader>
 
@@ -154,7 +160,7 @@ export function SwitchAgentDialog({
             htmlFor="switch-agent-select"
             className="text-xs font-medium text-muted-foreground"
           >
-            Agent
+            {t("dialogs.switchAgent.agent", { defaultValue: "Agent" })}
           </label>
           <Select value={agentChoice || undefined} onValueChange={setAgentChoice}>
             <SelectTrigger
@@ -170,7 +176,7 @@ export function SwitchAgentDialog({
                       <span className="text-muted-foreground">(current agent)</span>
                     </span>
                   ) : (
-                    "Choose an agent"
+                    t("dialogs.switchAgent.chooseAgent", { defaultValue: "Choose an agent" })
                   )
                 }
               />
@@ -192,8 +198,11 @@ export function SwitchAgentDialog({
 
         {resetsModelSettings && (
           <p data-testid="switch-agent-reset-warning" className="text-xs text-muted-foreground">
-            Model &amp; reasoning effort will reset to {chosen?.display_name}'s defaults (different
-            provider).
+            {t("dialogs.switchAgent.resetWarning", {
+              defaultValue:
+                "Model & reasoning effort will reset to {{agent}}'s defaults (different provider).",
+              agent: chosen?.display_name ?? "",
+            })}
           </p>
         )}
 
@@ -205,14 +214,16 @@ export function SwitchAgentDialog({
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => handleOpenChange(false)} disabled={submitting}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button
             data-testid="switch-agent-submit"
             onClick={handleSwitch}
             disabled={submitting || agentChoice === NONE_CHOSEN}
           >
-            {submitting ? "Switching…" : "Switch"}
+            {submitting
+              ? t("dialogs.switchAgent.switching", { defaultValue: "Switching…" })
+              : t("dialogs.switchAgent.switch", { defaultValue: "Switch" })}
           </Button>
         </DialogFooter>
       </DialogContent>

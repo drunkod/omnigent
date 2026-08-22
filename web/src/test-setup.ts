@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { vi } from "vitest";
+import { afterEach, vi } from "vitest";
 
 // Node 26 exposes an experimental global `localStorage` accessor that returns
 // undefined without a --localstorage-file. Install deterministic browser-like
@@ -50,7 +50,11 @@ for (const [name, storage] of [
   });
 }
 
-await import("@/i18n");
+const { default: i18n } = await import("@/i18n");
+
+afterEach(async () => {
+  await i18n.changeLanguage("en");
+});
 
 // The @lobehub icon packages have broken nested-module resolution
 // under vitest; stub presentational glyphs so component modules that

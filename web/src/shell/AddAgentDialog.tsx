@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "@/lib/routing";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -45,6 +46,7 @@ export function AddAgentDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: agents } = useAvailableAgents();
@@ -76,7 +78,11 @@ export function AddAgentDialog({
     if (selectedAgent === null) return;
     const trimmed = name.trim();
     if (!trimmed) {
-      setError("Enter a name for the agent.");
+      setError(
+        t("dialogs.addAgent.nameRequired", {
+          defaultValue: "Enter a name for the agent.",
+        }),
+      );
       return;
     }
     const title = `${UI_ADDED_TITLE_PREFIX}:${selectedAgent.name}:${trimmed}`;
@@ -96,7 +102,11 @@ export function AddAgentDialog({
       handleOpenChange(false);
       navigate(`/c/${session.id}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't add the agent. Try again.");
+      setError(
+        e instanceof Error
+          ? e.message
+          : t("dialogs.addAgent.error", { defaultValue: "Couldn't add the agent. Try again." }),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -111,16 +121,21 @@ export function AddAgentDialog({
         className="flex max-h-[85vh] flex-col gap-4 sm:max-w-lg"
       >
         <DialogHeader>
-          <DialogTitle>Add agent</DialogTitle>
+          <DialogTitle>{t("dialogs.addAgent.title", { defaultValue: "Add agent" })}</DialogTitle>
         </DialogHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
           <div className="flex flex-col gap-2">
-            <span className="text-xs font-medium text-muted-foreground">Pick an agent</span>
+            <span className="text-xs font-medium text-muted-foreground">
+              {t("dialogs.addAgent.pickAgent", { defaultValue: "Pick an agent" })}
+            </span>
             {agentList.length === 0 ? (
               <p data-testid="add-agent-empty" className="text-xs text-muted-foreground">
-                No agents available on this server. Register one with{" "}
-                <code className="font-mono">omnigent server --agent</code>.
+                {t("dialogs.addAgent.empty", {
+                  defaultValue:
+                    "No agents available on this server. Register one with {{command}}.",
+                  command: "omnigent server --agent",
+                })}
               </p>
             ) : (
               agentList.map((agent) => (
@@ -138,7 +153,7 @@ export function AddAgentDialog({
           {selectedAgent !== null && (
             <div className="flex flex-col gap-1.5">
               <label htmlFor="add-agent-name" className="text-xs font-medium text-muted-foreground">
-                Name
+                {t("dialogs.addAgent.name", { defaultValue: "Name" })}
               </label>
               {/* Raw input matching NewChatDialog's "Name" field for a
                   consistent look (rounded-md + border-tint focus, no
@@ -149,7 +164,9 @@ export function AddAgentDialog({
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Name this agent"
+                placeholder={t("dialogs.addAgent.namePlaceholder", {
+                  defaultValue: "Name this agent",
+                })}
                 className="rounded-md border border-input bg-background px-3 py-2 font-mono text-xs outline-none transition-colors focus-visible:border-ring"
               />
             </div>
@@ -164,14 +181,16 @@ export function AddAgentDialog({
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => handleOpenChange(false)} disabled={submitting}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button
             data-testid="add-agent-submit"
             onClick={handleAdd}
             disabled={selectedAgent === null || !name.trim() || submitting}
           >
-            {submitting ? "Adding…" : "Add"}
+            {submitting
+              ? t("dialogs.addAgent.adding", { defaultValue: "Adding…" })
+              : t("dialogs.addAgent.add", { defaultValue: "Add" })}
           </Button>
         </DialogFooter>
       </DialogContent>

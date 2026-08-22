@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangleIcon, MonitorCloudIcon, GitBranchIcon, MonitorIcon } from "lucide-react";
 import {
@@ -106,6 +107,7 @@ export function ResumeWithDirectoryDialog({
   wrapper?: string | null;
   onBound?: () => void;
 }) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
 
   // Source session prefill (host/workspace/git_branch). Only fetch while
@@ -240,7 +242,13 @@ export function ResumeWithDirectoryDialog({
       handleOpenChange(false);
       onBound?.();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't start the session. Try again.");
+      setError(
+        e instanceof Error
+          ? e.message
+          : t("dialogs.resumeDir.error", {
+              defaultValue: "Couldn't start the session. Try again.",
+            }),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -259,22 +267,30 @@ export function ResumeWithDirectoryDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent data-testid="resume-dir-dialog" className="flex flex-col gap-4 sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Resume this session</DialogTitle>
+          <DialogTitle>
+            {t("dialogs.resumeDir.title", { defaultValue: "Resume this session" })}
+          </DialogTitle>
           <DialogDescription>
-            This clone hasn't picked a working directory yet. Choose a host and directory to
-            continue the conversation against your files.
+            {t("dialogs.resumeDir.description", {
+              defaultValue:
+                "This clone hasn't picked a working directory yet. Choose a host and directory to continue the conversation against your files.",
+            })}
           </DialogDescription>
         </DialogHeader>
 
         {sourceLoading || !hostsLoaded ? (
           <p className="text-xs text-muted-foreground" data-testid="resume-dir-loading">
-            Loading the original session's directory…
+            {t("dialogs.resumeDir.loading", {
+              defaultValue: "Loading the original session's directory…",
+            })}
           </p>
         ) : showCliFallback ? (
           <div className="flex flex-col gap-2" data-testid="resume-dir-cli-fallback">
             <p className="text-xs text-muted-foreground">
-              The original session's host is offline, so there's nothing to launch a runner on.
-              Reconnect it from your terminal — then send your message again to pick a directory.
+              {t("dialogs.resumeDir.hostOffline", {
+                defaultValue:
+                  "The original session's host is offline, so there's nothing to launch a runner on. Reconnect it from your terminal — then send your message again to pick a directory.",
+              })}
             </p>
             <CliCommandBlock
               command={buildReconnectCommand({
@@ -293,10 +309,16 @@ export function ResumeWithDirectoryDialog({
         ) : (
           <>
             <div className="flex flex-col gap-2">
-              <span className="text-xs font-medium text-muted-foreground">Host</span>
+              <span className="text-xs font-medium text-muted-foreground">
+                {t("dialogs.resumeDir.host", { defaultValue: "Host" })}
+              </span>
               <Select value={selectedHostId ?? ""} onValueChange={(v) => setSelectedHostId(v)}>
                 <SelectTrigger className="w-full text-xs" data-testid="resume-dir-host-select">
-                  <SelectValue placeholder="Select a host" />
+                  <SelectValue
+                    placeholder={t("dialogs.resumeDir.selectHost", {
+                      defaultValue: "Select a host",
+                    })}
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {onlineHosts.map((host) => (
@@ -313,7 +335,9 @@ export function ResumeWithDirectoryDialog({
             </div>
 
             <div className="flex flex-col gap-2">
-              <span className="text-xs font-medium text-muted-foreground">Working directory</span>
+              <span className="text-xs font-medium text-muted-foreground">
+                {t("dialogs.resumeDir.workingDirectory", { defaultValue: "Working directory" })}
+              </span>
               {selectedHostId ? (
                 <>
                   <WorkspacePathField
@@ -344,11 +368,13 @@ export function ResumeWithDirectoryDialog({
                     >
                       <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" />
                       <span>
-                        {conflictingSessions.length === 1
-                          ? "1 other agent is"
-                          : `${conflictingSessions.length} other agents are`}{" "}
-                        working in this directory. Write operations may conflict. Name a git branch
-                        below to work in an isolated copy.
+                        {t("dialogs.resumeDir.conflictHint", {
+                          count: conflictingSessions.length,
+                          defaultValue:
+                            conflictingSessions.length === 1
+                              ? "1 other agent is working in this directory. Write operations may conflict. Name a git branch below to work in an isolated copy."
+                              : "{{count}} other agents are working in this directory. Write operations may conflict. Name a git branch below to work in an isolated copy.",
+                        })}
                       </span>
                     </p>
                   )}
@@ -359,15 +385,19 @@ export function ResumeWithDirectoryDialog({
                     >
                       <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" />
                       <span>
-                        This directory differs from the original session's. Earlier file references
-                        in the transcript may not apply — the agent will need to re-orient.
+                        {t("dialogs.resumeDir.directoryMismatch", {
+                          defaultValue:
+                            "This directory differs from the original session's. Earlier file references in the transcript may not apply — the agent will need to re-orient.",
+                        })}
                       </span>
                     </p>
                   )}
                 </>
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  Select a host to choose a directory.
+                  {t("dialogs.resumeDir.selectHostForDirectory", {
+                    defaultValue: "Select a host to choose a directory.",
+                  })}
                 </p>
               )}
             </div>
@@ -378,7 +408,9 @@ export function ResumeWithDirectoryDialog({
                 className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
               >
                 <GitBranchIcon className="size-3.5" />
-                Git worktree (optional)
+                {t("dialogs.resumeDir.gitWorktreeOptional", {
+                  defaultValue: "Git worktree (optional)",
+                })}
               </label>
               <input
                 id="resume-dir-branch"
@@ -395,16 +427,21 @@ export function ResumeWithDirectoryDialog({
                   type="text"
                   value={baseBranch}
                   onChange={(e) => setBaseBranch(e.target.value)}
-                  placeholder="Base branch (defaults to the current branch)"
-                  aria-label="Base branch"
+                  placeholder={t("dialogs.resumeDir.baseBranchPlaceholder", {
+                    defaultValue: "Base branch (defaults to the current branch)",
+                  })}
+                  aria-label={t("dialogs.resumeDir.baseBranchAriaLabel", {
+                    defaultValue: "Base branch",
+                  })}
                   data-testid="resume-dir-base-branch-input"
                   className="rounded-md border border-input bg-background px-3 py-2 font-mono text-xs outline-none transition-colors focus-visible:border-ring"
                 />
               )}
               <p className="text-xs text-muted-foreground">
-                Creates a git worktree for a new branch in an isolated directory — keeps the clone
-                from fighting the original over the same files. Leave blank to start in the picked
-                directory.
+                {t("dialogs.resumeDir.worktreeDescription", {
+                  defaultValue:
+                    "Creates a git worktree for a new branch in an isolated directory — keeps the clone from fighting the original over the same files. Leave blank to start in the picked directory.",
+                })}
               </p>
             </div>
 
@@ -420,7 +457,9 @@ export function ResumeWithDirectoryDialog({
                 disabled={!selectedHostId || !workspaceValid || submitting}
                 onClick={handleBind}
               >
-                {submitting ? "Starting…" : "Start session"}
+                {submitting
+                  ? t("dialogs.resumeDir.starting", { defaultValue: "Starting…" })
+                  : t("dialogs.resumeDir.start", { defaultValue: "Start session" })}
               </Button>
             </DialogFooter>
           </>

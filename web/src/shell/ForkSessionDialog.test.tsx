@@ -12,6 +12,7 @@ import { useHosts, type Host } from "@/hooks/useHosts";
 import { useDirectorySessions } from "@/hooks/useDirectorySessions";
 import { useRunnerHealthRegistration } from "@/hooks/RunnerHealthProvider";
 import { useHostFilesystem } from "@/hooks/useHostFilesystem";
+import i18n from "@/i18n";
 
 const navigateMock = vi.fn();
 vi.mock("react-router-dom", async (importOriginal) => {
@@ -169,6 +170,11 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("ForkSessionDialog", () => {
+  it("renders the translated title in Russian", async () => {
+    await i18n.changeLanguage("ru");
+    renderDialog();
+    expect(screen.getByText("Клонировать сессию")).toBeInTheDocument();
+  });
   it("leaves the name optional, suggesting 'Fork of <title>' as the placeholder", () => {
     renderDialog({ sourceTitle: "My session" });
     // Name lives under Advanced now (optional, prefilled-by-placeholder).

@@ -11,6 +11,7 @@ import {
   AlertTriangleIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { useCreateHostDirectory, useHostFilesystem } from "@/hooks/useHostFilesystem";
@@ -252,6 +253,7 @@ export function WorkspacePicker({
   initialPath,
   occupancyForPath,
 }: WorkspacePickerProps) {
+  const { t } = useTranslation();
   // "" means home — the server forwards ~ to list_dir. initialPath
   // seeds the start dir (read once at mount).
   const [path, setPath] = useState<string>(initialPath ?? "");
@@ -448,7 +450,13 @@ export function WorkspacePicker({
       setCreateError(null);
       navigateTo(created);
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : "Failed to create folder");
+      setCreateError(
+        err instanceof Error
+          ? err.message
+          : t("dialogs.newChat.workspacePicker.createFolderError", {
+              defaultValue: "Failed to create folder",
+            }),
+      );
     }
   }
 
@@ -462,8 +470,12 @@ export function WorkspacePicker({
           type="button"
           onClick={() => parent !== null && navigateTo(parent)}
           disabled={parent === null}
-          aria-label="Up one level"
-          title="Up one level"
+          aria-label={t("dialogs.newChat.workspacePicker.upOneLevel", {
+            defaultValue: "Up one level",
+          })}
+          title={t("dialogs.newChat.workspacePicker.upOneLevel", {
+            defaultValue: "Up one level",
+          })}
           className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-30"
           data-testid="workspace-picker-up"
         >
@@ -472,8 +484,8 @@ export function WorkspacePicker({
         <button
           type="button"
           onClick={() => navigateTo("")}
-          aria-label="Home"
-          title="Home"
+          aria-label={t("dialogs.newChat.workspacePicker.home", { defaultValue: "Home" })}
+          title={t("dialogs.newChat.workspacePicker.home", { defaultValue: "Home" })}
           className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
           data-testid="workspace-picker-home"
         >
@@ -503,9 +515,19 @@ export function WorkspacePicker({
         <button
           type="button"
           onClick={() => setShowHidden((v) => !v)}
-          aria-label={showHidden ? "Hide hidden" : "Show hidden"}
+          aria-label={t(
+            showHidden
+              ? "dialogs.newChat.workspacePicker.hideHidden"
+              : "dialogs.newChat.workspacePicker.showHidden",
+            { defaultValue: showHidden ? "Hide hidden" : "Show hidden" },
+          )}
           aria-pressed={showHidden}
-          title={showHidden ? "Hide hidden" : "Show hidden"}
+          title={t(
+            showHidden
+              ? "dialogs.newChat.workspacePicker.hideHidden"
+              : "dialogs.newChat.workspacePicker.showHidden",
+            { defaultValue: showHidden ? "Hide hidden" : "Show hidden" },
+          )}
           className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
           data-testid="workspace-picker-show-hidden"
         >
@@ -515,8 +537,10 @@ export function WorkspacePicker({
           type="button"
           onClick={openNewFolder}
           disabled={!canCreateFolder}
-          aria-label="New folder"
-          title="New folder"
+          aria-label={t("dialogs.newChat.workspacePicker.newFolder", {
+            defaultValue: "New folder",
+          })}
+          title={t("dialogs.newChat.workspacePicker.newFolder", { defaultValue: "New folder" })}
           className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-30"
           data-testid="workspace-picker-new-folder"
         >
@@ -533,15 +557,15 @@ export function WorkspacePicker({
             data-testid="workspace-picker-select"
           >
             <CheckIcon className="size-3.5" />
-            Select
+            {t("dialogs.newChat.workspacePicker.select", { defaultValue: "Select" })}
           </Button>
         )}
         {onClose && (
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
-            title="Close"
+            aria-label={t("common.close", { defaultValue: "Close" })}
+            title={t("common.close", { defaultValue: "Close" })}
             className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
             data-testid="workspace-picker-close"
           >
@@ -575,7 +599,9 @@ export function WorkspacePicker({
                   cancelNewFolder();
                 }
               }}
-              placeholder="New folder name"
+              placeholder={t("dialogs.newChat.workspacePicker.newFolderName", {
+                defaultValue: "New folder name",
+              })}
               spellCheck={false}
               autoCapitalize="off"
               autoCorrect="off"
@@ -586,8 +612,12 @@ export function WorkspacePicker({
               type="button"
               disabled={newFolderName.trim() === "" || createDir.isPending}
               onClick={() => void commitNewFolder()}
-              aria-label="Create folder"
-              title="Create folder"
+              aria-label={t("dialogs.newChat.workspacePicker.createFolder", {
+                defaultValue: "Create folder",
+              })}
+              title={t("dialogs.newChat.workspacePicker.createFolder", {
+                defaultValue: "Create folder",
+              })}
               className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:opacity-30"
               data-testid="workspace-picker-new-folder-create"
             >
@@ -596,8 +626,10 @@ export function WorkspacePicker({
             <button
               type="button"
               onClick={cancelNewFolder}
-              aria-label="Cancel new folder"
-              title="Cancel"
+              aria-label={t("dialogs.newChat.workspacePicker.cancelNewFolder", {
+                defaultValue: "Cancel new folder",
+              })}
+              title={t("common.cancel", { defaultValue: "Cancel" })}
               className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
               data-testid="workspace-picker-new-folder-cancel"
             >
@@ -621,22 +653,38 @@ export function WorkspacePicker({
         >
           <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" />
           <span>
-            {occupiedCount === 1 ? "1 other agent is" : `${occupiedCount} other agents are`} working
-            in this directory. Write operations may conflict — name a git branch to work in an
-            isolated copy.
+            {t("dialogs.newChat.workspacePicker.conflict", {
+              count: occupiedCount,
+              defaultValue:
+                occupiedCount === 1
+                  ? "1 other agent is working in this directory. Write operations may conflict — name a git branch to work in an isolated copy."
+                  : "{{count}} other agents are working in this directory. Write operations may conflict — name a git branch to work in an isolated copy.",
+            })}
           </span>
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {isLoading && <div className="px-3 py-3 text-xs text-muted-foreground">Loading…</div>}
+        {isLoading && (
+          <div className="px-3 py-3 text-xs text-muted-foreground">
+            {t("common.loading", { defaultValue: "Loading…" })}
+          </div>
+        )}
         {error !== null && error !== undefined && !isLoading && (
           <div className="px-3 py-3 text-xs text-destructive" data-testid="workspace-picker-error">
-            {error instanceof Error ? error.message : "Failed to load directory"}
+            {error instanceof Error
+              ? error.message
+              : t("dialogs.newChat.workspacePicker.loadError", {
+                  defaultValue: "Failed to load directory",
+                })}
           </div>
         )}
         {!isLoading && error === null && entries.length === 0 && (
           <div className="px-3 py-3 text-xs text-muted-foreground">
-            {activeFilter !== null ? "No matching entries" : "(empty directory)"}
+            {activeFilter !== null
+              ? t("dialogs.newChat.workspacePicker.noMatches", {
+                  defaultValue: "No matching entries",
+                })
+              : t("dialogs.newChat.workspacePicker.empty", { defaultValue: "(empty directory)" })}
           </div>
         )}
         {entries.map((entry) => {
@@ -670,7 +718,9 @@ export function WorkspacePicker({
             className="px-3 py-2 text-xs text-muted-foreground"
             data-testid="workspace-picker-truncated"
           >
-            Too many entries to list fully — type a path above to jump directly.
+            {t("dialogs.newChat.workspacePicker.tooMany", {
+              defaultValue: "Too many entries to list fully — type a path above to jump directly.",
+            })}
           </div>
         )}
       </div>
