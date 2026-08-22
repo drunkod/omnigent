@@ -1,8 +1,9 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { Agent } from "@/hooks/useAgents";
+import i18n from "@/i18n";
 import { ChatHeader } from "./ChatHeader";
 
 // Minimal mobile-menu prop block. All gating booleans are false / counts are
@@ -68,6 +69,16 @@ function renderHeader(props: {
     </MemoryRouter>,
   );
 }
+
+beforeAll(() => {
+  i18n.addResources("en", "translation", {
+    "chat.header.openSidebar": "Open sidebar",
+    "chat.header.backToParentSession": "Back to parent session",
+    "chat.header.back": "Back",
+    "chat.header.subAgent": "Sub-agent",
+  });
+  void i18n.changeLanguage("en");
+});
 
 afterEach(cleanup);
 

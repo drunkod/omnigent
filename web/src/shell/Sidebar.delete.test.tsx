@@ -170,7 +170,7 @@ describe("async delete session flow", () => {
     expect(within(failed).getByText(/Couldn't delete/)).toBeInTheDocument();
     // The session label is in the *visible* text (not just a tooltip) so
     // the user can tell which row failed when several deletes fail.
-    expect(within(failed).getByText("My Session")).toBeInTheDocument();
+    expect(failed).toHaveTextContent("My Session");
 
     fireEvent.click(within(failed).getByRole("button", { name: "Retry" }));
     // Retry replays the exact prior args (incl. deleteBranch: true), not

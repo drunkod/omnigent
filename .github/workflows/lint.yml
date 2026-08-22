@@ -43,10 +43,10 @@ jobs:
 
     steps:
       - name: Check out repo
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version-file: ".python-version"
 
@@ -57,12 +57,12 @@ jobs:
         run: python scripts/normalize_uv_lock_registry.py --check uv.lock
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v3
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v3
         with:
           enable-cache: true
 
       - name: Cache virtualenv
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v4
         with:
           path: .venv
           key: venv-${{ runner.os }}-${{ hashFiles('.python-version') }}-${{ hashFiles('uv.lock') }}
@@ -125,6 +125,12 @@ jobs:
       - name: Type-check web
         working-directory: web
         run: npm run type-check
+
+      # Keep bundled locale resources structurally aligned. The script also
+      # verifies that translated messages preserve interpolation variables.
+      - name: Check web locale resources
+        working-directory: web
+        run: npm run i18n:check
 
       # Frontend behavior changes must include colocated Vitest coverage. Run the
       # complete suite here so new Settings/i18n tests and future UI unit tests

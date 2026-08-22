@@ -1,4 +1,290 @@
 {
+  "common": {
+    "archive": "Archive",
+    "cancel": "Cancel",
+    "clear": "Clear",
+    "delete": "Delete",
+    "loading": "Loading…",
+    "pin": "Pin",
+    "rename": "Rename",
+    "retry": "Retry",
+    "search": "Search",
+    "share": "Share",
+    "unarchive": "Unarchive",
+    "unpin": "Unpin"
+  },
+  "sidebar": {
+    "ariaLabel": "Conversations",
+    "close": "Close sidebar",
+    "collapse": "Collapse sidebar",
+    "newSession": "New session",
+    "settings": "Settings",
+    "actions": {
+      "conversationActions": "Conversation actions",
+      "markUnread": "Mark as unread",
+      "pinConversation": "Pin conversation",
+      "stopSession": "Stop session",
+      "unpinConversation": "Unpin conversation"
+    },
+    "archive": {
+      "archiving": "Archiving…",
+      "toastPrefix": "View archived sessions in"
+    },
+    "delete": {
+      "deleting": "Deleting…",
+      "description": "{{conversation}} and all of its history will be permanently removed. This cannot be undone.",
+      "dismissError": "Dismiss delete error",
+      "failed": "Couldn't delete {{conversation}}",
+      "localBranch": "Delete local branch",
+      "title": "Delete conversation?",
+      "worktreeWarning": "This session uses a local worktree. The worktree is removed with the session; deleting its branch is optional and irreversible."
+    },
+    "inbox": {
+      "label": "Inbox",
+      "waiting_one": "{{count}} inbox item waiting",
+      "waiting_few": "{{count}} inbox items waiting",
+      "waiting_many": "{{count}} inbox items waiting",
+      "waiting_other": "{{count}} inbox items waiting"
+    },
+    "list": {
+      "loadFailed": "Failed to load: {{error}}",
+      "loadMore": "Load more",
+      "noActive": "No active sessions",
+      "noMatches": "No matching conversations",
+      "noShared": "No sessions shared with you"
+    },
+    "permissions": {
+      "archiveOwnerOnly": "Only the session owner can archive this session",
+      "deleteOwnerOnly": "Only the session owner can delete this session",
+      "renameRequiresEdit": "You need edit permissions to rename this session",
+      "shareRequiresManage": "You need manage permissions to share this session",
+      "stopOwnerOnly": "Only the session owner can stop this session",
+      "unarchiveOwnerOnly": "Only the session owner can unarchive this session"
+    },
+    "projects": {
+      "actionsFor": "Project actions for {{project}}",
+      "addToProject": "Add to project",
+      "collapseToPrevious": "Collapse to previous",
+      "create": "Create new project",
+      "deleteAction": "Delete project",
+      "deleteDescription": "This archives the project {{project}} and all of its sessions. Their history is kept. You can find and restore them anytime from Settings.",
+      "deletePartialError": "Some sessions could not be archived. Retry or cancel and review the project.",
+      "deleteTitle": "Delete project?",
+      "dropToRemove": "Drop here to remove from project",
+      "empty": "No chats",
+      "expandAll": "Expand all",
+      "moveSession": "Move session",
+      "namePlaceholder": "Project name…",
+      "newSessionIn": "New session in {{project}}",
+      "none": "No projects yet.",
+      "removeAction": "Remove from project",
+      "removeDescription": "This is the only session in {{project}}, so the project will be removed as well. The session itself is kept.",
+      "removeFrom": "Remove from {{project}}",
+      "removeTitle": "Remove from project?",
+      "search": "Search projects"
+    },
+    "rename": {
+      "cancel": "Cancel rename",
+      "save": "Save rename"
+    },
+    "row": {
+      "unread": "(unread)"
+    },
+    "sections": {
+      "pinned": "Pinned",
+      "projects": "Projects",
+      "sessions": "Sessions"
+    },
+    "selection": {
+      "actionError": "Some actions failed. Retry or dismiss.",
+      "branchWarning": "Branches are not cleaned up. Use single-session delete for branch cleanup.",
+      "count_one": "{{count}} selected",
+      "count_few": "{{count}} selected",
+      "count_many": "{{count}} selected",
+      "count_other": "{{count}} selected",
+      "deleteConfirm_one": "Delete {{count}} session",
+      "deleteConfirm_few": "Delete {{count}} sessions",
+      "deleteConfirm_many": "Delete {{count}} sessions",
+      "deleteConfirm_other": "Delete {{count}} sessions",
+      "deleteCount_one": "Delete {{count}}",
+      "deleteCount_few": "Delete {{count}}",
+      "deleteCount_many": "Delete {{count}}",
+      "deleteCount_other": "Delete {{count}}",
+      "deleteDescription": "This will permanently delete the selected sessions and all their history. This cannot be undone.",
+      "deleteTitle_one": "Delete {{count}} session?",
+      "deleteTitle_few": "Delete {{count}} sessions?",
+      "deleteTitle_many": "Delete {{count}} sessions?",
+      "deleteTitle_other": "Delete {{count}} sessions?",
+      "deselectAll": "Deselect all",
+      "exit": "Exit selection",
+      "exitMode": "Exit selection mode",
+      "none": "None selected",
+      "selectAll": "Select all",
+      "selectSessions": "Select sessions"
+    },
+    "stop": {
+      "description": "Stop {{conversation}}? The next message will start it again on an available runner.",
+      "error": "Couldn't stop this session. Try again.",
+      "errorWithDetail": "Couldn't stop this session: {{error}}",
+      "title": "Stop session?"
+    },
+    "tabs": {
+      "mine": "My sessions",
+      "shared": "Shared with me"
+    }
+  },
+  "chat": {
+    "selection": { "reply": "Reply ↵" },
+    "empty": {
+      "title": "What should we work on?",
+      "agentsLoadError": "Failed to load agents: {{error}}",
+      "description": "Send a message to get started."
+    },
+    "loadingConversation": "Loading conversation…",
+    "loadError": {
+      "title": "Conversation not found",
+      "description": "Couldn't load {{conversationId}}: {{error}}",
+      "startNew": "Start a new chat"
+    },
+    "history": {
+      "jumpToFirst": "Jump to the first message",
+      "loading": "Loading history…",
+      "jumpToTop": "Jump to top"
+    },
+    "working": {
+      "working": "Working…",
+      "cooking": "Cooking…",
+      "crunching": "Crunching…",
+      "tinkering": "Tinkering…",
+      "pondering": "Pondering…",
+      "brewing": "Brewing…",
+      "backgroundTask": "{{count}} background task still running",
+      "backgroundTasks": "{{count}} background tasks still running"
+    },
+    "sandbox": {
+      "provisioning": "Provisioning sandbox",
+      "cloning": "Cloning repository",
+      "connectingHost": "Connecting host",
+      "startingAgent": "Starting agent",
+      "launchFailed": "Sandbox launch failed",
+      "launchFailedWithError": "Sandbox launch failed: {{error}}"
+    },
+    "connection": {
+      "hostOffline": "Host is offline — click to reconnect",
+      "agentDisconnected": "Agent disconnected — click to reconnect",
+      "connecting": "Connecting…"
+    },
+    "runner": {
+      "stage": "{{stage}}…",
+      "startingUp": "Starting up…",
+      "sandboxDescription": "Setting up your sandbox — this can take a minute.",
+      "description": "This can take a few seconds."
+    },
+    "viewMode": {
+      "label": "View mode",
+      "chat": "Chat",
+      "terminal": "Terminal",
+      "terminalStarting": "Terminal is starting up…"
+    },
+    "compaction": {
+      "loading": "Compacting conversation…",
+      "elapsedSeconds": "{{count}}s"
+    },
+    "copy": { "copiedToast": "Copied to clipboard" },
+    "message": {
+      "copy": "Copy",
+      "interrupted": "Interrupted",
+      "forkFromHere": "Fork from here",
+      "error": "Error: {{error}}"
+    },
+    "context": {
+      "percentUsed": "{{percent}}% of context used",
+      "percentUsedDescription": "{{percent}}% of context used."
+    },
+    "plan": {
+      "status": "Plan mode",
+      "action": "Plan",
+      "enter": "Enter Plan mode",
+      "exit": "Exit Plan mode",
+      "enterError": "Could not enter Plan mode: {{error}}",
+      "exitError": "Could not exit Plan mode: {{error}}"
+    },
+    "subagent": {
+      "chattingWith": "Chatting with sub-agent",
+      "fallback": "sub-agent"
+    },
+    "composer": {
+      "subagentClosed": "This sub-agent session is closed",
+      "claudeCodeSubagentsReadOnly": "Claude Code sub-agents are read-only",
+      "dropFiles": "Drop files here",
+      "removeQuote": "Remove quote",
+      "messageAria": "Message the agent",
+      "readOnly": "You have read-only access to this session",
+      "offline": "Session offline — reconnect below to continue",
+      "pendingRequest": "Respond to the pending request above to continue",
+      "waitingForAgents": "Waiting for agents…",
+      "followUp": "Send a follow-up (queued) — Esc to stop",
+      "sandboxAsleep": "Current session's host is offline. Next message will resume the sandbox host which can take minutes",
+      "reconnect": "Send a message to reconnect this session",
+      "placeholder": "Ask the agent anything…",
+      "removeAttachment": "Remove {{name}}",
+      "attachFiles": "Attach files",
+      "interrupt": "Interrupt",
+      "send": "Send"
+    },
+    "commands": {
+      "compactUnsupported": "/compact is not supported for this agent type",
+      "compactFailed": "Compact failed",
+      "effortUsage": "Usage: /effort {{levels}}",
+      "effortFailed": "Failed to set effort",
+      "modelOverride": "{{model}} (override)",
+      "agentDefault": "agent default",
+      "modelHelp": "Model: {{model}}\nUsage: /model <name> · /model default to reset",
+      "modelFailed": "Failed to set model",
+      "contextModelOverride": "Model: {{model}} (override)",
+      "contextModel": "Model: {{model}}",
+      "contextTokens": "{{used}} / {{total}} tokens ({{percent}}%)",
+      "tokens": "{{count}} tokens",
+      "contextWindowUnknown": "(Context window size unknown)",
+      "noUsage": "No usage data yet — send a message first.",
+      "itemsInContext": "Items in context: {{count}}",
+      "unknown": "Unknown command: {{command}}. Available: {{available}}"
+    },
+    "agentPicker": {
+      "loading": "Loading…",
+      "noAgents": "No agents",
+      "modelFallback": "Model",
+      "agents": "Agents",
+      "models": "Models",
+      "effort": "Effort"
+    },
+    "header": {
+      "openSidebar": "Open sidebar",
+      "backToParentSession": "Back to parent session",
+      "back": "Back",
+      "subAgent": "Sub-agent",
+      "sessionActions": "Session actions",
+      "share": "Share",
+      "agentInfo": "Agent info",
+      "shareSessionDisabled": "Share session disabled: {{reason}}",
+      "shareSession": "Share session",
+      "collapseRightPanel": "Collapse right panel",
+      "expandRightPanel": "Expand right panel",
+      "openSessionMenu": "Open session menu",
+      "files": "Files",
+      "agents": "Agents",
+      "shells": "Shells",
+      "tasks": "Tasks",
+      "logs": "Logs"
+    },
+    "queue": {
+      "reorder": "Reorder queued message",
+      "sendNow": "Send queued message now",
+      "steer": "Steer",
+      "edit": "Edit queued message",
+      "remove": "Remove queued message"
+    }
+  },
   "settings": {
     "language": { "title": "Language", "helper": "Choose the language used in Settings." },
     "nav": {

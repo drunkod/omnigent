@@ -2,9 +2,10 @@
 // listing messages queued while the agent is busy. It's a pure prop-driven
 // component (no store access), so we exercise it with plain props.
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import i18n from "@/i18n";
 import type { QueuedMessage } from "@/store/chatStore";
 import { QueuedMessagesStrip } from "./QueuedMessagesStrip";
 
@@ -14,6 +15,24 @@ const msg = (queueId: string, text: string): QueuedMessage => ({
   conversationId: "conv_abc",
 });
 
+i18n.addResources("en", "translation", {
+  "chat.queue.reorder": "Reorder queued message",
+  "chat.queue.sendNow": "Send queued message now",
+  "chat.queue.steer": "Steer",
+  "chat.queue.edit": "Edit queued message",
+  "chat.queue.remove": "Remove queued message",
+});
+i18n.addResources("ru", "translation", {
+  "chat.queue.reorder": "Изменить порядок сообщения в очереди",
+  "chat.queue.sendNow": "Отправить сообщение из очереди сейчас",
+  "chat.queue.steer": "Отправить сейчас",
+  "chat.queue.edit": "Редактировать сообщение в очереди",
+  "chat.queue.remove": "Удалить сообщение из очереди",
+});
+
+beforeEach(() => {
+  void i18n.changeLanguage("en");
+});
 afterEach(cleanup);
 
 describe("QueuedMessagesStrip", () => {
@@ -90,6 +109,39 @@ describe("QueuedMessagesStrip", () => {
     fireEvent.click(buttons[1]!);
     expect(onSteer).toHaveBeenCalledTimes(1);
     expect(onSteer).toHaveBeenCalledWith("q_2");
+  });
+
+  it("localizes controls without translating queued message content", () => {
+    render(
+      <QueuedMessagesStrip
+        messages={[msg("q_1", "Keep this user content")]}
+        onDelete={vi.fn()}
+        onEdit={vi.fn()}
+        onSteer={vi.fn()}
+        onReorder={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("composer-queued-strip")).toBeInTheDocument();
+    expect(screen.getByText("Keep this user content")).toBeInTheDocument();
+
+    act(() => {
+      void i18n.changeLanguage("ru");
+    });
+
+    expect(
+      screen.getByRole("button", { name: "Изменить порядок сообщения в очереди" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Отправить сообщение из очереди сейчас" }),
+    ).toHaveTextContent("Отправить сейчас");
+    expect(
+      screen.getByRole("button", { name: "Редактировать сообщение в очереди" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Удалить сообщение из очереди" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Keep this user content")).toBeInTheDocument();
   });
 
   it("shows a drag handle per row only when onReorder is provided", () => {

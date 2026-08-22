@@ -31,6 +31,16 @@ function conversation(
   };
 }
 
+describe("conversationDisplayLabel", () => {
+  it("accepts a localized fallback without changing native or user labels", () => {
+    const untitled = conversation("conv_untitled", null, new Date(2026, 4, 14, 8));
+    const titled = conversation("conv_titled", "User title", new Date(2026, 4, 14, 8));
+
+    expect(conversationDisplayLabel(untitled, "Новая сессия")).toBe("Новая сессия");
+    expect(conversationDisplayLabel(titled, "Новая сессия")).toBe("User title");
+  });
+});
+
 describe("filterConversations", () => {
   it("matches title and id case-insensitively", () => {
     const conversations = [

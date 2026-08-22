@@ -72,11 +72,14 @@ export function getConversationAgentType(conversation: Conversation): string {
   return "Other";
 }
 
-export function conversationDisplayLabel(conversation: Conversation): string {
+export function conversationDisplayLabel(
+  conversation: Conversation,
+  untitledLabel = UNTITLED_CONVERSATION_LABEL,
+): string {
   if (conversation.title) return conversation.title;
   const label = nativeWrapperLabel(conversation);
   if (label !== null) return label;
-  return UNTITLED_CONVERSATION_LABEL;
+  return untitledLabel;
 }
 
 export function filterConversations(

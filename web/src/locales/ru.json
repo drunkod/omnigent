@@ -1,4 +1,290 @@
 {
+  "common": {
+    "archive": "В архив",
+    "cancel": "Отмена",
+    "clear": "Очистить",
+    "delete": "Удалить",
+    "loading": "Загрузка…",
+    "pin": "Закрепить",
+    "rename": "Переименовать",
+    "retry": "Повторить",
+    "search": "Поиск",
+    "share": "Поделиться",
+    "unarchive": "Вернуть из архива",
+    "unpin": "Открепить"
+  },
+  "sidebar": {
+    "ariaLabel": "Сессии",
+    "close": "Закрыть боковую панель",
+    "collapse": "Свернуть боковую панель",
+    "newSession": "Новая сессия",
+    "settings": "Настройки",
+    "actions": {
+      "conversationActions": "Действия с сессией",
+      "markUnread": "Отметить непрочитанной",
+      "pinConversation": "Закрепить сессию",
+      "stopSession": "Остановить сессию",
+      "unpinConversation": "Открепить сессию"
+    },
+    "archive": {
+      "archiving": "Перемещение в архив…",
+      "toastPrefix": "Архивные сессии доступны в разделе"
+    },
+    "delete": {
+      "deleting": "Удаление…",
+      "description": "Сессия {{conversation}} и вся её история будут удалены навсегда. Это действие нельзя отменить.",
+      "dismissError": "Закрыть сообщение об ошибке удаления",
+      "failed": "Не удалось удалить {{conversation}}",
+      "localBranch": "Удалить локальную ветку",
+      "title": "Удалить сессию?",
+      "worktreeWarning": "Эта сессия использует локальное рабочее дерево. Оно будет удалено вместе с сессией; удаление ветки необязательно и необратимо."
+    },
+    "inbox": {
+      "label": "Входящие",
+      "waiting_one": "Во входящих ожидает {{count}} элемент",
+      "waiting_few": "Во входящих ожидают {{count}} элемента",
+      "waiting_many": "Во входящих ожидают {{count}} элементов",
+      "waiting_other": "Во входящих ожидают {{count}} элемента"
+    },
+    "list": {
+      "loadFailed": "Не удалось загрузить: {{error}}",
+      "loadMore": "Загрузить ещё",
+      "noActive": "Нет активных сессий",
+      "noMatches": "Подходящих сессий не найдено",
+      "noShared": "С вами не поделились ни одной сессией"
+    },
+    "permissions": {
+      "archiveOwnerOnly": "Только владелец может переместить эту сессию в архив",
+      "deleteOwnerOnly": "Только владелец может удалить эту сессию",
+      "renameRequiresEdit": "Для переименования сессии нужно разрешение на редактирование",
+      "shareRequiresManage": "Чтобы поделиться сессией, нужно разрешение на управление",
+      "stopOwnerOnly": "Только владелец может остановить эту сессию",
+      "unarchiveOwnerOnly": "Только владелец может вернуть эту сессию из архива"
+    },
+    "projects": {
+      "actionsFor": "Действия с проектом {{project}}",
+      "addToProject": "Добавить в проект",
+      "collapseToPrevious": "Вернуть предыдущее состояние",
+      "create": "Создать проект",
+      "deleteAction": "Удалить проект",
+      "deleteDescription": "Проект {{project}} и все его сессии будут перемещены в архив. Их история сохранится, и их можно будет восстановить в настройках.",
+      "deletePartialError": "Некоторые сессии не удалось переместить в архив. Повторите попытку или отмените действие и проверьте проект.",
+      "deleteTitle": "Удалить проект?",
+      "dropToRemove": "Перетащите сюда, чтобы удалить из проекта",
+      "empty": "Нет сессий",
+      "expandAll": "Развернуть все",
+      "moveSession": "Переместить сессию",
+      "namePlaceholder": "Название проекта…",
+      "newSessionIn": "Новая сессия в проекте {{project}}",
+      "none": "Проектов пока нет.",
+      "removeAction": "Удалить из проекта",
+      "removeDescription": "Это единственная сессия в проекте {{project}}, поэтому проект также будет удалён. Сама сессия сохранится.",
+      "removeFrom": "Удалить из проекта {{project}}",
+      "removeTitle": "Удалить из проекта?",
+      "search": "Поиск проектов"
+    },
+    "rename": {
+      "cancel": "Отменить переименование",
+      "save": "Сохранить название"
+    },
+    "row": {
+      "unread": "(непрочитано)"
+    },
+    "sections": {
+      "pinned": "Закреплённые",
+      "projects": "Проекты",
+      "sessions": "Сессии"
+    },
+    "selection": {
+      "actionError": "Некоторые действия завершились ошибкой. Повторите попытку или закройте сообщение.",
+      "branchWarning": "Ветки не удаляются. Для очистки ветки удалите одну сессию отдельно.",
+      "count_one": "Выбрана {{count}} сессия",
+      "count_few": "Выбраны {{count}} сессии",
+      "count_many": "Выбрано {{count}} сессий",
+      "count_other": "Выбрано {{count}} сессии",
+      "deleteConfirm_one": "Удалить {{count}} сессию",
+      "deleteConfirm_few": "Удалить {{count}} сессии",
+      "deleteConfirm_many": "Удалить {{count}} сессий",
+      "deleteConfirm_other": "Удалить {{count}} сессии",
+      "deleteCount_one": "Удалить ({{count}})",
+      "deleteCount_few": "Удалить ({{count}})",
+      "deleteCount_many": "Удалить ({{count}})",
+      "deleteCount_other": "Удалить ({{count}})",
+      "deleteDescription": "Выбранные сессии и вся их история будут удалены навсегда. Это действие нельзя отменить.",
+      "deleteTitle_one": "Удалить {{count}} сессию?",
+      "deleteTitle_few": "Удалить {{count}} сессии?",
+      "deleteTitle_many": "Удалить {{count}} сессий?",
+      "deleteTitle_other": "Удалить {{count}} сессии?",
+      "deselectAll": "Снять выделение",
+      "exit": "Выйти из режима выбора",
+      "exitMode": "Выйти из режима выбора",
+      "none": "Ничего не выбрано",
+      "selectAll": "Выбрать все",
+      "selectSessions": "Выбрать сессии"
+    },
+    "stop": {
+      "description": "Остановить сессию {{conversation}}? Следующее сообщение снова запустит её на доступном раннере.",
+      "error": "Не удалось остановить сессию. Повторите попытку.",
+      "errorWithDetail": "Не удалось остановить сессию: {{error}}",
+      "title": "Остановить сессию?"
+    },
+    "tabs": {
+      "mine": "Мои сессии",
+      "shared": "Доступные мне"
+    }
+  },
+  "chat": {
+    "selection": { "reply": "Ответить ↵" },
+    "empty": {
+      "title": "Над чем будем работать?",
+      "agentsLoadError": "Не удалось загрузить агентов: {{error}}",
+      "description": "Отправьте сообщение, чтобы начать."
+    },
+    "loadingConversation": "Загрузка диалога…",
+    "loadError": {
+      "title": "Диалог не найден",
+      "description": "Не удалось загрузить {{conversationId}}: {{error}}",
+      "startNew": "Начать новый чат"
+    },
+    "history": {
+      "jumpToFirst": "Перейти к первому сообщению",
+      "loading": "Загрузка истории…",
+      "jumpToTop": "Перейти наверх"
+    },
+    "working": {
+      "working": "Работаю…",
+      "cooking": "Готовлю…",
+      "crunching": "Считаю…",
+      "tinkering": "Настраиваю…",
+      "pondering": "Размышляю…",
+      "brewing": "Завариваю…",
+      "backgroundTask": "{{count}} фоновая задача всё ещё выполняется",
+      "backgroundTasks": "Фоновых задач всё ещё выполняется: {{count}}"
+    },
+    "sandbox": {
+      "provisioning": "Подготовка песочницы",
+      "cloning": "Клонирование репозитория",
+      "connectingHost": "Подключение хоста",
+      "startingAgent": "Запуск агента",
+      "launchFailed": "Не удалось запустить песочницу",
+      "launchFailedWithError": "Не удалось запустить песочницу: {{error}}"
+    },
+    "connection": {
+      "hostOffline": "Хост не в сети — нажмите для переподключения",
+      "agentDisconnected": "Агент отключён — нажмите для переподключения",
+      "connecting": "Подключение…"
+    },
+    "runner": {
+      "stage": "{{stage}}…",
+      "startingUp": "Запуск…",
+      "sandboxDescription": "Настраиваем песочницу — это может занять около минуты.",
+      "description": "Это может занять несколько секунд."
+    },
+    "viewMode": {
+      "label": "Режим просмотра",
+      "chat": "Чат",
+      "terminal": "Терминал",
+      "terminalStarting": "Терминал запускается…"
+    },
+    "compaction": {
+      "loading": "Сжатие диалога…",
+      "elapsedSeconds": "{{count}} с"
+    },
+    "copy": { "copiedToast": "Скопировано в буфер обмена" },
+    "message": {
+      "copy": "Копировать",
+      "interrupted": "Прервано",
+      "forkFromHere": "Создать ответвление отсюда",
+      "error": "Ошибка: {{error}}"
+    },
+    "context": {
+      "percentUsed": "Использовано {{percent}}% контекста",
+      "percentUsedDescription": "Использовано {{percent}}% контекста."
+    },
+    "plan": {
+      "status": "Режим планирования",
+      "action": "План",
+      "enter": "Войти в режим планирования",
+      "exit": "Выйти из режима планирования",
+      "enterError": "Не удалось войти в режим планирования: {{error}}",
+      "exitError": "Не удалось выйти из режима планирования: {{error}}"
+    },
+    "subagent": {
+      "chattingWith": "Чат с субагентом",
+      "fallback": "субагент"
+    },
+    "composer": {
+      "subagentClosed": "Сессия этого субагента закрыта",
+      "claudeCodeSubagentsReadOnly": "Субагенты Claude Code доступны только для чтения",
+      "dropFiles": "Перетащите файлы сюда",
+      "removeQuote": "Удалить цитату",
+      "messageAria": "Написать агенту",
+      "readOnly": "У вас есть доступ к этой сессии только для чтения",
+      "offline": "Сессия не в сети — переподключитесь ниже, чтобы продолжить",
+      "pendingRequest": "Ответьте на ожидающий запрос выше, чтобы продолжить",
+      "waitingForAgents": "Ожидание агентов…",
+      "followUp": "Отправьте следующее сообщение (в очередь) — Esc для остановки",
+      "sandboxAsleep": "Хост текущей сессии не в сети. Следующее сообщение возобновит работу хоста песочницы, что может занять несколько минут",
+      "reconnect": "Отправьте сообщение, чтобы переподключить эту сессию",
+      "placeholder": "Спросите агента о чём угодно…",
+      "removeAttachment": "Удалить {{name}}",
+      "attachFiles": "Прикрепить файлы",
+      "interrupt": "Прервать",
+      "send": "Отправить"
+    },
+    "commands": {
+      "compactUnsupported": "/compact не поддерживается для этого типа агента",
+      "compactFailed": "Не удалось выполнить сжатие",
+      "effortUsage": "Использование: /effort {{levels}}",
+      "effortFailed": "Не удалось установить уровень усилия",
+      "modelOverride": "{{model}} (переопределение)",
+      "agentDefault": "значение агента по умолчанию",
+      "modelHelp": "Модель: {{model}}\nИспользование: /model <name> · /model default для сброса",
+      "modelFailed": "Не удалось установить модель",
+      "contextModelOverride": "Модель: {{model}} (переопределение)",
+      "contextModel": "Модель: {{model}}",
+      "contextTokens": "{{used}} / {{total}} токенов ({{percent}}%)",
+      "tokens": "{{count}} токенов",
+      "contextWindowUnknown": "(Размер контекстного окна неизвестен)",
+      "noUsage": "Данных об использовании пока нет — сначала отправьте сообщение.",
+      "itemsInContext": "Элементов в контексте: {{count}}",
+      "unknown": "Неизвестная команда: {{command}}. Доступные команды: {{available}}"
+    },
+    "agentPicker": {
+      "loading": "Загрузка…",
+      "noAgents": "Нет агентов",
+      "modelFallback": "Модель",
+      "agents": "Агенты",
+      "models": "Модели",
+      "effort": "Уровень рассуждений"
+    },
+    "header": {
+      "openSidebar": "Открыть боковую панель",
+      "backToParentSession": "Вернуться к родительской сессии",
+      "back": "Назад",
+      "subAgent": "Субагент",
+      "sessionActions": "Действия с сессией",
+      "share": "Поделиться",
+      "agentInfo": "Информация об агенте",
+      "shareSessionDisabled": "Поделиться сессией нельзя: {{reason}}",
+      "shareSession": "Поделиться сессией",
+      "collapseRightPanel": "Свернуть правую панель",
+      "expandRightPanel": "Развернуть правую панель",
+      "openSessionMenu": "Открыть меню сессии",
+      "files": "Файлы",
+      "agents": "Агенты",
+      "shells": "Терминалы",
+      "tasks": "Задачи",
+      "logs": "Логи"
+    },
+    "queue": {
+      "reorder": "Изменить порядок сообщения в очереди",
+      "sendNow": "Отправить сообщение из очереди сейчас",
+      "steer": "Отправить сейчас",
+      "edit": "Редактировать сообщение в очереди",
+      "remove": "Удалить сообщение из очереди"
+    }
+  },
   "settings": {
     "language": { "title": "Язык", "helper": "Выберите язык интерфейса настроек." },
     "nav": {

@@ -16,6 +16,7 @@ import {
   PencilIcon,
   Trash2Icon,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import type { QueuedMessage } from "@/store/chatStore";
 import { cn } from "@/lib/utils";
@@ -56,6 +57,7 @@ function QueuedRow({
   onSteer?: (queueId: string) => void;
   reorderable: boolean;
 }) {
+  const { t } = useTranslation();
   const {
     attributes,
     listeners,
@@ -84,7 +86,7 @@ function QueuedRow({
         <button
           type="button"
           ref={setDragRef}
-          aria-label="Reorder queued message"
+          aria-label={t("chat.queue.reorder")}
           className="shrink-0 cursor-grab touch-none rounded p-0.5 text-muted-foreground/50 transition hover:text-foreground focus-visible:text-foreground active:cursor-grabbing"
           {...attributes}
           {...listeners}
@@ -100,17 +102,17 @@ function QueuedRow({
       {onSteer ? (
         <button
           type="button"
-          aria-label="Send queued message now"
+          aria-label={t("chat.queue.sendNow")}
           className="flex shrink-0 items-center gap-1 rounded px-1 py-0.5 text-muted-foreground/60 transition hover:text-foreground focus-visible:text-foreground"
           onClick={() => onSteer(message.queueId)}
         >
           <CornerDownRightIcon className="size-3.5" aria-hidden="true" />
-          Steer
+          {t("chat.queue.steer")}
         </button>
       ) : null}
       <button
         type="button"
-        aria-label="Edit queued message"
+        aria-label={t("chat.queue.edit")}
         className="shrink-0 rounded p-0.5 text-muted-foreground/60 transition hover:text-foreground focus-visible:text-foreground"
         onClick={() => onEdit(message.queueId)}
       >
@@ -118,7 +120,7 @@ function QueuedRow({
       </button>
       <button
         type="button"
-        aria-label="Remove queued message"
+        aria-label={t("chat.queue.remove")}
         className="shrink-0 rounded p-0.5 text-muted-foreground/60 transition hover:text-foreground focus-visible:text-foreground"
         onClick={() => onDelete(message.queueId)}
       >
