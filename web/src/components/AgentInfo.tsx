@@ -2,6 +2,8 @@
 // header info-icon popover that displays them.
 
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import {
   CheckIcon,
   CopyIcon,
@@ -84,6 +86,7 @@ export function McpServerList({
   servers: McpServerSummary[];
   onDelete?: (name: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-wrap gap-1">
       {servers.map((srv) =>
@@ -119,7 +122,7 @@ export function McpServerList({
                   className="flex items-center gap-1 self-end rounded px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
                 >
                   <TrashIcon className="size-3" />
-                  Remove
+                  {t("agentInfo.actions.remove", { defaultValue: "Remove" })}
                 </button>
               </div>
             </PopoverContent>
@@ -174,12 +177,24 @@ function formatTokenCount(tokens: number): string {
  * Token buckets shown per model in the ``usage_by_model`` section, mapping
  * the ``ModelUsage`` field to its row label. Cost is rendered separately.
  */
-const MODEL_TOKEN_ROWS: ReadonlyArray<{ key: keyof ModelUsage; label: string }> = [
-  { key: "inputTokens", label: "Input" },
-  { key: "outputTokens", label: "Output" },
-  { key: "cacheReadInputTokens", label: "Cache read" },
-  { key: "cacheCreationInputTokens", label: "Cache write" },
-  { key: "totalTokens", label: "Total" },
+const MODEL_TOKEN_ROWS: ReadonlyArray<{
+  key: keyof ModelUsage;
+  labelKey: string;
+  defaultLabel: string;
+}> = [
+  { key: "inputTokens", labelKey: "agentInfo.usage.input", defaultLabel: "Input" },
+  { key: "outputTokens", labelKey: "agentInfo.usage.output", defaultLabel: "Output" },
+  {
+    key: "cacheReadInputTokens",
+    labelKey: "agentInfo.usage.cacheRead",
+    defaultLabel: "Cache read",
+  },
+  {
+    key: "cacheCreationInputTokens",
+    labelKey: "agentInfo.usage.cacheWrite",
+    defaultLabel: "Cache write",
+  },
+  { key: "totalTokens", labelKey: "agentInfo.usage.total", defaultLabel: "Total" },
 ];
 
 /**
@@ -191,6 +206,7 @@ const MODEL_TOKEN_ROWS: ReadonlyArray<{ key: keyof ModelUsage; label: string }> 
  * @param usageByModel - Map of raw harness model id to its cumulative usage.
  */
 function ModelUsageBreakdown({ usageByModel }: { usageByModel: Record<string, ModelUsage> }) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   // Stable display order: most total tokens first, so the dominant model
   // leads. Falls back to 0 for models that haven't recorded a total yet.
@@ -205,16 +221,18 @@ function ModelUsageBreakdown({ usageByModel }: { usageByModel: Record<string, Mo
       <summary className="cursor-pointer select-none list-none">
         <SectionLabel>
           <span className="inline-flex items-center gap-1">
-            Token usage
+            {t("agentInfo.usage.tokenUsage", { defaultValue: "Token usage" })}
             <span className="text-[9px]">{isOpen ? "▼" : "▶"}</span>
           </span>
         </SectionLabel>
       </summary>
       <div className="mt-1.5 flex flex-col gap-2">
         {models.map(([model, usage]) => {
-          const rows = MODEL_TOKEN_ROWS.flatMap(({ key, label }) => {
+          const rows = MODEL_TOKEN_ROWS.flatMap(({ key, labelKey, defaultLabel }) => {
             const value = usage[key];
-            return value != null ? [{ label, value }] : [];
+            return value != null
+              ? [{ label: t(labelKey, { defaultValue: defaultLabel }), value }]
+              : [];
           });
           return (
             <div
@@ -238,7 +256,9 @@ function ModelUsageBreakdown({ usageByModel }: { usageByModel: Record<string, Mo
               ))}
               {usage.totalCostUsd != null && (
                 <div className="flex items-baseline justify-between gap-3 pl-2 text-xs">
-                  <span className="text-muted-foreground/70">Cost</span>
+                  <span className="text-muted-foreground/70">
+                    {t("agentInfo.usage.cost", { defaultValue: "Cost" })}
+                  </span>
                   <span className="tabular-nums text-muted-foreground">
                     {formatSessionCostUsd(usage.totalCostUsd)}
                   </span>
@@ -256,6 +276,42 @@ function ModelUsageBreakdown({ usageByModel }: { usageByModel: Record<string, Mo
 // Add-policy dialog
 // ---------------------------------------------------------------------------
 
+function localizePolicyParamError(error: string, t: TFunction): string {
+  const integerMatch = error.match(/^(.+) must be an integer, e\.g\. (.+)$/);
+  if (integerMatch) {
+    return t("agentInfo.validation.policyParamInteger", {
+      defaultValue: "{{key}} must be an integer, e.g. {{example}}",
+      key: integerMatch[1],
+      example: integerMatch[2],
+    });
+  }
+  const numberMatch = error.match(/^(.+) must be a number, e\.g\. (.+)$/);
+  if (numberMatch) {
+    return t("agentInfo.validation.policyParamNumber", {
+      defaultValue: "{{key}} must be a number, e.g. {{example}}",
+      key: numberMatch[1],
+      example: numberMatch[2],
+    });
+  }
+  const validJsonMatch = error.match(/^(.+) must be valid JSON, e\.g\. (.+)$/);
+  if (validJsonMatch) {
+    return t("agentInfo.validation.policyParamValidJson", {
+      defaultValue: "{{key}} must be valid JSON, e.g. {{example}}",
+      key: validJsonMatch[1],
+      example: validJsonMatch[2],
+    });
+  }
+  const jsonObjectMatch = error.match(/^(.+) must be a JSON object, e\.g\. (.+)$/);
+  if (jsonObjectMatch) {
+    return t("agentInfo.validation.policyParamJsonObject", {
+      defaultValue: "{{key}} must be a JSON object, e.g. {{example}}",
+      key: jsonObjectMatch[1],
+      example: jsonObjectMatch[2],
+    });
+  }
+  return error;
+}
+
 function AddPolicyDialog({
   sessionId,
   registry,
@@ -269,6 +325,7 @@ function AddPolicyDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const [selected, setSelected] = useState<string>("");
   const [filter, setFilter] = useState("");
   const [policyName, setPolicyName] = useState<string>("");
@@ -311,11 +368,12 @@ function AddPolicyDialog({
     let parsedParams: Record<string, unknown> | undefined;
     if (entry.kind === "factory" && paramKeys.length > 0) {
       const result = coercePolicyParams(paramKeys, properties, factoryParams);
-      if (!result.ok) {
-        setParamError(result.error);
+      if (result.ok) {
+        parsedParams = result.params;
+      } else {
+        setParamError(localizePolicyParamError(result.error, t));
         return;
       }
-      parsedParams = result.params;
     }
     setParamError(null);
     // Always send factory_params for factory-kind policies (even
@@ -361,8 +419,14 @@ function AddPolicyDialog({
     >
       <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Add Policy</DialogTitle>
-          <DialogDescription>Choose a policy to apply to this session.</DialogDescription>
+          <DialogTitle>
+            {t("agentInfo.policy.addTitle", { defaultValue: "Add Policy" })}
+          </DialogTitle>
+          <DialogDescription>
+            {t("agentInfo.policy.addDescription", {
+              defaultValue: "Choose a policy to apply to this session.",
+            })}
+          </DialogDescription>
         </DialogHeader>
         <div className="min-w-0 space-y-3 pt-1">
           {!selected &&
@@ -382,7 +446,9 @@ function AddPolicyDialog({
                     type="text"
                     value={filter}
                     onChange={(e) => setFilter(e.target.value)}
-                    placeholder="Filter policies..."
+                    placeholder={t("agentInfo.policy.filterPlaceholder", {
+                      defaultValue: "Filter policies...",
+                    })}
                     className="w-full rounded border border-border bg-background px-2 py-1.5 text-sm placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring"
                     // eslint-disable-next-line jsx-a11y/no-autofocus
                     autoFocus
@@ -406,8 +472,12 @@ function AddPolicyDialog({
                     {filtered.length === 0 && (
                       <p className="py-2 text-center text-xs text-muted-foreground">
                         {available.length === 0
-                          ? "All available policies are already applied."
-                          : "No policies match your filter."}
+                          ? t("agentInfo.policy.allApplied", {
+                              defaultValue: "All available policies are already applied.",
+                            })
+                          : t("agentInfo.policy.noMatch", {
+                              defaultValue: "No policies match your filter.",
+                            })}
                       </p>
                     )}
                   </div>
@@ -428,7 +498,7 @@ function AddPolicyDialog({
                   }}
                   className="text-[11px] text-muted-foreground hover:text-foreground"
                 >
-                  Change
+                  {t("agentInfo.actions.change", { defaultValue: "Change" })}
                 </button>
               </div>
               {entry.description && (
@@ -439,7 +509,9 @@ function AddPolicyDialog({
           {entry && (
             <div>
               <label className="flex items-center gap-1 text-xs text-muted-foreground">
-                <span className="font-medium text-foreground">name</span>
+                <span className="font-medium text-foreground">
+                  {t("agentInfo.policy.name", { defaultValue: "name" })}
+                </span>
               </label>
               <input
                 type="text"
@@ -461,9 +533,13 @@ function AddPolicyDialog({
                         <span>
                           (
                           {prop.type === "array" && prop.items?.enum
-                            ? "select"
+                            ? t("agentInfo.policy.parameterType.select", {
+                                defaultValue: "select",
+                              })
                             : prop.type === "array"
-                              ? "comma-separated"
+                              ? t("agentInfo.policy.parameterType.commaSeparated", {
+                                  defaultValue: "comma-separated",
+                                })
                               : prop.type}
                           )
                         </span>
@@ -552,7 +628,9 @@ function AddPolicyDialog({
                           prop?.type === "array"
                             ? prop?.default !== undefined
                               ? (prop.default as string[]).join(", ")
-                              : "comma-separated values"
+                              : t("agentInfo.policy.commaSeparatedValues", {
+                                  defaultValue: "comma-separated values",
+                                })
                             : prop?.default !== undefined
                               ? String(prop.default)
                               : ""
@@ -596,7 +674,7 @@ function AddPolicyDialog({
               }}
               className="rounded px-3 py-1.5 text-xs hover:bg-muted"
             >
-              Cancel
+              {t("agentInfo.actions.cancel", { defaultValue: "Cancel" })}
             </button>
             <button
               type="button"
@@ -604,7 +682,9 @@ function AddPolicyDialog({
               disabled={!selected || addPolicy.isPending}
               className="rounded bg-primary px-3 py-1.5 text-xs text-primary-foreground disabled:opacity-50"
             >
-              {addPolicy.isPending ? "Adding..." : "Add"}
+              {addPolicy.isPending
+                ? t("agentInfo.actions.adding", { defaultValue: "Adding..." })
+                : t("agentInfo.actions.add", { defaultValue: "Add" })}
             </button>
           </div>
         </div>
@@ -676,21 +756,25 @@ function payloadFromMcpForm(form: McpFormState): UpsertMcpServerInput {
   };
 }
 
-function validateMcpForm(form: McpFormState): string | null {
+function validateMcpForm(form: McpFormState, t: TFunction): string | null {
   const name = form.name.trim();
-  if (!name) return "Name is required.";
+  if (!name) return t("agentInfo.validation.nameRequired", { defaultValue: "Name is required." });
   if (!/^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$/.test(name)) {
-    return "Name can use letters, numbers, dots, dashes, and underscores.";
+    return t("agentInfo.validation.nameCharacters", {
+      defaultValue: "Name can use letters, numbers, dots, dashes, and underscores.",
+    });
   }
   if (form.transport === "http") {
     const url = form.url.trim();
-    if (!url) return "URL is required.";
+    if (!url) return t("agentInfo.validation.urlRequired", { defaultValue: "URL is required." });
     if (!url.startsWith("http://") && !url.startsWith("https://")) {
-      return "URL must start with http:// or https://.";
+      return t("agentInfo.validation.urlProtocol", {
+        defaultValue: "URL must start with http:// or https://.",
+      });
     }
   }
   if (form.transport === "stdio" && !form.command.trim()) {
-    return "Command is required.";
+    return t("agentInfo.validation.commandRequired", { defaultValue: "Command is required." });
   }
   return null;
 }
@@ -710,6 +794,7 @@ function McpServerManagerDialog({
   dirty: boolean;
   onDirty: () => void;
 }) {
+  const { t } = useTranslation();
   const [form, setForm] = useState<McpFormState>(EMPTY_MCP_FORM);
   const [formError, setFormError] = useState<string | null>(null);
   const createServer = useCreateMcpServer(sessionId);
@@ -727,12 +812,16 @@ function McpServerManagerDialog({
   function notifyRestart() {
     onDirty();
     showToast(
-      <span className="text-sm">MCP servers updated. Restart the session to apply changes.</span>,
+      <span className="text-sm">
+        {t("agentInfo.mcp.updatedRestart", {
+          defaultValue: "MCP servers updated. Restart the session to apply changes.",
+        })}
+      </span>,
     );
   }
 
   function handleSave() {
-    const error = validateMcpForm(form);
+    const error = validateMcpForm(form, t);
     if (error) {
       setFormError(error);
       return;
@@ -769,18 +858,26 @@ function McpServerManagerDialog({
     >
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Manage MCP Servers</DialogTitle>
-          <DialogDescription>Add, edit, or remove MCP servers for this session.</DialogDescription>
+          <DialogTitle>
+            {t("agentInfo.mcp.manageTitle", { defaultValue: "Manage MCP Servers" })}
+          </DialogTitle>
+          <DialogDescription>
+            {t("agentInfo.mcp.manageDescription", {
+              defaultValue: "Add, edit, or remove MCP servers for this session.",
+            })}
+          </DialogDescription>
         </DialogHeader>
         {dirty && (
           <div className="flex items-center gap-2 rounded-md border border-yellow-500/40 bg-yellow-500/10 px-3 py-2 text-sm text-yellow-700 dark:text-yellow-400">
             <AlertTriangleIcon className="size-4 shrink-0" />
-            Restart the session to apply your changes.
+            {t("agentInfo.mcp.restartBanner", {
+              defaultValue: "Restart the session to apply your changes.",
+            })}
           </div>
         )}
         <div className="grid gap-4 pt-1 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
           <div className="flex min-w-0 flex-col gap-1.5">
-            <SectionLabel>Servers</SectionLabel>
+            <SectionLabel>{t("agentInfo.mcp.servers", { defaultValue: "Servers" })}</SectionLabel>
             {servers.length > 0 ? (
               <div className="flex max-h-56 flex-col divide-y divide-border overflow-y-auto rounded border border-border">
                 {servers.map((server) => (
@@ -803,7 +900,10 @@ function McpServerManagerDialog({
                       type="button"
                       variant="ghost"
                       size="icon-xs"
-                      aria-label={`Edit ${server.name}`}
+                      aria-label={t("agentInfo.mcp.editServer", {
+                        defaultValue: "Edit {{name}}",
+                        name: server.name,
+                      })}
                       onClick={() => {
                         setForm(mcpFormFromServer(server));
                         setFormError(null);
@@ -815,7 +915,10 @@ function McpServerManagerDialog({
                       type="button"
                       variant="ghost"
                       size="icon-xs"
-                      aria-label={`Delete ${server.name}`}
+                      aria-label={t("agentInfo.mcp.deleteServer", {
+                        defaultValue: "Delete {{name}}",
+                        name: server.name,
+                      })}
                       onClick={() => deleteServer.mutate(server.name, { onSuccess: notifyRestart })}
                       disabled={deleteServer.isPending}
                     >
@@ -825,29 +928,35 @@ function McpServerManagerDialog({
                 ))}
               </div>
             ) : (
-              <p className="py-3 text-xs text-muted-foreground">No MCP servers</p>
+              <p className="py-3 text-xs text-muted-foreground">
+                {t("agentInfo.mcp.noServers", { defaultValue: "No MCP servers" })}
+              </p>
             )}
             {form.originalName && (
               <Button type="button" variant="ghost" size="sm" onClick={resetForm}>
                 <PlusIcon className="size-3.5" />
-                New server
+                {t("agentInfo.mcp.newServer", { defaultValue: "New server" })}
               </Button>
             )}
           </div>
 
           <div className="flex min-w-0 flex-col gap-2">
-            <SectionLabel>{form.originalName ? "Edit Server" : "New Server"}</SectionLabel>
+            <SectionLabel>
+              {form.originalName
+                ? t("agentInfo.mcp.editTitle", { defaultValue: "Edit Server" })
+                : t("agentInfo.mcp.newTitle", { defaultValue: "New Server" })}
+            </SectionLabel>
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-              Name
+              {t("agentInfo.mcp.name", { defaultValue: "Name" })}
               <Input
                 value={form.name}
                 onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
                 className="font-mono"
-                placeholder="github"
+                placeholder={t("agentInfo.mcp.namePlaceholder", { defaultValue: "github" })}
               />
             </label>
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-              Transport
+              {t("agentInfo.mcp.transport", { defaultValue: "Transport" })}
               <select
                 value={form.transport}
                 onChange={(e) =>
@@ -864,40 +973,44 @@ function McpServerManagerDialog({
             </label>
             {form.transport === "http" ? (
               <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                URL
+                {t("agentInfo.mcp.url", { defaultValue: "URL" })}
                 <Input
                   value={form.url}
                   onChange={(e) => setForm((prev) => ({ ...prev, url: e.target.value }))}
-                  placeholder="https://example.com/sse"
+                  placeholder={t("agentInfo.mcp.urlPlaceholder", {
+                    defaultValue: "https://example.com/sse",
+                  })}
                 />
               </label>
             ) : (
               <>
                 <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                  Command
+                  {t("agentInfo.mcp.command", { defaultValue: "Command" })}
                   <Input
                     value={form.command}
                     onChange={(e) => setForm((prev) => ({ ...prev, command: e.target.value }))}
-                    placeholder="npx"
+                    placeholder={t("agentInfo.mcp.commandPlaceholder", { defaultValue: "npx" })}
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                  Args
+                  {t("agentInfo.mcp.args", { defaultValue: "Args" })}
                   <Textarea
                     value={form.argsText}
                     onChange={(e) => setForm((prev) => ({ ...prev, argsText: e.target.value }))}
                     className="min-h-20 font-mono text-xs"
-                    placeholder={"-y\n@modelcontextprotocol/server-github"}
+                    placeholder={t("agentInfo.mcp.argsPlaceholder", {
+                      defaultValue: "-y\n@modelcontextprotocol/server-github",
+                    })}
                   />
                 </label>
               </>
             )}
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-              Description
+              {t("agentInfo.mcp.description", { defaultValue: "Description" })}
               <Input
                 value={form.description}
                 onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-                placeholder="Optional"
+                placeholder={t("agentInfo.mcp.optionalPlaceholder", { defaultValue: "Optional" })}
               />
             </label>
             {(formError || mutationError) && (
@@ -911,16 +1024,18 @@ function McpServerManagerDialog({
             <div className="flex justify-end gap-2 pt-1">
               <Button type="button" variant="ghost" size="sm" onClick={resetForm}>
                 <XIcon className="size-3.5" />
-                Clear
+                {t("agentInfo.actions.clear", { defaultValue: "Clear" })}
               </Button>
               <Button
                 type="button"
                 size="sm"
                 onClick={handleSave}
-                disabled={saving || validateMcpForm(form) !== null}
+                disabled={saving || validateMcpForm(form, t) !== null}
               >
                 <SaveIcon className="size-3.5" />
-                {saving ? "Saving..." : "Save"}
+                {saving
+                  ? t("agentInfo.actions.saving", { defaultValue: "Saving..." })
+                  : t("agentInfo.actions.save", { defaultValue: "Save" })}
               </Button>
             </div>
           </div>
@@ -939,6 +1054,7 @@ function McpServersSection({
   servers: McpServerSummary[];
   editable: boolean;
 }) {
+  const { t } = useTranslation();
   const [managerOpen, setManagerOpen] = useState(false);
   const [mcpDirty, setMcpDirty] = useState(false);
   const sessionStatus = useChatStore((s) => s.sessionStatus);
@@ -958,14 +1074,14 @@ function McpServersSection({
   return (
     <div className="flex flex-col gap-1.5 py-3">
       <div className="flex items-center justify-between">
-        <SectionLabel>Tools</SectionLabel>
+        <SectionLabel>{t("agentInfo.mcp.tools", { defaultValue: "Tools" })}</SectionLabel>
         {canEdit && (
           <button
             type="button"
             onClick={() => setManagerOpen(true)}
             className="rounded p-0.5 hover:bg-muted"
-            title="Manage MCP servers"
-            aria-label="Manage MCP servers"
+            title={t("agentInfo.mcp.manage", { defaultValue: "Manage MCP servers" })}
+            aria-label={t("agentInfo.mcp.manage", { defaultValue: "Manage MCP servers" })}
           >
             <PlusIcon className="size-3 text-muted-foreground" />
           </button>
@@ -974,7 +1090,7 @@ function McpServersSection({
       {mcpDirty && (
         <p className="flex items-center gap-1 text-xs text-yellow-700 dark:text-yellow-400">
           <AlertTriangleIcon className="size-3 shrink-0" />
-          Restart to apply changes
+          {t("agentInfo.mcp.restartShort", { defaultValue: "Restart to apply changes" })}
         </p>
       )}
       {servers.length > 0 ? (
@@ -988,7 +1104,10 @@ function McpServersSection({
                       setMcpDirty(true);
                       showToast(
                         <span className="text-sm">
-                          MCP servers updated. Restart the session to apply changes.
+                          {t("agentInfo.mcp.updatedRestart", {
+                            defaultValue:
+                              "MCP servers updated. Restart the session to apply changes.",
+                          })}
                         </span>,
                       );
                     },
@@ -997,7 +1116,9 @@ function McpServersSection({
           }
         />
       ) : (
-        <p className="text-xs text-muted-foreground">No MCP servers</p>
+        <p className="text-xs text-muted-foreground">
+          {t("agentInfo.mcp.noServers", { defaultValue: "No MCP servers" })}
+        </p>
       )}
       {canEdit && (
         <McpServerManagerDialog
@@ -1018,6 +1139,7 @@ function McpServersSection({
 // ---------------------------------------------------------------------------
 
 function SessionPoliciesSection({ sessionId }: { sessionId: string }) {
+  const { t } = useTranslation();
   const { data: sessionPolicies = [] } = usePolicies(sessionId);
   const { data: registry = [] } = usePolicyRegistry();
   const deletePolicy = useDeletePolicy(sessionId);
@@ -1032,12 +1154,13 @@ function SessionPoliciesSection({ sessionId }: { sessionId: string }) {
   return (
     <div className="flex flex-col gap-1.5 py-3">
       <div className="flex items-center justify-between">
-        <SectionLabel>Policies</SectionLabel>
+        <SectionLabel>{t("agentInfo.policy.label", { defaultValue: "Policies" })}</SectionLabel>
         <button
           type="button"
           onClick={() => setAddOpen(true)}
           className="rounded p-0.5 hover:bg-muted"
-          title="Add policy"
+          title={t("agentInfo.policy.add", { defaultValue: "Add policy" })}
+          aria-label={t("agentInfo.policy.add", { defaultValue: "Add policy" })}
         >
           <PlusIcon className="size-3 text-muted-foreground" />
         </button>
@@ -1080,7 +1203,7 @@ function SessionPoliciesSection({ sessionId }: { sessionId: string }) {
                       className="flex items-center gap-1 self-end rounded px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
                     >
                       <TrashIcon className="size-3" />
-                      Remove
+                      {t("agentInfo.actions.remove", { defaultValue: "Remove" })}
                     </button>
                   </div>
                 </PopoverContent>
@@ -1089,7 +1212,9 @@ function SessionPoliciesSection({ sessionId }: { sessionId: string }) {
           })}
         </div>
       ) : (
-        <p className="text-xs text-muted-foreground">No policies added</p>
+        <p className="text-xs text-muted-foreground">
+          {t("agentInfo.policy.noPolicies", { defaultValue: "No policies added" })}
+        </p>
       )}
       <AddPolicyDialog
         sessionId={sessionId}
@@ -1128,6 +1253,7 @@ export function agentHasInfo(agent: Agent | undefined, sessionId?: string | null
  * mobile header menu's agent-info dialog.
  */
 export function AgentInfoContent({ agent, sessionId }: AgentInfoProps) {
+  const { t } = useTranslation();
   const servers = agent?.mcp_servers ?? [];
   const mcpEditable = agent?.mcp_servers_editable === true;
   const displayName = agent ? agentDisplayLabel(agent.name) : null;
@@ -1150,8 +1276,15 @@ export function AgentInfoContent({ agent, sessionId }: AgentInfoProps) {
   const serverVersion = serverInfo !== "loading" ? serverInfo.server_version : null;
   const hostVersion = useSessionHostVersion(sessionId ?? undefined);
   const versionFooter = [
-    serverVersion ? `server ${serverVersion}` : null,
-    hostVersion ? `host ${hostVersion}` : null,
+    serverVersion
+      ? t("agentInfo.version.server", {
+          defaultValue: "server {{version}}",
+          version: serverVersion,
+        })
+      : null,
+    hostVersion
+      ? t("agentInfo.version.host", { defaultValue: "host {{version}}", version: hostVersion })
+      : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -1201,20 +1334,24 @@ export function AgentInfoContent({ agent, sessionId }: AgentInfoProps) {
       )}
       {sessionId && owner && isSessionShared && (
         <div className="flex flex-col gap-1.5 py-3">
-          <SectionLabel>Owner</SectionLabel>
+          <SectionLabel>{t("agentInfo.session.owner", { defaultValue: "Owner" })}</SectionLabel>
           <span
             className="truncate font-mono text-xs text-muted-foreground"
             data-testid="agent-info-session-owner"
             title={owner}
           >
             {owner}
-            {owner === viewerId && <span className="ml-1 text-muted-foreground/60">(you)</span>}
+            {owner === viewerId && (
+              <span className="ml-1 text-muted-foreground/60">
+                {t("agentInfo.session.you", { defaultValue: "(you)" })}
+              </span>
+            )}
           </span>
         </div>
       )}
       {sessionId && (
         <div className="flex flex-col gap-1.5 py-3">
-          <SectionLabel>Session ID</SectionLabel>
+          <SectionLabel>{t("agentInfo.session.id", { defaultValue: "Session ID" })}</SectionLabel>
           <div className="flex items-center gap-2">
             <code
               className="min-w-0 flex-1 truncate py-1 font-mono text-xs text-muted-foreground"
@@ -1227,7 +1364,11 @@ export function AgentInfoContent({ agent, sessionId }: AgentInfoProps) {
               type="button"
               variant="ghost"
               size="icon-sm"
-              aria-label={sessionIdCopied ? "Copied session ID" : "Copy session ID"}
+              aria-label={
+                sessionIdCopied
+                  ? t("agentInfo.session.copiedId", { defaultValue: "Copied session ID" })
+                  : t("agentInfo.session.copyId", { defaultValue: "Copy session ID" })
+              }
               data-testid="agent-info-copy-session-id"
               onClick={copySessionId}
               className="shrink-0"
@@ -1247,7 +1388,9 @@ export function AgentInfoContent({ agent, sessionId }: AgentInfoProps) {
           <div className="flex flex-col gap-2 py-3">
             {sessionCostUsd != null && (
               <div className="flex items-baseline justify-between gap-3">
-                <SectionLabel>Session cost</SectionLabel>
+                <SectionLabel>
+                  {t("agentInfo.usage.sessionCost", { defaultValue: "Session cost" })}
+                </SectionLabel>
                 <span
                   className="font-mono text-xs tabular-nums text-muted-foreground"
                   data-testid="agent-info-session-cost"
@@ -1285,6 +1428,7 @@ export function AgentInfoContent({ agent, sessionId }: AgentInfoProps) {
  * dialog. Self-hides when the agent has neither tools nor policies.
  */
 export function AgentInfoButton({ agent, sessionId }: AgentInfoProps) {
+  const { t } = useTranslation();
   if (!agentHasInfo(agent, sessionId)) return null;
 
   return (
@@ -1296,7 +1440,9 @@ export function AgentInfoButton({ agent, sessionId }: AgentInfoProps) {
               type="button"
               variant="ghost"
               size="icon"
-              aria-label="Agent tools and policies"
+              aria-label={t("agentInfo.header.toolsAndPolicies", {
+                defaultValue: "Agent tools and policies",
+              })}
               data-testid="agent-info-trigger"
               className="hidden text-muted-foreground hover:text-foreground md:inline-flex"
             >
@@ -1304,7 +1450,11 @@ export function AgentInfoButton({ agent, sessionId }: AgentInfoProps) {
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
-        <TooltipContent>Agent tools &amp; policies</TooltipContent>
+        <TooltipContent>
+          {t("agentInfo.header.toolsAndPoliciesTooltip", {
+            defaultValue: "Agent tools & policies",
+          })}
+        </TooltipContent>
       </Tooltip>
       <PopoverContent align="end" className="w-80">
         <AgentInfoContent agent={agent} sessionId={sessionId} />

@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import i18n from "@/i18n";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { Agent } from "@/hooks/useAgents";
 import { useChatStore } from "@/store/chatStore";
@@ -77,6 +78,10 @@ vi.mock("@/hooks/RunnerHealthProvider", () => ({
 }));
 
 import { AgentInfoButton, AgentInfoContent, agentDisplayLabel } from "./AgentInfo";
+
+beforeEach(async () => {
+  await i18n.changeLanguage("en");
+});
 
 afterEach(() => {
   cleanup();
@@ -177,6 +182,20 @@ describe("AgentInfoButton", () => {
     fireEvent.click(screen.getByTestId("agent-info-trigger"));
     expect(screen.getByText("Claude")).toBeInTheDocument();
     expect(screen.queryByText("claude-native-ui")).toBeNull();
+  });
+});
+
+describe("AgentInfoButton locale", () => {
+  it("renders the trigger label in Russian", async () => {
+    await i18n.changeLanguage("ru");
+    try {
+      renderButton(AGENT_WITH_BOTH);
+      expect(
+        screen.getByRole("button", { name: "Инструменты и политики агента" }),
+      ).toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 });
 

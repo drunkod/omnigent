@@ -1094,5 +1094,102 @@
       "brand": "Omnigent",
       "connectNew": "Connect to new server…"
     }
+  },
+  "agentInfo": {
+    "actions": {
+      "add": "Add",
+      "adding": "Adding...",
+      "cancel": "Cancel",
+      "change": "Change",
+      "clear": "Clear",
+      "remove": "Remove",
+      "save": "Save",
+      "saving": "Saving..."
+    },
+    "header": {
+      "toolsAndPolicies": "Agent tools and policies",
+      "toolsAndPoliciesTooltip": "Agent tools & policies"
+    },
+    "mcp": {
+      "args": "Args",
+      "argsPlaceholder": "-y\n@modelcontextprotocol/server-github",
+      "command": "Command",
+      "commandPlaceholder": "npx",
+      "deleteServer": "Delete {{name}}",
+      "description": "Description",
+      "editServer": "Edit {{name}}",
+      "editTitle": "Edit Server",
+      "manage": "Manage MCP servers",
+      "manageDescription": "Add, edit, or remove MCP servers for this session.",
+      "manageTitle": "Manage MCP Servers",
+      "name": "Name",
+      "namePlaceholder": "github",
+      "newServer": "New server",
+      "newTitle": "New Server",
+      "noServers": "No MCP servers",
+      "optionalPlaceholder": "Optional",
+      "restartBanner": "Restart the session to apply your changes.",
+      "restartShort": "Restart to apply changes",
+      "servers": "Servers",
+      "tools": "Tools",
+      "transport": "Transport",
+      "updatedRestart": "MCP servers updated. Restart the session to apply changes.",
+      "url": "URL",
+      "urlPlaceholder": "https://example.com/sse"
+    },
+    "policy": {
+      "add": "Add policy",
+      "addDescription": "Choose a policy to apply to this session.",
+      "addTitle": "Add Policy",
+      "allApplied": "All available policies are already applied.",
+      "commaSeparatedValues": "comma-separated values",
+      "filterPlaceholder": "Filter policies...",
+      "label": "Policies",
+      "name": "name",
+      "noMatch": "No policies match your filter.",
+      "noPolicies": "No policies added",
+      "parameterType": {
+        "commaSeparated": "comma-separated",
+        "select": "select"
+      }
+    },
+    "session": {
+      "copiedId": "Copied session ID",
+      "copyId": "Copy session ID",
+      "id": "Session ID",
+      "owner": "Owner",
+      "you": "(you)"
+    },
+    "usage": {
+      "cacheRead": "Cache read",
+      "cacheWrite": "Cache write",
+      "cost": "Cost",
+      "input": "Input",
+      "output": "Output",
+      "sessionCost": "Session cost",
+      "tokenUsage": "Token usage",
+      "total": "Total"
+    },
+    "validation": {
+      "commandRequired": "Command is required.",
+      "nameCharacters": "Name can use letters, numbers, dots, dashes, and underscores.",
+      "nameRequired": "Name is required.",
+      "policyParamInteger": "{{key}} must be an integer, e.g. {{example}}",
+      "policyParamJsonObject": "{{key}} must be a JSON object, e.g. {{example}}",
+      "policyParamNumber": "{{key}} must be a number, e.g. {{example}}",
+      "policyParamValidJson": "{{key}} must be valid JSON, e.g. {{example}}",
+      "urlProtocol": "URL must start with http:// or https://.",
+      "urlRequired": "URL is required."
+    },
+    "version": {
+      "host": "host {{version}}",
+      "server": "server {{version}}"
+    },
+    "userMessageNav": {
+      "previousAriaLabel": "Previous user message",
+      "previousTooltip": "Previous message (⌘⌥↑)",
+      "nextAriaLabel": "Next user message",
+      "nextTooltip": "Next message (⌘⌥↓)"
+    }
   }
 }

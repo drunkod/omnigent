@@ -1107,5 +1107,102 @@
       "brand": "Omnigent",
       "connectNew": "Подключиться к новому серверу…"
     }
+  },
+  "agentInfo": {
+    "actions": {
+      "add": "Добавить",
+      "adding": "Добавление...",
+      "cancel": "Отмена",
+      "change": "Изменить",
+      "clear": "Очистить",
+      "remove": "Удалить",
+      "save": "Сохранить",
+      "saving": "Сохранение..."
+    },
+    "header": {
+      "toolsAndPolicies": "Инструменты и политики агента",
+      "toolsAndPoliciesTooltip": "Инструменты и политики агента"
+    },
+    "mcp": {
+      "args": "Аргументы",
+      "argsPlaceholder": "-y\n@modelcontextprotocol/server-github",
+      "command": "Команда",
+      "commandPlaceholder": "npx",
+      "deleteServer": "Удалить {{name}}",
+      "description": "Описание",
+      "editServer": "Изменить {{name}}",
+      "editTitle": "Изменить сервер",
+      "manage": "Управление MCP-серверами",
+      "manageDescription": "Добавьте, измените или удалите MCP-серверы для этой сессии.",
+      "manageTitle": "Управление MCP-серверами",
+      "name": "Имя",
+      "namePlaceholder": "github",
+      "newServer": "Новый сервер",
+      "newTitle": "Новый сервер",
+      "noServers": "Нет MCP-серверов",
+      "optionalPlaceholder": "Необязательно",
+      "restartBanner": "Перезапустите сессию, чтобы применить изменения.",
+      "restartShort": "Перезапустите, чтобы применить изменения",
+      "servers": "Серверы",
+      "tools": "Инструменты",
+      "transport": "Транспорт",
+      "updatedRestart": "MCP-серверы обновлены. Перезапустите сессию, чтобы применить изменения.",
+      "url": "URL",
+      "urlPlaceholder": "https://example.com/sse"
+    },
+    "policy": {
+      "add": "Добавить политику",
+      "addDescription": "Выберите политику для применения к этой сессии.",
+      "addTitle": "Добавить политику",
+      "allApplied": "Все доступные политики уже применены.",
+      "commaSeparatedValues": "значения через запятую",
+      "filterPlaceholder": "Фильтр политик...",
+      "label": "Политики",
+      "name": "имя",
+      "noMatch": "Нет политик, соответствующих фильтру.",
+      "noPolicies": "Политики не добавлены",
+      "parameterType": {
+        "commaSeparated": "через запятую",
+        "select": "выбор"
+      }
+    },
+    "session": {
+      "copiedId": "Идентификатор сессии скопирован",
+      "copyId": "Копировать идентификатор сессии",
+      "id": "Идентификатор сессии",
+      "owner": "Владелец",
+      "you": "(вы)"
+    },
+    "usage": {
+      "cacheRead": "Чтение из кэша",
+      "cacheWrite": "Запись в кэш",
+      "cost": "Стоимость",
+      "input": "Входные",
+      "output": "Выходные",
+      "sessionCost": "Стоимость сессии",
+      "tokenUsage": "Использование токенов",
+      "total": "Всего"
+    },
+    "validation": {
+      "commandRequired": "Укажите команду.",
+      "nameCharacters": "Имя может содержать буквы, цифры, точки, дефисы и подчёркивания.",
+      "nameRequired": "Укажите имя.",
+      "policyParamInteger": "{{key}} должно быть целым числом, например {{example}}",
+      "policyParamJsonObject": "{{key}} должно быть объектом JSON, например {{example}}",
+      "policyParamNumber": "{{key}} должно быть числом, например {{example}}",
+      "policyParamValidJson": "{{key}} должно быть корректным JSON, например {{example}}",
+      "urlProtocol": "URL должен начинаться с http:// или https://.",
+      "urlRequired": "Укажите URL."
+    },
+    "version": {
+      "host": "хост {{version}}",
+      "server": "сервер {{version}}"
+    },
+    "userMessageNav": {
+      "previousAriaLabel": "Предыдущее сообщение пользователя",
+      "previousTooltip": "Предыдущее сообщение (⌘⌥↑)",
+      "nextAriaLabel": "Следующее сообщение пользователя",
+      "nextTooltip": "Следующее сообщение (⌘⌥↓)"
+    }
   }
 }
