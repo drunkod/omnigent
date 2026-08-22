@@ -309,6 +309,97 @@
     "youAuthor": "You",
     "checkingRemaining": "Checking remaining sessions…"
   },
+  "admin": {
+    "members": {
+      "title": "Members",
+      "singleUserUnavailable": "Member management is not available in single-user mode.",
+      "loading": "Loading…",
+      "noPermission": "You don't have permission to manage members.",
+      "invite": "Invite member",
+      "readOnlyNotice": "Users are provisioned automatically on first sign-in through your identity provider. This list is read-only.",
+      "loadError": "Could not load members. You may not have admin permission, or the server is unreachable.",
+      "columns": {
+        "username": "Username",
+        "role": "Role",
+        "lastLogin": "Last login",
+        "actions": "Actions"
+      },
+      "you": "(you)",
+      "external": "External",
+      "roleAdmin": "Admin",
+      "roleMember": "Member",
+      "resetTitle": "Reset password",
+      "reset": "Reset",
+      "removeUserTitle": "Remove user",
+      "remove": "Remove",
+      "empty": "No members yet.",
+      "refresh": "Refresh",
+      "never": "Never",
+      "copy": "Copy",
+      "copied": "Copied",
+      "inviteDialog": {
+        "title": "Invite a member",
+        "description": "A single-use invite URL will be created. Share it with the person you want to add. They'll choose their own username and password when they redeem it.",
+        "grantAdmin": "Grant admin privileges",
+        "cancel": "Cancel",
+        "creating": "Creating…",
+        "create": "Create invite"
+      },
+      "inviteUrlDialog": {
+        "title": "Invite URL",
+        "description": "Send this URL to the new member. It expires in {{ttl}} and is single-use — once they redeem it, it can't be used again. This URL is shown only once.",
+        "done": "Done",
+        "soon": "soon"
+      },
+      "resetDialog": {
+        "title": "New password for {{id}}",
+        "description": "Send this password to the user out-of-band (e.g. Slack DM). It is shown only once.",
+        "done": "Done"
+      },
+      "deleteDialog": {
+        "title": "Remove {{id}}?",
+        "description": "This deletes the user account and revokes all their session permissions. Sessions they own become inaccessible unless another user has manage rights on them. This action cannot be undone.",
+        "cancel": "Cancel",
+        "removing": "Removing…",
+        "remove": "Remove"
+      }
+    },
+    "policies": {
+      "title": "Global Policies",
+      "loading": "Loading...",
+      "noPermission": "You don't have permission to manage global policies.",
+      "subtitle": "Global policies applied to all sessions.",
+      "add": "Add policy",
+      "disabled": "Disabled",
+      "toggle": "Toggle {{name}}",
+      "removePolicyTitle": "Remove policy",
+      "parameters": "Parameters",
+      "empty": "No global policies configured. Add one to apply it to all sessions.",
+      "refresh": "Refresh",
+      "deleteDialog": {
+        "title": "Remove {{name}}?",
+        "description": "This removes the global policy from all sessions. Existing session-level policies with the same handler are unaffected.",
+        "cancel": "Cancel",
+        "removing": "Removing...",
+        "remove": "Remove"
+      },
+      "addDialog": {
+        "title": "Add Global Policy",
+        "description": "Choose a policy to apply globally to all sessions.",
+        "filter": "Filter policies...",
+        "allApplied": "All available policies are already applied.",
+        "noMatch": "No policies match your filter.",
+        "change": "Change",
+        "nameLabel": "name",
+        "typeSelect": "select",
+        "typeCommaSeparated": "comma-separated",
+        "commaSeparatedPlaceholder": "comma-separated values",
+        "cancel": "Cancel",
+        "adding": "Adding...",
+        "add": "Add"
+      }
+    }
+  },
   "settings": {
     "language": { "title": "Language", "helper": "Choose the language used in Settings." },
     "nav": {
