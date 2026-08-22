@@ -2464,11 +2464,11 @@ export function shouldShowWorkingIndicator(showsWorking: boolean, bubbles: Bubbl
  * purpose — `ready` clears the band and `failed` renders its own
  * error band.
  */
-const SANDBOX_STAGE_LABELS: Record<string, readonly [string, string] | undefined> = {
-  provisioning: ["chat.sandbox.provisioning", "Provisioning sandbox"],
-  cloning: ["chat.sandbox.cloning", "Cloning repository"],
-  starting: ["chat.sandbox.connectingHost", "Connecting host"],
-  connecting: ["chat.sandbox.startingAgent", "Starting agent"],
+const SANDBOX_STAGE_LABELS: Record<string, string | undefined> = {
+  provisioning: "chat.sandbox.provisioning",
+  cloning: "chat.sandbox.cloning",
+  starting: "chat.sandbox.connectingHost",
+  connecting: "chat.sandbox.startingAgent",
 } as const;
 
 /**
@@ -2567,12 +2567,8 @@ export function ConnectionIndicator({
         <WifiOffIcon className="size-3.5 shrink-0" />
         <span>
           {liveness.kind === "host_offline"
-            ? t("chat.connection.hostOffline", {
-                defaultValue: "Host is offline — click to reconnect",
-              })
-            : t("chat.connection.agentDisconnected", {
-                defaultValue: "Agent disconnected — click to reconnect",
-              })}
+            ? t("chat.connection.hostOffline")
+            : t("chat.connection.agentDisconnected")}
         </span>
       </button>
     );
@@ -2626,7 +2622,7 @@ export function ConnectionIndicator({
         )}
       >
         <Loader2Icon className="size-3.5 shrink-0 animate-spin" aria-hidden />
-        <span>{t("chat.connection.connecting", { defaultValue: "Connecting…" })}</span>
+        <span>{t("chat.connection.connecting")}</span>
       </div>
     );
   }
@@ -2666,9 +2662,7 @@ export function RunnerStartingIndicator({ variant }: { variant: "hero" | "row" }
     sandboxStatus !== null && sandboxStatus.stage !== "failed"
       ? SANDBOX_STAGE_LABELS[sandboxStatus.stage]
       : undefined;
-  const sandboxLabel = sandboxCopy
-    ? t(sandboxCopy[0], { defaultValue: sandboxCopy[1] })
-    : undefined;
+  const sandboxLabel = sandboxCopy ? t(sandboxCopy) : undefined;
   // `terminalStartingUp` is computed for ALL sessions in AppShell (it does not
   // check isTerminalFirst), so gate on isTerminalFirst too: regular agents
   // (e.g. polly) get the generic ConnectionIndicator "Connecting…" band and
@@ -2681,8 +2675,8 @@ export function RunnerStartingIndicator({ variant }: { variant: "hero" | "row" }
   }
   const line =
     sandboxLabel !== undefined
-      ? t("chat.runner.stage", { defaultValue: "{{stage}}…", stage: sandboxLabel })
-      : t("chat.runner.startingUp", { defaultValue: "Starting up…" });
+      ? t("chat.runner.stage", { stage: sandboxLabel })
+      : t("chat.runner.startingUp");
   // role=status + aria-live so assistive tech announces the transient wait;
   // the spinner glyph itself is decorative (aria-hidden).
   if (variant === "hero") {
@@ -2695,12 +2689,8 @@ export function RunnerStartingIndicator({ variant }: { variant: "hero" | "row" }
         title={line}
         description={
           sandboxLabel !== undefined
-            ? t("chat.runner.sandboxDescription", {
-                defaultValue: "Setting up your sandbox — this can take a minute.",
-              })
-            : t("chat.runner.description", {
-                defaultValue: "This can take a few seconds.",
-              })
+            ? t("chat.runner.sandboxDescription")
+            : t("chat.runner.description")
         }
       />
     );
@@ -2803,14 +2793,14 @@ function ConnectedTerminalFirstPill({
     >
       <div
         role="group"
-        aria-label={t("chat.viewMode.label", { defaultValue: "View mode" })}
+        aria-label={t("chat.viewMode.label")}
         className="terminal-first-switcher flex items-center gap-1 rounded-full border border-border bg-card/90 p-1 text-xs shadow-sm"
       >
         <div className="flex items-center gap-0.5">
           <button
             type="button"
             aria-pressed={view === "chat"}
-            aria-label={t("chat.viewMode.chat", { defaultValue: "Chat" })}
+            aria-label={t("chat.viewMode.chat")}
             onClick={() => setView("chat")}
             className={cn(
               "terminal-first-switcher-option flex cursor-pointer items-center gap-1 rounded-full px-2 py-0.5 transition-colors",
@@ -2820,20 +2810,14 @@ function ConnectedTerminalFirstPill({
             )}
           >
             <MessageSquareIcon className="size-3.5 shrink-0" />
-            <span>{t("chat.viewMode.chat", { defaultValue: "Chat" })}</span>
+            <span>{t("chat.viewMode.chat")}</span>
           </button>
           <button
             type="button"
             aria-pressed={view === "terminal"}
-            aria-label={t("chat.viewMode.terminal", { defaultValue: "Terminal" })}
+            aria-label={t("chat.viewMode.terminal")}
             disabled={!terminalsAvailable}
-            title={
-              terminalStartingUp
-                ? t("chat.viewMode.terminalStarting", {
-                    defaultValue: "Terminal is starting up…",
-                  })
-                : undefined
-            }
+            title={terminalStartingUp ? t("chat.viewMode.terminalStarting") : undefined}
             onClick={() => setView("terminal")}
             className={cn(
               "terminal-first-switcher-option flex cursor-pointer items-center gap-1 rounded-full px-2 py-0.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50",
@@ -2847,7 +2831,7 @@ function ConnectedTerminalFirstPill({
             ) : (
               <TerminalIcon className="size-3.5 shrink-0" />
             )}
-            <span>{t("chat.viewMode.terminal", { defaultValue: "Terminal" })}</span>
+            <span>{t("chat.viewMode.terminal")}</span>
           </button>
         </div>
       </div>

@@ -27,6 +27,9 @@ def test_settings_language_switches_to_russian_and_persists(
     expect(page.get_by_test_id("sidebar-search-button")).to_have_attribute("aria-label", "Поиск")
     expect(page.get_by_role("heading", name="Сессии")).to_be_visible()
 
+    page.goto(f"{base_url}/nonexistent")
+    expect(page.get_by_role("heading", name="Страница не найдена")).to_be_visible(timeout=30_000)
+
     page.goto(f"{base_url}/inbox")
     expect(page.get_by_role("heading", name="Входящие")).to_be_visible(timeout=30_000)
     expect(page.get_by_text("Для вас ничего нет")).to_be_visible(timeout=30_000)

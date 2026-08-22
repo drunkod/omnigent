@@ -1191,5 +1191,39 @@
       "nextAriaLabel": "Next user message",
       "nextTooltip": "Next message (⌘⌥↓)"
     }
+  },
+  "misc": {
+    "notFound": {
+      "title": "Page not found",
+      "description": "The URL you followed doesn't match any route in this app.",
+      "backHome": "Back to home"
+    },
+    "pwaUpdate": {
+      "available": "A new version of Omnigent is available.",
+      "reload": "Reload",
+      "dismiss": "Dismiss"
+    },
+    "sessionState": {
+      "needsResponse": "Needs response",
+      "running": "Session running",
+      "newMessages": "New messages",
+      "approvalPromptWaiting_one": "1 approval prompt waiting",
+      "approvalPromptWaiting_other": "{{count}} approval prompts waiting"
+    },
+    "host": {
+      "online": "online",
+      "offline": "offline",
+      "unknown": "status unknown",
+      "title": "Host {{host}}, {{status}}"
+    },
+    "runner": {
+      "offline": "Local runner offline",
+      "reconnecting": "Reconnecting local runner",
+      "localWorkspace": "Local · {{workspace}}",
+      "local": "Local runner",
+      "offlineTitle": "Session is preserved while the runner is offline",
+      "workspacePermissions": "Local workspace{{workspaceSuffix}} · {{policyMode}} permissions",
+      "offlineRecovery": "Session is preserved and will recover when the runner returns."
+    }
   }
 }

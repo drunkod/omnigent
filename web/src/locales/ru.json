@@ -1204,5 +1204,41 @@
       "nextAriaLabel": "Следующее сообщение пользователя",
       "nextTooltip": "Следующее сообщение (⌘⌥↓)"
     }
+  },
+  "misc": {
+    "notFound": {
+      "title": "Страница не найдена",
+      "description": "URL, по которому вы перешли, не соответствует ни одному маршруту этого приложения.",
+      "backHome": "На главную"
+    },
+    "pwaUpdate": {
+      "available": "Доступна новая версия Omnigent.",
+      "reload": "Перезагрузить",
+      "dismiss": "Скрыть"
+    },
+    "sessionState": {
+      "needsResponse": "Требуется ответ",
+      "running": "Сессия выполняется",
+      "newMessages": "Новые сообщения",
+      "approvalPromptWaiting_one": "Ожидает {{count}} запрос на подтверждение",
+      "approvalPromptWaiting_few": "Ожидают {{count}} запроса на подтверждение",
+      "approvalPromptWaiting_many": "Ожидают {{count}} запросов на подтверждение",
+      "approvalPromptWaiting_other": "Ожидают {{count}} запроса на подтверждение"
+    },
+    "host": {
+      "online": "в сети",
+      "offline": "не в сети",
+      "unknown": "статус неизвестен",
+      "title": "Хост {{host}}, {{status}}"
+    },
+    "runner": {
+      "offline": "Локальный раннер не в сети",
+      "reconnecting": "Переподключение локального раннера",
+      "localWorkspace": "Локальный · {{workspace}}",
+      "local": "Локальный раннер",
+      "offlineTitle": "Сессия сохранена, пока раннер не в сети",
+      "workspacePermissions": "Локальная рабочая область{{workspaceSuffix}} · разрешения: {{policyMode}}",
+      "offlineRecovery": "Сессия сохранена и восстановится, когда раннер вернётся."
+    }
   }
 }
