@@ -285,6 +285,30 @@
       "remove": "Remove queued message"
     }
   },
+  "inbox": {
+    "title": "Inbox",
+    "summary": {
+      "approvals_one": "1 approval",
+      "approvals_other": "{{count}} approvals",
+      "comments_one": "1 comment",
+      "comments_other": "{{count}} comments",
+      "separator": " · ",
+      "waiting": "waiting"
+    },
+    "loadError_one": "Couldn’t load inbox items from {{count}} session.",
+    "loadError_other": "Couldn’t load inbox items from {{count}} sessions.",
+    "retry": "Retry",
+    "loading": "Loading inbox…",
+    "empty": {
+      "title": "Nothing waiting on you",
+      "description": "When an agent needs your input or someone comments on a file, it will show up here."
+    },
+    "openSession": "Open session",
+    "openFile": "Open file",
+    "commentedOn": " commented on ",
+    "youAuthor": "You",
+    "checkingRemaining": "Checking remaining sessions…"
+  },
   "settings": {
     "language": { "title": "Language", "helper": "Choose the language used in Settings." },
     "nav": {

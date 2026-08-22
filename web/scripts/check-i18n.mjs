@@ -30,6 +30,22 @@ function interpolationNames(message) {
   return [...message.matchAll(INTERPOLATION_PATTERN)].map((match) => match[1]).sort();
 }
 
+function pluralBaseKey(key) {
+  const match = key.match(/^(.*)_(one|few|many|other)$/);
+  return match ? match[1] : key;
+}
+
+function groupByPluralBase(entries) {
+  const groups = new Map();
+  for (const [key, message] of entries) {
+    const base = pluralBaseKey(key);
+    const variants = groups.get(base) ?? new Map();
+    variants.set(key, message);
+    groups.set(base, variants);
+  }
+  return groups;
+}
+
 const resources = new Map();
 for (const locale of LOCALES) {
   const source = await readFile(new URL(`../src/locales/${locale}.json`, import.meta.url), "utf8");
@@ -38,26 +54,38 @@ for (const locale of LOCALES) {
 
 const [referenceLocale, ...translatedLocales] = LOCALES;
 const reference = resources.get(referenceLocale);
-const referenceKeys = [...reference.keys()].sort();
+const referenceGroups = groupByPluralBase(reference);
+const referenceKeys = [...referenceGroups.keys()].sort();
 
 for (const locale of translatedLocales) {
   const translated = resources.get(locale);
-  const translatedKeys = [...translated.keys()].sort();
+  const translatedGroups = groupByPluralBase(translated);
+  const translatedKeys = [...translatedGroups.keys()].sort();
   assert.deepEqual(
     translatedKeys,
     referenceKeys,
-    `${locale}.json must have the same translation keys as ${referenceLocale}.json`,
+    `${locale}.json must have the same translation keys as ${referenceLocale}.json (ignoring plural suffixes)`,
   );
 
   for (const key of referenceKeys) {
+    const referenceVariants = referenceGroups.get(key);
+    const translatedVariants = translatedGroups.get(key);
+    const referenceInterpolations = [
+      ...new Set([...referenceVariants.values()].flatMap((message) => interpolationNames(message))),
+    ].sort();
+    const translatedInterpolations = [
+      ...new Set(
+        [...translatedVariants.values()].flatMap((message) => interpolationNames(message)),
+      ),
+    ].sort();
     assert.deepEqual(
-      interpolationNames(translated.get(key)),
-      interpolationNames(reference.get(key)),
-      `${locale}.${key} must use the same interpolation variables as ${referenceLocale}.${key}`,
+      translatedInterpolations,
+      referenceInterpolations,
+      `${locale}.${key} must use the same interpolation variables across plural variants`,
     );
   }
 }
 
 console.log(
-  `i18n resources valid: ${LOCALES.join(", ")} each contain ${referenceKeys.length} matching keys`,
+  `i18n resources valid: ${LOCALES.join(", ")} each contain ${referenceKeys.length} matching base keys`,
 );

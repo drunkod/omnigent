@@ -36,6 +36,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangleIcon,
@@ -65,6 +66,7 @@ type RespondedMap = Record<
 >;
 
 export function InboxPage() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const conversationsQuery = useConversations("", false, { reconcileWhileConnected: true });
   const [responded, setResponded] = useState<RespondedMap>({});
@@ -187,19 +189,17 @@ export function InboxPage() {
   return (
     <PageScroll contentClassName="px-6">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Inbox</h1>
+        <h1 className="text-2xl font-semibold">{t("inbox.title")}</h1>
         {(items.length > 0 || commentInbox.items.length > 0) && (
           <span className="text-sm text-muted-foreground">
             {[
-              items.length > 0 && (items.length === 1 ? "1 approval" : `${items.length} approvals`),
+              items.length > 0 && t("inbox.summary.approvals", { count: items.length }),
               commentInbox.items.length > 0 &&
-                (commentInbox.items.length === 1
-                  ? "1 comment"
-                  : `${commentInbox.items.length} comments`),
+                t("inbox.summary.comments", { count: commentInbox.items.length }),
             ]
               .filter(Boolean)
-              .join(" · ")}{" "}
-            waiting
+              .join(t("inbox.summary.separator"))}{" "}
+            {t("inbox.summary.waiting")}
           </span>
         )}
       </div>
@@ -210,10 +210,7 @@ export function InboxPage() {
           className="mb-4 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm"
         >
           <AlertTriangleIcon className="size-4 shrink-0 text-destructive" />
-          <span className="flex-1">
-            Couldn’t load inbox items from {failedSessionCount}{" "}
-            {failedSessionCount === 1 ? "session" : "sessions"}.
-          </span>
+          <span className="flex-1">{t("inbox.loadError", { count: failedSessionCount })}</span>
           <Button
             variant="outline"
             size="sm"
@@ -222,7 +219,7 @@ export function InboxPage() {
               commentInbox.retryFailed();
             }}
           >
-            Retry
+            {t("inbox.retry")}
           </Button>
         </div>
       )}
@@ -230,7 +227,7 @@ export function InboxPage() {
       {assembling && items.length === 0 && commentInbox.items.length === 0 && (
         <div className="flex items-center gap-2 py-12 text-sm text-muted-foreground">
           <Loader2Icon className="size-4 animate-spin" />
-          Loading inbox…
+          {t("inbox.loading")}
         </div>
       )}
 
@@ -240,10 +237,8 @@ export function InboxPage() {
         commentInbox.items.length === 0 && (
           <div className="flex flex-col items-center gap-2 py-16 text-center">
             <InboxIcon className="size-8 text-muted-foreground/50" />
-            <p className="text-sm font-medium">Nothing waiting on you</p>
-            <p className="text-xs text-muted-foreground">
-              When an agent needs your input or someone comments on a file, it will show up here.
-            </p>
+            <p className="text-sm font-medium">{t("inbox.empty.title")}</p>
+            <p className="text-xs text-muted-foreground">{t("inbox.empty.description")}</p>
           </div>
         )}
 
@@ -305,7 +300,7 @@ export function InboxPage() {
                   </span>
                   <Button asChild variant="ghost" size="sm" className="text-xs">
                     <Link to={`/c/${item.row.id}`}>
-                      Open session
+                      {t("inbox.openSession")}
                       <ArrowRightIcon className="ml-1 size-3.5" />
                     </Link>
                   </Button>
@@ -338,7 +333,7 @@ export function InboxPage() {
           const comment = item.comment;
           // Single-user mode stores no author; mirror CommentsPanel's
           // "You" fallback (the only human in that mode is the viewer).
-          const author = comment.created_by ?? "You";
+          const author = comment.created_by ?? t("inbox.youAuthor");
           const sessionTitle = conversationDisplayLabel(item.row);
           return (
             <div
@@ -360,7 +355,7 @@ export function InboxPage() {
                 <div className="flex items-center gap-2">
                   <span className="min-w-0 truncate text-sm">
                     <span className="font-medium">{author}</span>
-                    <span className="text-muted-foreground"> commented on </span>
+                    <span className="text-muted-foreground">{t("inbox.commentedOn")}</span>
                     <span className="font-mono text-xs">{comment.path}</span>
                   </span>
                   <span className="ml-auto flex shrink-0 items-center gap-2">
@@ -375,7 +370,7 @@ export function InboxPage() {
                       <Link
                         to={`/c/${item.row.id}?file=${encodeURIComponent(comment.path)}&comment=${encodeURIComponent(comment.id)}`}
                       >
-                        Open file
+                        {t("inbox.openFile")}
                         <ArrowRightIcon className="ml-1 size-3.5" />
                       </Link>
                     </Button>
@@ -397,7 +392,7 @@ export function InboxPage() {
         {assembling && (items.length > 0 || commentInbox.items.length > 0) && (
           <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
             <Loader2Icon className="size-3.5 animate-spin" />
-            Checking remaining sessions…
+            {t("inbox.checkingRemaining")}
           </div>
         )}
       </div>

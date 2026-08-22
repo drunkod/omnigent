@@ -7,6 +7,7 @@ import type { Conversation } from "@/hooks/useConversations";
 import * as commentInboxHook from "@/hooks/useCommentInbox";
 import * as conversationsHook from "@/hooks/useConversations";
 import * as sessionsApi from "@/lib/sessionsApi";
+import i18n from "@/i18n";
 import { InboxPage } from "./InboxPage";
 
 vi.mock("@/hooks/useConversations", async (importActual) => ({
@@ -57,6 +58,7 @@ function renderPage(localAction: Record<string, unknown>, rawMessage: string) {
 }
 
 beforeEach(() => {
+  void i18n.changeLanguage("en");
   vi.mocked(conversationsHook.useConversations).mockReturnValue({
     data: { pages: [{ data: [row] }] },
     isLoading: false,
@@ -77,6 +79,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  void i18n.changeLanguage("en");
   vi.clearAllMocks();
 });
 
