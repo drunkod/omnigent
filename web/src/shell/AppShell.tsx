@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { Outlet, useParams, useSearchParams } from "@/lib/routing";
 import { useConversations } from "@/hooks/useConversations";
@@ -118,6 +119,7 @@ import type { RightRailTab } from "./railTabs";
  * more than one agent (the root has at least one child).
  */
 export function AppShell() {
+  const { t: translate } = useTranslation();
   // Cmd/Ctrl+Enter accepts the pending harness approval prompt. Bound once
   // here so it works on every chat route, regardless of where focus sits.
   useApproveHotkey();
@@ -1256,7 +1258,7 @@ export function AppShell() {
               {conversationId && rootSessionId && (
                 <MobilePanelDrawer
                   open={subagentsPanelOpen}
-                  title="Agents"
+                  title={translate("panels.workspace.agents", { defaultValue: "Agents" })}
                   onClose={() => setSubagentsPanelOpen(false)}
                   testId="subagents-panel-drawer"
                 >
@@ -1266,7 +1268,7 @@ export function AppShell() {
               {conversationId && (
                 <MobilePanelDrawer
                   open={shellsPanelOpen}
-                  title="Shells"
+                  title={translate("panels.workspace.shells", { defaultValue: "Shells" })}
                   onClose={() => setShellsPanelOpen(false)}
                   testId="shells-panel-drawer"
                 >
@@ -1279,7 +1281,7 @@ export function AppShell() {
               {conversationId && (
                 <MobilePanelDrawer
                   open={todosPanelOpen}
-                  title="Tasks"
+                  title={translate("panels.workspace.tasks", { defaultValue: "Tasks" })}
                   onClose={() => setTodosPanelOpen(false)}
                   testId="todos-panel-drawer"
                 >

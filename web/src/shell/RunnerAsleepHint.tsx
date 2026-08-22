@@ -1,4 +1,5 @@
 import { PauseCircleIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 /**
  * Shown in a workspace panel when the session's runner is bound but not
@@ -9,13 +10,18 @@ import { PauseCircleIcon } from "lucide-react";
  * both read identically.
  */
 export function RunnerAsleepHint() {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col items-start gap-1 px-2 py-1.5 text-muted-foreground text-xs">
       <span className="flex items-center gap-1.5 font-medium text-foreground">
         <PauseCircleIcon className="size-3.5 shrink-0" />
-        Agent is asleep
+        {t("panels.files.runnerAsleepTitle", { defaultValue: "Agent is asleep" })}
       </span>
-      <span>Send a message in the chat to reconnect.</span>
+      <span>
+        {t("panels.files.runnerAsleepDescription", {
+          defaultValue: "Send a message in the chat to reconnect.",
+        })}
+      </span>
     </div>
   );
 }

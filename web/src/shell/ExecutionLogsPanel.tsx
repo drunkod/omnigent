@@ -24,6 +24,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -92,6 +93,7 @@ export function ExecutionLogsPanel({
   initialKey,
   onClose,
 }: ExecutionLogsPanelProps) {
+  const { t } = useTranslation();
   // No child-sessions poll — status arrives live over the session stream
   // (see chatStore ``session_child_session_updated``).
   const { children } = useChildSessions(open ? conversationId : null);
@@ -126,7 +128,11 @@ export function ExecutionLogsPanel({
     }
   }, [open]);
 
-  const entries = buildLogEntries(conversationId, children);
+  const entries = buildLogEntries(
+    conversationId,
+    children,
+    t("panels.executionLogs.main", { defaultValue: "main" }),
+  );
   const activeEntry = entries.find((e) => e.key === activeKey) ?? entries[0] ?? null;
 
   return (
@@ -152,8 +158,16 @@ export function ExecutionLogsPanel({
         />
       )}
       <header className="flex shrink-0 items-center justify-between border-border border-b px-4 py-3">
-        <h2 className="font-medium text-sm">Execution logs</h2>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Close" onClick={onClose}>
+        <h2 className="font-medium text-sm">
+          {t("panels.executionLogs.title", { defaultValue: "Execution logs" })}
+        </h2>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t("panels.executionLogs.close", { defaultValue: "Close" })}
+          onClick={onClose}
+        >
           <XIcon className="size-4" />
         </Button>
       </header>
@@ -202,11 +216,15 @@ export function ExecutionLogsPanel({
  * Build the entry list: "main" pinned first, then every child session
  * in the order returned by the child_sessions endpoint.
  */
-function buildLogEntries(conversationId: string, children: ChildSessionInfo[]): LogEntry[] {
+function buildLogEntries(
+  conversationId: string,
+  children: ChildSessionInfo[],
+  mainLabel: string,
+): LogEntry[] {
   const main: LogEntry = {
     key: executionLogTabKey(MAIN_EXECUTION_LOG_KEY),
     sessionId: conversationId,
-    label: "main",
+    label: mainLabel,
     icon: MessageSquareIcon,
   };
   const childEntries: LogEntry[] = children.map((c) => ({
@@ -219,6 +237,7 @@ function buildLogEntries(conversationId: string, children: ChildSessionInfo[]): 
 }
 
 function SessionItemsList({ sessionId }: { sessionId: string }) {
+  const { t } = useTranslation();
   const sessionActive = useFocusedSessionActive();
   const { items, isLoading, error, hasNextPage, isFetchingNextPage, fetchNextPage } =
     useSessionItems(sessionId, sessionActive ? ITEMS_POLL_MS : null);
@@ -250,13 +269,28 @@ function SessionItemsList({ sessionId }: { sessionId: string }) {
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   if (isLoading) {
-    return <div className="text-muted-foreground text-xs">Loading…</div>;
+    return (
+      <div className="text-muted-foreground text-xs">
+        {t("panels.executionLogs.loading", { defaultValue: "Loading…" })}
+      </div>
+    );
   }
   if (error) {
-    return <div className="text-destructive text-xs">Failed to load items: {error.message}</div>;
+    return (
+      <div className="text-destructive text-xs">
+        {t("panels.executionLogs.loadFailed", {
+          defaultValue: "Failed to load items: {{message}}",
+          message: error.message,
+        })}
+      </div>
+    );
   }
   if (items.length === 0) {
-    return <div className="text-muted-foreground text-xs">No items</div>;
+    return (
+      <div className="text-muted-foreground text-xs">
+        {t("panels.executionLogs.noItems", { defaultValue: "No items" })}
+      </div>
+    );
   }
   return (
     <div
@@ -268,7 +302,9 @@ function SessionItemsList({ sessionId }: { sessionId: string }) {
       ))}
       {hasNextPage && (
         <div ref={sentinelRef} className="py-2 text-center text-muted-foreground text-xs">
-          {isFetchingNextPage ? "Loading more…" : ""}
+          {isFetchingNextPage
+            ? t("panels.executionLogs.loadingMore", { defaultValue: "Loading more…" })
+            : ""}
         </div>
       )}
     </div>

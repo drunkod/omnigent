@@ -8,6 +8,7 @@
 
 import { TerminalIcon } from "lucide-react";
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { inventoryTerminals, terminalTabKey, useTerminals } from "@/hooks/useTerminals";
 import { NewTerminalButton } from "./NewTerminalButton";
 import { useTerminalFirst } from "./TerminalFirstContext";
@@ -21,7 +22,8 @@ interface InlineTerminalsSectionProps {
 }
 
 export function InlineTerminalsSection({ conversationId, onExpand }: InlineTerminalsSectionProps) {
-  const { terminals: allTerminals } = useTerminals(conversationId);
+  const { t } = useTranslation();
+  const { terminals: allTerminals, isLoading, error } = useTerminals(conversationId);
   // Inventory view: the agent's own terminal (SDK REPL / native vendor
   // pane) backs the pill's Terminal view and must not appear as a
   // shell row here.
@@ -42,20 +44,42 @@ export function InlineTerminalsSection({ conversationId, onExpand }: InlineTermi
           empty-state copy. */}
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto py-1">
         <NewTerminalButton conversationId={conversationId} onCreated={onExpand} variant="row" />
-        {terminals.map((t) => (
-          <button
-            key={terminalTabKey(t)}
-            type="button"
-            className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-accent/60"
-            onClick={() => onExpand(terminalTabKey(t))}
-          >
-            <TerminalIcon className="size-3.5 shrink-0 text-muted-foreground" />
-            {t.session && <span className="shrink-0 text-xs font-medium">{t.session}</span>}
-            <span className="truncate text-xs text-muted-foreground/70">{t.name}</span>
-            <span className="flex-1" />
-            <TerminalStatusBadge status={getStatus(t)} />
-          </button>
-        ))}
+        {isLoading && terminals.length === 0 && (
+          <div className="px-2 py-1.5 text-xs text-muted-foreground">
+            {t("panels.terminals.loading", { defaultValue: "Loading terminals…" })}
+          </div>
+        )}
+        {!isLoading && error !== null && terminals.length === 0 && (
+          <div className="px-2 py-1.5 text-xs text-destructive">
+            {t("panels.terminals.error", {
+              error: error.message,
+              defaultValue: "Failed to load terminals: {{error}}",
+            })}
+          </div>
+        )}
+        {terminals.map((terminal) => {
+          const terminalLabel = [terminal.session, terminal.name].filter(Boolean).join(" ");
+          return (
+            <button
+              key={terminalTabKey(terminal)}
+              type="button"
+              aria-label={t("panels.terminals.expand", {
+                terminal: terminalLabel,
+                defaultValue: "Expand {{terminal}}",
+              })}
+              className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-accent/60"
+              onClick={() => onExpand(terminalTabKey(terminal))}
+            >
+              <TerminalIcon className="size-3.5 shrink-0 text-muted-foreground" />
+              {terminal.session && (
+                <span className="shrink-0 text-xs font-medium">{terminal.session}</span>
+              )}
+              <span className="truncate text-xs text-muted-foreground/70">{terminal.name}</span>
+              <span className="flex-1" />
+              <TerminalStatusBadge status={getStatus(terminal)} />
+            </button>
+          );
+        })}
       </div>
     </div>
   );

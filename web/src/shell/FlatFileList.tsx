@@ -1,4 +1,5 @@
 import { FileIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { RunnerOfflineError, type WorkspaceChangedFile } from "@/hooks/useWorkspaceChangedFiles";
 import { RunnerAsleepHint } from "./RunnerAsleepHint";
 import { cn } from "@/lib/utils";
@@ -73,6 +74,7 @@ function FileListItem({
   conversationId: string | undefined;
 }) {
   const { handlers, tooltip } = useCursorTooltip(file.path);
+  const { t } = useTranslation();
 
   return (
     <li>
@@ -100,7 +102,9 @@ function FileListItem({
                   ? "bg-green-500/10 text-green-600 dark:text-green-400"
                   : "bg-amber-500/10 text-amber-600 dark:text-amber-400",
             )}
-            title={gitStatusLabel(file.status)}
+            title={t(`panels.files.status.${file.status}`, {
+              defaultValue: gitStatusLabel(file.status),
+            })}
           >
             {gitStatusLetter(file.status)}
           </span>
@@ -168,8 +172,13 @@ export function FlatFileList({
    */
   runnerWentOffline?: boolean;
 }) {
+  const { t } = useTranslation();
   if (isLoading) {
-    return <p className="px-2 py-1 text-muted-foreground text-xs">Loading…</p>;
+    return (
+      <p className="px-2 py-1 text-muted-foreground text-xs">
+        {t("panels.files.loading", { defaultValue: "Loading…" })}
+      </p>
+    );
   }
   if (isError) {
     // Runner not connected. If it went offline after being up (host
@@ -178,16 +187,27 @@ export function FlatFileList({
     // state rather than alarm the user.
     if (error instanceof RunnerOfflineError) {
       if (runnerWentOffline) return <RunnerAsleepHint />;
-      return <p className="px-2 py-1 text-muted-foreground text-xs">No workspace changes yet</p>;
+      return (
+        <p className="px-2 py-1 text-muted-foreground text-xs">
+          {t("panels.files.empty", { defaultValue: "No workspace changes yet" })}
+        </p>
+      );
     }
     return (
       <p className="px-2 py-1 text-destructive text-xs">
-        Failed to load: {error instanceof Error ? error.message : String(error)}
+        {t("panels.files.loadFailed", {
+          defaultValue: "Failed to load: {{error}}",
+          error: error instanceof Error ? error.message : String(error),
+        })}
       </p>
     );
   }
   if (!files || files.length === 0) {
-    return <p className="px-2 py-1 text-muted-foreground text-xs">No workspace changes yet</p>;
+    return (
+      <p className="px-2 py-1 text-muted-foreground text-xs">
+        {t("panels.files.empty", { defaultValue: "No workspace changes yet" })}
+      </p>
+    );
   }
   const normalizedSearchQuery = normalizeSearchQuery(searchQuery);
   const visibleFiles = files.filter(
@@ -205,13 +225,13 @@ export function FlatFileList({
   if (visibleFiles.length === 0) {
     return (
       <p className="px-2 py-1 text-muted-foreground text-xs">
-        All changes are in hidden files.{" "}
+        {t("panels.files.allHidden", { defaultValue: "All changes are in hidden files." })}{" "}
         <button
           type="button"
           className="cursor-pointer underline hover:text-foreground"
           onClick={onShowHidden}
         >
-          Click to show
+          {t("panels.files.clickToShow", { defaultValue: "Click to show" })}
         </button>
       </p>
     );
@@ -219,7 +239,10 @@ export function FlatFileList({
   if (sorted.length === 0) {
     return (
       <p className="px-2 py-1 text-muted-foreground text-xs">
-        No changed files match "{searchQuery.trim()}"
+        {t("panels.files.noMatch", {
+          defaultValue: 'No changed files match "{{query}}"',
+          query: searchQuery.trim(),
+        })}
       </p>
     );
   }
@@ -227,13 +250,18 @@ export function FlatFileList({
     <>
       {hiddenCount > 0 && (
         <p className="px-2 py-1 text-muted-foreground text-xs">
-          {hiddenCount} file{hiddenCount === 1 ? "" : "s"} hidden.{" "}
+          {hiddenCount === 1
+            ? t("panels.files.hiddenFile", { defaultValue: "1 file hidden." })
+            : t("panels.files.hiddenFiles", {
+                defaultValue: "{{count}} files hidden.",
+                count: hiddenCount,
+              })}{" "}
           <button
             type="button"
             className="cursor-pointer underline hover:text-foreground"
             onClick={onShowHidden}
           >
-            Click to show
+            {t("panels.files.clickToShow", { defaultValue: "Click to show" })}
           </button>
         </p>
       )}

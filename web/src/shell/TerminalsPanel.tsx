@@ -26,6 +26,7 @@
 import { TerminalIcon, XIcon } from "lucide-react";
 import type { CSSProperties } from "react";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { TerminalView } from "@/components/blocks/TerminalView";
 import { Button } from "@/components/ui/button";
 import { useResizablePanel } from "@/hooks/useResizablePanel";
@@ -73,6 +74,7 @@ export function TerminalsPanel({
   fluid = false,
   readOnly = false,
 }: TerminalsPanelProps) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const ref = useRef<HTMLElement>(null);
   const {
@@ -104,8 +106,8 @@ export function TerminalsPanel({
 
   useEffect(() => {
     if (!open) return;
-    const t = window.setTimeout(() => setExpanded(true), 180);
-    return () => window.clearTimeout(t);
+    const timeoutId = window.setTimeout(() => setExpanded(true), 180);
+    return () => window.clearTimeout(timeoutId);
   }, [open]);
 
   // When the panel opens, jump to the requested terminal. When it
@@ -162,6 +164,9 @@ export function TerminalsPanel({
         fluid ? "md:flex-1" : "md:shrink-0",
         open ? "md:border-border md:border-l" : "md:w-0 md:border-l-0",
       )}
+      aria-label={t("panels.terminals.ariaLabel", {
+        defaultValue: "Terminals panel",
+      })}
       aria-hidden={!open}
       data-collapsed={!open || undefined}
     >
@@ -174,14 +179,23 @@ export function TerminalsPanel({
       )}
 
       <header className="flex shrink-0 items-center justify-between border-border border-b px-4 py-2">
-        <h2 className="font-medium text-sm">Shells</h2>
+        <h2 className="font-medium text-sm">
+          {t("panels.terminals.title", { defaultValue: "Shells" })}
+        </h2>
         <div className="flex items-center gap-1">
           {/* Renders only when the agent's spec declares terminals. */}
           <NewTerminalButton
             conversationId={conversationId}
             onCreated={(key) => setActiveKey(key)}
           />
-          <Button type="button" variant="ghost" size="icon-sm" aria-label="Close" onClick={onClose}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={t("panels.terminals.close", { defaultValue: "Close" })}
+            title={t("panels.terminals.close", { defaultValue: "Close" })}
+            onClick={onClose}
+          >
             <XIcon className="size-4" />
           </Button>
         </div>
@@ -210,13 +224,19 @@ export function TerminalsPanel({
               className="absolute inset-y-0 right-0 z-10 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 transition-colors"
             />
           )}
-          {terminals.map((t) => {
-            const key = terminalTabKey(t);
+          {terminals.map((terminal) => {
+            const key = terminalTabKey(terminal);
             const isActive = key === activeKey;
+            const terminalLabel = [terminal.session, terminal.name].filter(Boolean).join(" ");
             return (
               <button
                 key={key}
                 type="button"
+                aria-label={t(isActive ? "panels.terminals.collapse" : "panels.terminals.expand", {
+                  terminal: terminalLabel,
+                  defaultValue: isActive ? "Collapse {{terminal}}" : "Expand {{terminal}}",
+                })}
+                aria-pressed={isActive}
                 className={cn(
                   "flex w-full items-center gap-2 px-3 py-1.5 text-left",
                   isActive ? "bg-accent" : "hover:bg-accent/60",
@@ -224,10 +244,12 @@ export function TerminalsPanel({
                 onClick={() => setActiveKey(isActive ? null : key)}
               >
                 <TerminalIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                {t.session && <span className="shrink-0 text-xs font-medium">{t.session}</span>}
-                <span className="truncate text-xs text-muted-foreground/70">{t.name}</span>
+                {terminal.session && (
+                  <span className="shrink-0 text-xs font-medium">{terminal.session}</span>
+                )}
+                <span className="truncate text-xs text-muted-foreground/70">{terminal.name}</span>
                 <span className="flex-1" />
-                <TerminalStatusBadge status={getStatus(t)} />
+                <TerminalStatusBadge status={getStatus(terminal)} />
               </button>
             );
           })}

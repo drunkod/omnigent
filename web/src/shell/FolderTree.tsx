@@ -1,5 +1,6 @@
 import { ChevronRightIcon, FileIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   RunnerOfflineError,
   type WorkspaceChangedFile,
@@ -227,6 +228,7 @@ export function FolderTree({
   /** Error from a failed search request. */
   searchError?: Error | null;
 }) {
+  const { t } = useTranslation();
   // Initialise from the module-level cache so expanded state survives
   // unmount/remount (e.g. opening the FileViewer and navigating back).
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => {
@@ -294,19 +296,32 @@ export function FolderTree({
   // When a search query is active, render a flat filtered list instead of the tree.
   if (searchQuery.trim().length > 0) {
     if (isSearching && !searchResults) {
-      return <p className="px-2 py-1 text-muted-foreground text-xs">Searching…</p>;
+      return (
+        <p className="px-2 py-1 text-muted-foreground text-xs">
+          {t("panels.folderTree.searching", { defaultValue: "Searching…" })}
+        </p>
+      );
     }
     if (isSearchError) {
       return (
         <p className="px-2 py-1 text-destructive text-xs">
-          Search failed: {searchError instanceof Error ? searchError.message : "Unknown error"}
+          {t("panels.folderTree.searchFailed", {
+            defaultValue: "Search failed: {{error}}",
+            error:
+              searchError instanceof Error
+                ? searchError.message
+                : t("panels.folderTree.unknownError", { defaultValue: "Unknown error" }),
+          })}
         </p>
       );
     }
     if (!searchResults || searchResults.length === 0) {
       return (
         <p className="px-2 py-1 text-muted-foreground text-xs">
-          No files match "{searchQuery.trim()}"
+          {t("panels.folderTree.noFilesMatch", {
+            defaultValue: 'No files match "{{query}}"',
+            query: searchQuery.trim(),
+          })}
         </p>
       );
     }
@@ -319,13 +334,20 @@ export function FolderTree({
       const hiddenCount = searchResults.length;
       return (
         <p className="px-2 py-1 text-muted-foreground text-xs">
-          {hiddenCount} match{hiddenCount === 1 ? "" : "es"} in hidden directories.{" "}
+          {hiddenCount === 1
+            ? t("panels.folderTree.hiddenMatch", {
+                defaultValue: "1 match in hidden directories.",
+              })
+            : t("panels.folderTree.hiddenMatches", {
+                defaultValue: "{{count}} matches in hidden directories.",
+                count: hiddenCount,
+              })}{" "}
           <button
             type="button"
             className="cursor-pointer underline hover:text-foreground"
             onClick={() => onShowHidden?.()}
           >
-            Show hidden files
+            {t("panels.folderTree.showHidden", { defaultValue: "Show hidden files" })}
           </button>
         </p>
       );
@@ -348,7 +370,11 @@ export function FolderTree({
   }
 
   if (isLoading) {
-    return <p className="px-2 py-1 text-muted-foreground text-xs">Loading…</p>;
+    return (
+      <p className="px-2 py-1 text-muted-foreground text-xs">
+        {t("panels.folderTree.loading", { defaultValue: "Loading…" })}
+      </p>
+    );
   }
   if (isError) {
     // Runner not connected. If it went offline after being up (host
@@ -356,16 +382,27 @@ export function FolderTree({
     // session just hasn't started, fall through to the empty state.
     if (error instanceof RunnerOfflineError) {
       if (runnerWentOffline) return <RunnerAsleepHint />;
-      return <p className="px-2 py-1 text-muted-foreground text-xs">No files in workspace</p>;
+      return (
+        <p className="px-2 py-1 text-muted-foreground text-xs">
+          {t("panels.folderTree.empty", { defaultValue: "No files in workspace" })}
+        </p>
+      );
     }
     return (
       <p className="px-2 py-1 text-destructive text-xs">
-        Failed to load: {error instanceof Error ? error.message : String(error)}
+        {t("panels.folderTree.loadFailed", {
+          defaultValue: "Failed to load: {{error}}",
+          error: error instanceof Error ? error.message : String(error),
+        })}
       </p>
     );
   }
   if (!files || files.length === 0) {
-    return <p className="px-2 py-1 text-muted-foreground text-xs">No files in workspace</p>;
+    return (
+      <p className="px-2 py-1 text-muted-foreground text-xs">
+        {t("panels.folderTree.empty", { defaultValue: "No files in workspace" })}
+      </p>
+    );
   }
 
   const tree = buildTree(files, sort);
@@ -373,7 +410,9 @@ export function FolderTree({
   if (visibleTree.length === 0) {
     return (
       <p className="px-2 py-1 text-muted-foreground text-xs">
-        All files are hidden — click the eye icon to reveal them.
+        {t("panels.folderTree.allHidden", {
+          defaultValue: "All files are hidden — click the eye icon to reveal them.",
+        })}
       </p>
     );
   }
@@ -448,6 +487,7 @@ function FileRowItem({
           ? "text-destructive"
           : undefined;
   const { handlers, tooltip } = useCursorTooltip(path);
+  const { t } = useTranslation();
 
   return (
     <li>
@@ -486,7 +526,9 @@ function FileRowItem({
                     ? "bg-green-500/10 text-green-600 dark:text-green-400"
                     : "bg-amber-500/10 text-amber-600 dark:text-amber-400",
               )}
-              title={gitStatusLabel(fileStatus)}
+              title={t(`panels.files.status.${fileStatus}`, {
+                defaultValue: gitStatusLabel(fileStatus),
+              })}
             >
               {gitStatusLetter(fileStatus)}
             </span>
@@ -598,6 +640,7 @@ function TreeNodeRow({
   dirtyDirMap: Map<string, WorkspaceChangedFile["status"]>;
   sort: ChangedSort;
 }) {
+  const { t } = useTranslation();
   const open = node.type === "dir" && expandedPaths.has(node.path);
   const isLazyDir = node.type === "dir" && node.lazy === true;
 
@@ -693,7 +736,7 @@ function TreeNodeRow({
               style={{ paddingLeft: `${indentFor(depth + 1)}px` }}
             >
               <IndentGuides depth={depth + 1} />
-              Loading…
+              {t("panels.folderTree.loading", { defaultValue: "Loading…" })}
             </li>
           )}
           {!lazyLoading && childNodes.length === 0 && rawChildNodes.length > 0 && (
@@ -702,7 +745,9 @@ function TreeNodeRow({
               style={{ paddingLeft: `${indentFor(depth + 1)}px` }}
             >
               <IndentGuides depth={depth + 1} />
-              All files are hidden — click the eye icon to reveal them.
+              {t("panels.folderTree.allHidden", {
+                defaultValue: "All files are hidden — click the eye icon to reveal them.",
+              })}
             </li>
           )}
           {childNodes.map((child) => (
