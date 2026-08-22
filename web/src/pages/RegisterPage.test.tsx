@@ -11,6 +11,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RegisterPage } from "./RegisterPage";
 import * as accountsApi from "@/lib/accountsApi";
+import i18n from "@/i18n";
 
 vi.mock("@/lib/accountsApi", () => ({ register: vi.fn() }));
 
@@ -33,6 +34,7 @@ function fillForm(username: string, password: string, confirm: string) {
 }
 
 beforeEach(() => {
+  void i18n.changeLanguage("en");
   hrefWrites = [];
   originalLocation = window.location;
   Object.defineProperty(window, "location", {
@@ -62,6 +64,14 @@ afterEach(() => {
 });
 
 describe("RegisterPage", () => {
+  it("renders translated auth copy when the locale changes", async () => {
+    await i18n.changeLanguage("ru");
+    renderRegisterAt("");
+
+    expect(screen.getByRole("heading", { name: "Создать учётную запись" })).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("токен приглашения");
+  });
+
   it("shows an invite-required alert and no form when the invite token is missing", () => {
     renderRegisterAt("");
     expect(screen.getByRole("alert")).toHaveTextContent(/invite token/i);

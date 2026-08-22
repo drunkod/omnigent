@@ -12,6 +12,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApprovePage } from "./ApprovePage";
 import * as identity from "@/lib/identity";
+import i18n from "@/i18n";
 
 vi.mock("@/lib/identity", () => ({
   authenticatedFetch: vi.fn(),
@@ -44,6 +45,7 @@ afterEach(() => {
 
 describe("ApprovePage states", () => {
   beforeEach(() => {
+    void i18n.changeLanguage("en");
     // Default: a never-resolving fetch so the initial render is observable
     // before any test overrides the resolution.
     vi.mocked(identity.authenticatedFetch).mockReturnValue(new Promise(() => {}));
@@ -104,6 +106,7 @@ describe("ApprovePage states", () => {
 
 describe("ApprovePage submission", () => {
   beforeEach(() => {
+    void i18n.changeLanguage("en");
     // First call (GET) returns a pending prompt; later calls (POST) are set
     // per-test below.
     vi.mocked(identity.authenticatedFetch).mockResolvedValue(

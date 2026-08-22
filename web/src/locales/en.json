@@ -410,5 +410,63 @@
       "cancel": "Cancel",
       "delete": "Delete"
     }
+  },
+  "auth": {
+    "login": {
+      "title": "Sign in",
+      "subtitle": "Welcome to Omnigent.",
+      "username": "Username",
+      "password": "Password",
+      "usernameHelp": "On a fresh install your username is your machine login (the output of <code>whoami</code>), unless an admin set a different one.",
+      "credentialsHelp": "On a fresh install the initial admin password was printed to the server's stderr and saved to <code>~/.omnigent/admin-credentials</code>.",
+      "submit": "Sign in",
+      "submitting": "Signing in…",
+      "magicExpired": "That sign-in link has expired. Enter your password to sign in.",
+      "magicMissing": "That sign-in link is no longer valid. Enter your password to sign in."
+    },
+    "register": {
+      "title": "Create your account",
+      "subtitle": "You were invited to join this Omnigent server.",
+      "missingInvite": "This page needs an invite token in the URL — make sure you opened the link your admin sent you.",
+      "username": "Username",
+      "usernameTitle": "Lowercase letters, digits, dots, hyphens, underscores (or a lowercase email)",
+      "usernameHelp": "Lowercase letters, digits, dots, hyphens, underscores — or a lowercase email.",
+      "password": "Password",
+      "confirmPassword": "Confirm password",
+      "submit": "Create account",
+      "submitting": "Creating…"
+    },
+    "setup": {
+      "title": "Create the admin account",
+      "subtitle": "First run — pick the username and password for this server's admin. You can invite others once you're in.",
+      "username": "Username",
+      "usernameTitle": "Lowercase letters, digits, dots, hyphens, underscores (or a lowercase email)",
+      "usernameHelp": "Lowercase letters, digits, dots, hyphens, underscores — or a lowercase email.",
+      "password": "Password",
+      "confirmPassword": "Confirm password",
+      "submit": "Create admin",
+      "submitting": "Creating…"
+    },
+    "approve": {
+      "loading": "Loading elicitation…",
+      "resolvedTitle": "Elicitation resolved",
+      "resolvedDescription": "This approval request is no longer pending. It may have been resolved, timed out, or cancelled.",
+      "errorTitle": "Error",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "closePage": "You can close this page.",
+      "required": "Approval required",
+      "approve": "Approve",
+      "reject": "Reject",
+      "missingParams": "Missing session or elicitation ID",
+      "serverError": "Server error: {{status}}",
+      "loadFailed": "Failed to load: {{error}}",
+      "resolveFailed": "Resolve failed: {{status}}",
+      "networkError": "Network error: {{error}}"
+    },
+    "errors": {
+      "passwordsDontMatch": "Passwords don't match.",
+      "passwordTooShort": "Password must be at least {{min}} characters."
+    }
   }
 }

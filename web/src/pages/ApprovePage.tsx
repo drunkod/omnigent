@@ -16,6 +16,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useParams } from "@/lib/routing";
 import { CheckIcon, MessageCircleQuestionMark, XIcon } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -39,6 +40,7 @@ type PageState =
   | { kind: "error"; message: string };
 
 export function ApprovePage() {
+  const { t } = useTranslation();
   const { sessionId, elicitationId } = useParams<{
     sessionId: string;
     elicitationId: string;
@@ -47,7 +49,7 @@ export function ApprovePage() {
 
   useEffect(() => {
     if (!sessionId || !elicitationId) {
-      setState({ kind: "error", message: "Missing session or elicitation ID" });
+      setState({ kind: "error", message: t("auth.approve.missingParams") });
       return;
     }
     let cancelled = false;
@@ -58,7 +60,10 @@ export function ApprovePage() {
         );
         if (cancelled) return;
         if (!res.ok) {
-          setState({ kind: "error", message: `Server error: ${res.status}` });
+          setState({
+            kind: "error",
+            message: t("auth.approve.serverError", { status: res.status }),
+          });
           return;
         }
         const data: ElicitationData = await res.json();
@@ -69,7 +74,10 @@ export function ApprovePage() {
         }
       } catch (err) {
         if (!cancelled) {
-          setState({ kind: "error", message: `Failed to load: ${String(err)}` });
+          setState({
+            kind: "error",
+            message: t("auth.approve.loadFailed", { error: String(err) }),
+          });
         }
       }
     })();
@@ -92,36 +100,41 @@ export function ApprovePage() {
           },
         );
         if (!res.ok) {
-          setState({ kind: "error", message: `Resolve failed: ${res.status}` });
+          setState({
+            kind: "error",
+            message: t("auth.approve.resolveFailed", { status: res.status }),
+          });
         }
       } catch (err) {
-        setState({ kind: "error", message: `Network error: ${String(err)}` });
+        setState({
+          kind: "error",
+          message: t("auth.approve.networkError", { error: String(err) }),
+        });
       }
     },
-    [sessionId, elicitationId],
+    [sessionId, elicitationId, t],
   );
 
   return (
     <div className="mx-auto flex min-h-screen max-w-xl items-center justify-center p-6">
       {state.kind === "loading" && (
         <Alert className="flex flex-col gap-2 py-4 px-5">
-          <AlertTitle className="text-sm">Loading elicitation…</AlertTitle>
+          <AlertTitle className="text-sm">{t("auth.approve.loading")}</AlertTitle>
         </Alert>
       )}
 
       {state.kind === "resolved" && (
         <Alert className="flex flex-col gap-2 border-muted py-4 px-5">
-          <AlertTitle className="text-sm">Elicitation resolved</AlertTitle>
+          <AlertTitle className="text-sm">{t("auth.approve.resolvedTitle")}</AlertTitle>
           <AlertDescription className="text-xs">
-            This approval request is no longer pending. It may have been resolved, timed out, or
-            cancelled.
+            {t("auth.approve.resolvedDescription")}
           </AlertDescription>
         </Alert>
       )}
 
       {state.kind === "error" && (
         <Alert variant="destructive" className="flex flex-col gap-2 py-4 px-5">
-          <AlertTitle className="text-sm">Error</AlertTitle>
+          <AlertTitle className="text-sm">{t("auth.approve.errorTitle")}</AlertTitle>
           <AlertDescription className="text-xs">{state.message}</AlertDescription>
         </Alert>
       )}
@@ -132,16 +145,16 @@ export function ApprovePage() {
             {state.action === "accept" ? (
               <>
                 <CheckIcon className="size-4 text-success" />
-                Approved
+                {t("auth.approve.approved")}
               </>
             ) : (
               <>
                 <XIcon className="size-4 text-destructive" />
-                Rejected
+                {t("auth.approve.rejected")}
               </>
             )}
           </AlertTitle>
-          <AlertDescription className="text-xs">You can close this page.</AlertDescription>
+          <AlertDescription className="text-xs">{t("auth.approve.closePage")}</AlertDescription>
         </Alert>
       )}
 
@@ -149,7 +162,7 @@ export function ApprovePage() {
         <Alert className="flex flex-col gap-3 py-4 px-5">
           <AlertTitle className="flex items-center gap-2 text-sm">
             <MessageCircleQuestionMark className="size-4 text-yellow-600 dark:text-yellow-400" />
-            Approval required
+            {t("auth.approve.required")}
             {state.data.policy_name && (
               <span className="text-muted-foreground text-xs">· {state.data.policy_name}</span>
             )}
@@ -167,11 +180,11 @@ export function ApprovePage() {
             <div className="flex flex-wrap gap-2 pt-1">
               <Button size="sm" onClick={() => void submit("accept")}>
                 <CheckIcon className="mr-1 size-3.5" />
-                Approve
+                {t("auth.approve.approve")}
               </Button>
               <Button size="sm" variant="outline" onClick={() => void submit("decline")}>
                 <XIcon className="mr-1 size-3.5" />
-                Reject
+                {t("auth.approve.reject")}
               </Button>
             </div>
           </AlertDescription>

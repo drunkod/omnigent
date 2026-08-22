@@ -26,6 +26,7 @@
  */
 
 import { useEffect, useState, type FormEvent } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { useSearchParams } from "@/lib/routing";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,6 +53,7 @@ function rememberUsername(value: string): void {
 }
 
 export function LoginPage() {
+  const { t } = useTranslation();
   const [params] = useSearchParams();
   // `return_to` is set by both identity.ts (on 401 redirect) and the
   // server-side magic-redeem 302 fallback. Trust only same-origin
@@ -64,9 +66,9 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(
     magicError === "expired"
-      ? "That sign-in link has expired. Enter your password to sign in."
+      ? t("auth.login.magicExpired")
       : magicError === "missing"
-        ? "That sign-in link is no longer valid. Enter your password to sign in."
+        ? t("auth.login.magicMissing")
         : null,
   );
 
@@ -129,14 +131,14 @@ export function LoginPage() {
     >
       <div className="w-full max-w-sm space-y-6">
         <div className="space-y-1 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
-          <p className="text-sm text-muted-foreground">Welcome to Omnigent.</p>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("auth.login.title")}</h1>
+          <p className="text-sm text-muted-foreground">{t("auth.login.subtitle")}</p>
         </div>
 
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="space-y-1.5">
             <label htmlFor="login-username" className="text-sm font-medium leading-none">
-              Username
+              {t("auth.login.username")}
             </label>
             <Input
               id="login-username"
@@ -148,14 +150,16 @@ export function LoginPage() {
               required
             />
             <p className="text-xs text-muted-foreground">
-              On a fresh install your username is your machine login (the output of{" "}
-              <code className="font-mono">whoami</code>), unless an admin set a different one.
+              <Trans
+                i18nKey="auth.login.usernameHelp"
+                components={{ code: <code className="font-mono" /> }}
+              />
             </p>
           </div>
 
           <div className="space-y-1.5">
             <label htmlFor="login-password" className="text-sm font-medium leading-none">
-              Password
+              {t("auth.login.password")}
             </label>
             <Input
               id="login-password"
@@ -178,17 +182,17 @@ export function LoginPage() {
           )}
 
           <Button type="submit" className="w-full" disabled={submitting || password.length === 0}>
-            {submitting ? "Signing in…" : "Sign in"}
+            {submitting ? t("auth.login.submitting") : t("auth.login.submit")}
           </Button>
         </form>
 
         <p className="text-center text-xs text-muted-foreground">
-          On a fresh install the initial admin password was printed to the server's stderr and saved
-          to{" "}
-          <code className="rounded bg-muted px-1 py-0.5 font-mono">
-            ~/.omnigent/admin-credentials
-          </code>
-          .
+          <Trans
+            i18nKey="auth.login.credentialsHelp"
+            components={{
+              code: <code className="rounded bg-muted px-1 py-0.5 font-mono" />,
+            }}
+          />
         </p>
       </div>
     </div>

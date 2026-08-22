@@ -10,6 +10,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SetupPage } from "./SetupPage";
 import * as accountsApi from "@/lib/accountsApi";
+import i18n from "@/i18n";
 
 vi.mock("@/lib/accountsApi", () => ({ setup: vi.fn() }));
 
@@ -32,6 +33,7 @@ function fillForm(username: string, password: string, confirm: string) {
 }
 
 beforeEach(() => {
+  void i18n.changeLanguage("en");
   hrefWrites = [];
   originalLocation = window.location;
   Object.defineProperty(window, "location", {
