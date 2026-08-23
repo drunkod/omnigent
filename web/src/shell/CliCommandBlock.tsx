@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -18,6 +19,7 @@ export function CliCommandBlock({
   command: string;
   testIdPrefix: string;
 }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const copyTimeoutRef = useRef<number | null>(null);
 
@@ -59,7 +61,11 @@ export function CliCommandBlock({
         type="button"
         variant="ghost"
         size="icon-sm"
-        aria-label={copied ? "Copied" : "Copy command"}
+        aria-label={
+          copied
+            ? t("common.copied", { defaultValue: "Copied" })
+            : t("common.copyCommand", { defaultValue: "Copy command" })
+        }
         data-testid={`${testIdPrefix}-copy`}
         onClick={copyCommand}
         className="shrink-0"

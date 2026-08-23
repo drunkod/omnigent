@@ -12,6 +12,7 @@
 // comments, activeSelection, or pendingRange changes.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import { MessageSquarePlusIcon } from "lucide-react";
 import type { Editor } from "@tiptap/react";
@@ -69,6 +70,7 @@ export function MarkdownCommentPlugin({
   pendingBodyRef,
   canEdit = true,
 }: MarkdownCommentPluginProps): ReactElement | null {
+  const { t } = useTranslation();
   const [buttonPos, setButtonPos] = useState<{ top: number; left: number } | null>(null);
 
   // Stable refs so callbacks always see the latest values.
@@ -241,7 +243,7 @@ export function MarkdownCommentPlugin({
       style={{ left: buttonPos.left, top: buttonPos.top, transform: "translateY(-100%)" }}
     >
       <MessageSquarePlusIcon className="size-3.5" />
-      Add comment
+      {t("panels.markdown.addComment", { defaultValue: "Add comment" })}
     </button>,
     getEmbedRoot() ?? document.body,
   );

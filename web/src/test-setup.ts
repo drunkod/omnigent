@@ -1,5 +1,60 @@
 import "@testing-library/jest-dom/vitest";
-import { vi } from "vitest";
+import { afterEach, vi } from "vitest";
+
+// Node 26 exposes an experimental global `localStorage` accessor that returns
+// undefined without a --localstorage-file. Install deterministic browser-like
+// storage before i18n reads the persisted locale or test suites clear storage.
+const storageByInstance = new WeakMap<object, Map<string, string>>();
+const storageFor = (instance: object) => {
+  let storage = storageByInstance.get(instance);
+  if (!storage) {
+    storage = new Map();
+    storageByInstance.set(instance, storage);
+  }
+  return storage;
+};
+Storage.prototype.clear = function () {
+  storageFor(this).clear();
+};
+Storage.prototype.getItem = function (key) {
+  return storageFor(this).get(key) ?? null;
+};
+Storage.prototype.key = function (index) {
+  return [...storageFor(this).keys()][index] ?? null;
+};
+Storage.prototype.removeItem = function (key) {
+  storageFor(this).delete(key);
+};
+Storage.prototype.setItem = function (key, value) {
+  storageFor(this).set(key, String(value));
+};
+Object.defineProperty(Storage.prototype, "length", {
+  configurable: true,
+  get() {
+    return storageFor(this).size;
+  },
+});
+const localStorageMock = Object.create(Storage.prototype) as Storage;
+const sessionStorageMock = Object.create(Storage.prototype) as Storage;
+for (const [name, storage] of [
+  ["localStorage", localStorageMock],
+  ["sessionStorage", sessionStorageMock],
+] as const) {
+  Object.defineProperty(globalThis, name, {
+    configurable: true,
+    value: storage,
+  });
+  Object.defineProperty(window, name, {
+    configurable: true,
+    value: storage,
+  });
+}
+
+const { default: i18n } = await import("@/i18n");
+
+afterEach(async () => {
+  await i18n.changeLanguage("en");
+});
 
 // The @lobehub icon packages have broken nested-module resolution
 // under vitest; stub presentational glyphs so component modules that

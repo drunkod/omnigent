@@ -14,6 +14,7 @@ import { MembersPage } from "./MembersPage";
 import type { AccountListEntry } from "@/lib/accountsApi";
 import * as accountsApi from "@/lib/accountsApi";
 import * as identity from "@/lib/identity";
+import i18n from "@/i18n";
 
 const mocks = vi.hoisted(() => ({
   accountsEnabled: true,
@@ -59,6 +60,7 @@ function renderPage() {
 }
 
 beforeEach(() => {
+  void i18n.changeLanguage("en");
   mocks.accountsEnabled = true;
   mocks.loginUrl = null;
   mocks.serverVersion = "0.3.0.dev0";
@@ -82,6 +84,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  void i18n.changeLanguage("en");
   vi.clearAllMocks();
 });
 
@@ -90,6 +93,16 @@ describe("MembersPage gating", () => {
     vi.mocked(identity.resolveIdentity).mockReturnValue(new Promise(() => {})); // never resolves
     renderPage();
     expect(screen.getByText("Loading…")).toBeInTheDocument();
+  });
+
+  it("renders the non-admin permission message in Russian", async () => {
+    await i18n.changeLanguage("ru");
+    vi.mocked(identity.resolveIdentity).mockResolvedValue("alice");
+    vi.mocked(identity.getCurrentIsAdmin).mockReturnValue(false);
+    renderPage();
+    expect(
+      await screen.findByText("У вас нет разрешения на управление участниками."),
+    ).toBeInTheDocument();
   });
 
   it("blocks non-admins with a permission message and never lists users", async () => {

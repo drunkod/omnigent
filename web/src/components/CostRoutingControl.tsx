@@ -1,5 +1,6 @@
 import { BrainCircuitIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { relativeTime } from "@/lib/relativeTime";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -161,6 +162,7 @@ export function IntelligentModelControl({
   disabled?: boolean;
   verdict?: CostRoutingVerdict | null;
 }) {
+  const { t } = useTranslation();
   const isOn = value === "on";
 
   // Fresh-verdict ping: bumping the key remounts the ring span, replaying
@@ -192,7 +194,9 @@ export function IntelligentModelControl({
             variant="ghost"
             size="icon"
             disabled={disabled}
-            aria-label="Intelligent model router"
+            aria-label={t("misc.residual.costRoutingControl.ariaLabel", {
+              defaultValue: "Intelligent model router",
+            })}
             aria-pressed={isOn}
             data-testid="cost-toggle-trigger"
             data-mode={isOn ? "on" : "off"}
@@ -222,11 +226,17 @@ export function IntelligentModelControl({
           className="flex-col items-start gap-0.5 px-3 py-2"
         >
           <span className="font-medium" data-testid="imc-tooltip-title">
-            Intelligent model router
+            {t("misc.residual.costRoutingControl.title", {
+              defaultValue: "Intelligent model router",
+            })}
           </span>
           {isOn && verdict !== null && (
             <span className="text-muted-foreground" data-testid="imc-verdict-line">
-              {verdict.applied ? "Picked" : "Would pick"}{" "}
+              {verdict.applied
+                ? t("misc.residual.costRoutingControl.picked", { defaultValue: "Picked" })
+                : t("misc.residual.costRoutingControl.wouldPick", {
+                    defaultValue: "Would pick",
+                  })}{" "}
               <span className="font-medium text-popover-foreground">
                 {shortModelName(verdict.model)}
               </span>

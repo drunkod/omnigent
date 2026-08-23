@@ -1,8 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import type { TFunction } from "i18next";
 import { CheckIcon, Link2Icon, WandSparklesIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useResizableCommentsPanel } from "@/hooks/useResizableCommentsPanel";
+import { useTranslation } from "react-i18next";
 import { getCurrentAuthorId } from "@/lib/identity";
 import { cn } from "@/lib/utils";
 import type { Comment } from "@/hooks/useComments";
@@ -14,14 +16,18 @@ function avatarStyle(name: string): { backgroundColor: string; color: string } {
   return { backgroundColor: `hsl(${hash % 360} 60% 50%)`, color: "white" };
 }
 
-function formatCommentTime(createdAt: number): string {
+function formatCommentTime(createdAt: number, t: TFunction): string {
   const date = new Date(createdAt * 1000);
   const now = new Date();
   const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  if (date.toDateString() === now.toDateString()) return `${time} Today`;
+  if (date.toDateString() === now.toDateString()) {
+    return `${time} ${t("panels.comments.time.today", { defaultValue: "Today" })}`;
+  }
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
-  if (date.toDateString() === yesterday.toDateString()) return `${time} Yesterday`;
+  if (date.toDateString() === yesterday.toDateString()) {
+    return `${time} ${t("panels.comments.time.yesterday", { defaultValue: "Yesterday" })}`;
+  }
   return `${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })} ${time}`;
 }
 
@@ -84,6 +90,7 @@ export function CommentsPanel({
   pendingBodyRef,
   onCopyCommentLink,
 }: CommentsPanelProps) {
+  const { t } = useTranslation();
   const [body, setBody] = useState("");
   const [tab, setTab] = useState<Tab>("open");
   const addCommentTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -160,7 +167,9 @@ export function CommentsPanel({
       )}
       {/* Header — fixed height so layout doesn't shift when button is hidden */}
       <div className="flex h-11 shrink-0 items-center justify-between px-3 border-b border-border">
-        <span className="text-xs font-semibold">Comments</span>
+        <span className="text-xs font-semibold">
+          {t("panels.comments.title", { defaultValue: "Comments" })}
+        </span>
         {tab === "open" && (
           <Button
             type="button"
@@ -171,28 +180,30 @@ export function CommentsPanel({
             onClick={onAddressAll}
           >
             <WandSparklesIcon className="size-3.5" />
-            Address All
+            {t("panels.comments.addressAll", { defaultValue: "Address All" })}
           </Button>
         )}
       </div>
 
       {/* Tabs */}
       <div className="flex shrink-0 border-b border-border">
-        {TABS.map((t) => {
-          const count = t === "open" ? comments.length : addressedComments.length;
+        {TABS.map((tabKey) => {
+          const count = tabKey === "open" ? comments.length : addressedComments.length;
           return (
             <button
-              key={t}
+              key={tabKey}
               type="button"
               className={cn(
                 "flex-1 py-1.5 text-[11px] font-medium capitalize transition-colors cursor-pointer",
-                tab === t
+                tab === tabKey
                   ? "border-b-2 border-primary text-foreground"
                   : "text-muted-foreground hover:text-foreground",
               )}
-              onClick={() => setTab(t)}
+              onClick={() => setTab(tabKey)}
             >
-              {t === "open" ? "Open" : "Addressed"}
+              {tabKey === "open"
+                ? t("panels.comments.tabs.open", { defaultValue: "Open" })
+                : t("panels.comments.tabs.addressed", { defaultValue: "Addressed" })}
               {count > 0 && (
                 <span className="ml-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] tabular-nums">
                   {count}
@@ -205,7 +216,9 @@ export function CommentsPanel({
 
       {!canEdit && (
         <div className="shrink-0 border-b border-border px-3 py-2 text-xs text-muted-foreground">
-          You have read-only access to this session.
+          {t("panels.comments.readOnly", {
+            defaultValue: "You have read-only access to this session.",
+          })}
         </div>
       )}
 
@@ -222,7 +235,9 @@ export function CommentsPanel({
             <div className="space-y-2 border-b border-border px-3 py-2">
               {activeSelection.anchor_content && (
                 <div className="truncate rounded bg-muted/40 px-2 py-1 font-mono text-[10px] text-muted-foreground">
-                  <span className="text-foreground/60">Selection: </span>
+                  <span className="text-foreground/60">
+                    {t("panels.comments.selection", { defaultValue: "Selection:" })}{" "}
+                  </span>
                   {activeSelection.anchor_content.trim().split("\n")[0]}
                 </div>
               )}
@@ -230,7 +245,9 @@ export function CommentsPanel({
                 ref={addCommentTextareaRef}
                 className="w-full resize-none rounded border border-border bg-background px-2 py-1.5 text-xs placeholder:text-muted-foreground"
                 rows={3}
-                placeholder="Add a comment…"
+                placeholder={t("panels.comments.addPlaceholder", {
+                  defaultValue: "Add a comment…",
+                })}
                 value={body}
                 onChange={(e) => {
                   setBody(e.target.value);
@@ -256,7 +273,7 @@ export function CommentsPanel({
                   if (pendingBodyRef) pendingBodyRef.current = "";
                 }}
               >
-                Add Comment
+                {t("panels.comments.add", { defaultValue: "Add Comment" })}
               </Button>
             </div>
           ) : null)}
@@ -265,7 +282,7 @@ export function CommentsPanel({
         {tab === "open" ? (
           comments.length === 0 ? (
             <div className="flex items-center justify-center p-8 text-xs text-muted-foreground">
-              No open comments.
+              {t("panels.comments.empty.open", { defaultValue: "No open comments." })}
             </div>
           ) : (
             <div className="space-y-2 p-3">
@@ -290,7 +307,9 @@ export function CommentsPanel({
           )
         ) : addressedComments.length === 0 ? (
           <div className="flex items-center justify-center p-8 text-xs text-muted-foreground">
-            No addressed comments.
+            {t("panels.comments.empty.addressed", {
+              defaultValue: "No addressed comments.",
+            })}
           </div>
         ) : (
           <div className="space-y-2 p-3">
@@ -380,7 +399,12 @@ function CommentCard({
     if (!editing) setEditBody(c.body);
   }, [c.id, c.body, editing]);
 
-  const statusLabel = c.status === "addressed" ? "Addressed" : null;
+  const { t } = useTranslation();
+  const author = c.created_by ?? t("panels.comments.you", { defaultValue: "You" });
+  const statusLabel =
+    c.status === "addressed"
+      ? t("panels.comments.status.addressed", { defaultValue: "Addressed" })
+      : null;
 
   function startEdit() {
     setEditBody(c.body);
@@ -429,10 +453,10 @@ function CommentCard({
           />
           <div className="flex gap-1.5">
             <Button type="button" size="xs" disabled={!editBody.trim()} onClick={saveEdit}>
-              Save
+              {t("panels.comments.save", { defaultValue: "Save" })}
             </Button>
             <Button type="button" size="xs" variant="ghost" onClick={() => setEditing(false)}>
-              Cancel
+              {t("panels.comments.cancel", { defaultValue: "Cancel" })}
             </Button>
           </div>
         </div>
@@ -457,7 +481,9 @@ function CommentCard({
                 setExpanded((v) => !v);
               }}
             >
-              {expanded ? "Show less" : "Show more"}
+              {expanded
+                ? t("panels.comments.showLess", { defaultValue: "Show less" })
+                : t("panels.comments.showMore", { defaultValue: "Show more" })}
             </button>
           )}
         </div>
@@ -470,23 +496,21 @@ function CommentCard({
             <div className="flex min-w-0 items-center gap-1.5">
               <span
                 className="inline-flex size-4 shrink-0 items-center justify-center rounded-full text-[8px] font-semibold uppercase"
-                style={avatarStyle(c.created_by ?? "You")}
+                style={avatarStyle(author)}
               >
-                {(c.created_by ?? "Y")[0].toUpperCase()}
+                {author[0].toUpperCase()}
               </span>
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span className="truncate text-[11px] text-muted-foreground">
-                      {c.created_by ?? "You"}
-                    </span>
+                    <span className="truncate text-[11px] text-muted-foreground">{author}</span>
                   </TooltipTrigger>
-                  <TooltipContent>{c.created_by ?? "You"}</TooltipContent>
+                  <TooltipContent>{author}</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             </div>
             <span className="text-[10px] text-muted-foreground/70">
-              {formatCommentTime(c.created_at)}
+              {formatCommentTime(c.created_at, t)}
             </span>
             {statusLabel && (
               <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] w-fit">
@@ -505,7 +529,7 @@ function CommentCard({
                     startEdit();
                   }}
                 >
-                  Edit
+                  {t("panels.comments.edit", { defaultValue: "Edit" })}
                 </button>
               )}
               {onDelete && (
@@ -517,13 +541,18 @@ function CommentCard({
                     onDelete();
                   }}
                 >
-                  Delete
+                  {t("panels.comments.delete", { defaultValue: "Delete" })}
                 </button>
               )}
               {onCopyLink && (
                 <button
                   type="button"
-                  aria-label="Copy link to comment"
+                  aria-label={t(
+                    linkCopied ? "panels.comments.linkCopied" : "panels.comments.copyLink",
+                    {
+                      defaultValue: linkCopied ? "Link copied" : "Copy link to comment",
+                    },
+                  )}
                   className="cursor-pointer text-[11px] text-muted-foreground transition-colors hover:text-foreground"
                   onClick={(e) => {
                     e.stopPropagation();

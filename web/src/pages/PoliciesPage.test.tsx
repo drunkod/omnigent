@@ -14,6 +14,7 @@ import { PoliciesPage } from "./PoliciesPage";
 import * as identity from "@/lib/identity";
 import * as defaultPolicies from "@/hooks/useDefaultPolicies";
 import * as policies from "@/hooks/usePolicies";
+import i18n from "@/i18n";
 
 const serverInfoMocks = vi.hoisted(() => ({
   accountsEnabled: true,
@@ -87,6 +88,7 @@ function renderPage() {
 }
 
 beforeEach(() => {
+  void i18n.changeLanguage("en");
   serverInfoMocks.accountsEnabled = true;
   serverInfoMocks.loginUrl = null;
   serverInfoMocks.serverVersion = "0.3.0.dev0";
@@ -105,6 +107,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  void i18n.changeLanguage("en");
   vi.clearAllMocks();
 });
 
@@ -113,6 +116,16 @@ describe("PoliciesPage gating", () => {
     vi.mocked(identity.resolveIdentity).mockReturnValue(new Promise(() => {}));
     renderPage();
     expect(screen.getByText("Loading...")).toBeInTheDocument();
+  });
+
+  it("renders the non-admin permission message in Russian", async () => {
+    await i18n.changeLanguage("ru");
+    vi.mocked(identity.resolveIdentity).mockResolvedValue("alice");
+    vi.mocked(identity.getCurrentIsAdmin).mockReturnValue(false);
+    renderPage();
+    expect(
+      await screen.findByText("У вас нет разрешения на управление глобальными политиками."),
+    ).toBeInTheDocument();
   });
 
   it("blocks non-admins with a permission message", async () => {

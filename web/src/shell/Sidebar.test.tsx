@@ -6,11 +6,12 @@
 // are no longer listed here — they live on the Settings page.
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { Conversation } from "@/hooks/useConversations";
+import i18n from "@/i18n";
 
 // Project mocks are declared via vi.hoisted so they exist before the hoisted
 // vi.mock factory runs. projectsMock is mutated per-test to drive project
@@ -178,6 +179,7 @@ function showSharedTab() {
 }
 
 beforeEach(() => {
+  void i18n.changeLanguage("en");
   useConvMock.mockReset();
   localStorage.clear();
   projectsMock.length = 0;
@@ -192,6 +194,20 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Sidebar session list", () => {
+  it("rerenders sidebar chrome and section labels in Russian", () => {
+    mockConversations([conv("conv_mine", "Claude Code")]);
+    renderSidebar();
+
+    act(() => {
+      void i18n.changeLanguage("ru");
+    });
+
+    expect(screen.getByTestId("new-chat-button")).toHaveTextContent("Новая сессия");
+    expect(screen.getByTestId("sidebar-search-button")).toHaveTextContent("Поиск");
+    expect(screen.getByTestId("settings-button")).toHaveTextContent("Настройки");
+    expect(screen.getByRole("heading", { name: "Сессии" })).toBeInTheDocument();
+  });
+
   it("renders no filter funnel and requests the list with archived included", () => {
     mockConversations(THREE_TYPE_CONVERSATIONS);
     renderSidebar();

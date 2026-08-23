@@ -9,6 +9,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChildSessionInfo } from "@/hooks/useChildSessions";
 import type { RawSessionItem } from "@/hooks/useSessionItems";
+import i18n from "@/i18n";
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 
@@ -173,6 +174,16 @@ describe("ExecutionLogsPanel items-list states", () => {
     // WHY: the empty (length 0) branch is its own state distinct from loading.
     renderPanel({ open: true });
     expect(screen.getByText("No items")).toBeInTheDocument();
+  });
+
+  it("renders the empty state in Russian", async () => {
+    await i18n.changeLanguage("ru");
+    try {
+      renderPanel({ open: true });
+      expect(screen.getByText("Нет элементов")).toBeInTheDocument();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 
   it("renders one collapsed entry per item with #N numbering", () => {

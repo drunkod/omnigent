@@ -24,6 +24,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ReconnectSessionDialog, buildReconnectCommand } from "./ReconnectSessionDialog";
+import i18n from "@/i18n";
 
 vi.mock("./ForkSessionDialog", () => ({
   ForkSessionForm: (props: {
@@ -123,6 +124,12 @@ describe("buildReconnectCommand", () => {
 });
 
 describe("<ReconnectSessionDialog />", () => {
+  it("renders the translated title in Russian", async () => {
+    await i18n.changeLanguage("ru");
+    renderDialog();
+    expect(screen.getByText("Машина отключена")).toBeInTheDocument();
+  });
+
   function renderDialog(props: Partial<React.ComponentProps<typeof ReconnectSessionDialog>> = {}) {
     const onOpenChange = vi.fn();
     render(

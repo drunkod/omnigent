@@ -1,0 +1,23 @@
+[
+  "components/AgentInfo.tsx\tJSX text\tHTTP",
+  "components/AgentInfo.tsx\tJSX text\tfalse",
+  "components/AgentInfo.tsx\tJSX text\tstdio",
+  "components/AgentInfo.tsx\tJSX text\ttrue",
+  "components/OttoEyes.tsx\taria-label attribute\tOmnigent",
+  "components/PermissionsModal.tsx\tplaceholder attribute\talice@example.com",
+  "pages/PoliciesPage.tsx\tJSX text\tfalse",
+  "pages/PoliciesPage.tsx\tJSX text\ttrue",
+  "shell/CreateAgentDialog.tsx\tJSX text\thttp",
+  "shell/CreateAgentDialog.tsx\tJSX text\tstdio",
+  "shell/CreateAgentDialog.tsx\tplaceholder attribute\tclaude-sonnet-4-20250514",
+  "shell/CreateAgentDialog.tsx\tplaceholder attribute\thttps://mcp.example.com/sse",
+  "shell/CreateAgentDialog.tsx\tplaceholder attribute\tmy-agent",
+  "shell/CreateAgentDialog.tsx\tplaceholder attribute\tserver-name",
+  "shell/ForkSessionDialog.tsx\tplaceholder attribute\tfeature/my-branch",
+  "shell/NewChatDialog.tsx\tplaceholder attribute\tfeature/my-branch",
+  "shell/NewChatDialog.tsx\tplaceholder attribute\thttps://github.com/org/repo",
+  "shell/NotebookPreview.tsx\tJSX text\tIn [",
+  "shell/ResumeWithDirectoryDialog.tsx\tplaceholder attribute\tfeature/my-branch",
+  "shell/Sidebar.tsx\tJSX text\tOmnigent",
+  "shell/WorkspacePathField.tsx\tplaceholder attribute\t/Users/you/projects/app"
+]

@@ -1,7 +1,8 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatStore } from "@/store/chatStore";
+import i18n from "@/i18n";
 
 // Composer reads workspace files via a TanStack query hook (for "@"-file
 // mentions). These slash-command tests don't exercise that, so stub the hook
@@ -45,6 +46,21 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Composer, shouldQueueSend } from "./ChatPage";
 import type { QueuedMessage } from "@/store/chatStore";
 import { SlashCommandMenu } from "@/components/SlashCommandMenu";
+
+i18n.addResources("en", "translation", {
+  "chat.composer.messageAria": "Message the agent",
+  "chat.composer.placeholder": "Ask the agent anything…",
+  "chat.composer.send": "Send",
+});
+i18n.addResources("ru", "translation", {
+  "chat.composer.messageAria": "Написать агенту",
+  "chat.composer.placeholder": "Спросите агента о чём угодно…",
+  "chat.composer.send": "Отправить",
+});
+
+beforeEach(() => {
+  void i18n.changeLanguage("en");
+});
 
 // These tests pin the slash-command suggestions menu UX in the composer:
 // (1) the first match is highlighted as soon as the menu opens, so Tab/Enter
@@ -916,6 +932,19 @@ describe("Composer placeholder", () => {
   it("shows the normal placeholder when the runner is live", () => {
     render(<Composer {...composerProps({})} />);
     expect(textarea().placeholder).toMatch(/ask the agent anything/i);
+  });
+
+  it("renders composer chrome in Russian without translating user content", () => {
+    render(<Composer {...composerProps({})} />);
+    const ta = textarea();
+    fireEvent.change(ta, { target: { value: "Keep this user content" } });
+
+    act(() => {
+      void i18n.changeLanguage("ru");
+    });
+
+    expect(screen.getByLabelText("Написать агенту")).toHaveValue("Keep this user content");
+    expect(screen.getByRole("button", { name: "Отправить" })).toBeInTheDocument();
   });
 
   it("a structural read-only reason wins over the normal placeholder", () => {

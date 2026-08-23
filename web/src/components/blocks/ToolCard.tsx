@@ -15,8 +15,10 @@ import {
   Minimize2Icon,
   XCircleIcon,
 } from "lucide-react";
+import type { TFunction } from "i18next";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   CodeBlock,
   CodeBlockActions,
@@ -172,6 +174,7 @@ export function ToolCard({
   startedAt,
   duration,
 }: ToolCardProps) {
+  const { t } = useTranslation();
   const title = useMemo(() => formatToolTitle(name, args, argsSummary), [name, args, argsSummary]);
   const inputJson = useMemo(() => JSON.stringify(args, null, 2), [args]);
   const formattedOutput = useMemo(
@@ -205,10 +208,12 @@ export function ToolCard({
       />
       <CollapsibleContent className="mt-1 ml-2 space-y-2 border-l pl-3 py-1 data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=open]:animate-in">
         <CodePanel
-          title="Parameters"
+          title={t("permissions.cards.tool.parameters", { defaultValue: "Parameters" })}
           text={inputJson}
           copyText={inputJson}
-          copyLabel="Copy parameters"
+          copyLabel={t("permissions.cards.tool.copyParameters", {
+            defaultValue: "Copy parameters",
+          })}
         />
         {formattedOutput !== null && <OutputSection output={formattedOutput} />}
         {formattedOutput === null && state === "input-available" && (
@@ -231,13 +236,17 @@ export function ToolCard({
  * or all completed tools once streaming finishes).
  */
 export function ToolGroupSummary({ tools, count }: { tools: RenderItem[]; count?: number }) {
+  const { t } = useTranslation();
   // Label the FULL contiguous run, not just the folded tools — during
   // streaming the most-recent tools render as a visible tail outside this
   // group, so counting only `tools` would undercount ("See 2 steps" when
   // there are more visible). `count` defaults to the folded length for
   // fully-collapsed runs (reload / idle), where they're equal.
   const n = count ?? tools.length;
-  const label = `See ${n} step${n === 1 ? "" : "s"}`;
+  const label = t("permissions.cards.tool.seeSteps", {
+    count: n,
+    defaultValue: n === 1 ? "See {{count}} step" : "See {{count}} steps",
+  });
   return (
     // Named `group/tool-summary` so this collapsible only rotates its
     // OWN chevron (line 296 in `ToolTriggerRow` uses an unnamed
@@ -409,6 +418,7 @@ function CodePanel({
 }
 
 function OutputSection({ output }: { output: string }) {
+  const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
   useEffect(() => setIsExpanded(false), [output]);
 
@@ -426,7 +436,12 @@ function OutputSection({ output }: { output: string }) {
           (!canExpand || isExpanded) && "max-h-[36rem] overflow-auto",
         )}
       >
-        <CodePanel title="Output" text={preview.text} copyText={output} copyLabel="Copy output" />
+        <CodePanel
+          title={t("permissions.cards.tool.output", { defaultValue: "Output" })}
+          text={preview.text}
+          copyText={output}
+          copyLabel={t("permissions.cards.tool.copyOutput", { defaultValue: "Copy output" })}
+        />
         {canExpand && !isExpanded && (
           <div className="pointer-events-none absolute inset-x-px bottom-px h-16 rounded-b-md bg-gradient-to-t from-background to-transparent" />
         )}
@@ -434,8 +449,14 @@ function OutputSection({ output }: { output: string }) {
       {canExpand && (
         <div className="flex flex-col gap-2 rounded-md border bg-muted/30 px-3 py-2 text-muted-foreground text-xs sm:flex-row sm:items-center sm:justify-between">
           <span className="min-w-0">
-            {isExpanded ? "Showing full output" : "Previewing output"} (
-            {formatOutputStats(isExpanded ? preview : collapsedPreview)})
+            {isExpanded
+              ? t("permissions.cards.tool.showingFullOutput", {
+                  defaultValue: "Showing full output",
+                })
+              : t("permissions.cards.tool.previewingOutput", {
+                  defaultValue: "Previewing output",
+                })}{" "}
+            ({formatOutputStats(isExpanded ? preview : collapsedPreview, t)})
           </span>
           <Button
             className="w-fit"
@@ -449,7 +470,9 @@ function OutputSection({ output }: { output: string }) {
             ) : (
               <Maximize2Icon className="size-3" />
             )}
-            {isExpanded ? "Collapse" : "Expand"}
+            {isExpanded
+              ? t("permissions.cards.tool.collapse", { defaultValue: "Collapse" })
+              : t("permissions.cards.tool.expand", { defaultValue: "Expand" })}
           </Button>
         </div>
       )}
@@ -458,12 +481,13 @@ function OutputSection({ output }: { output: string }) {
 }
 
 function ToolPendingOutput({ duration }: { duration: number | undefined }) {
+  const { t } = useTranslation();
   return (
     <div className="rounded-md border border-dashed bg-muted/30 p-3">
       <div className="flex items-center gap-2 text-muted-foreground text-sm">
         <Loader2Icon className="size-4 animate-spin text-info" />
         <span>
-          Waiting for output
+          {t("permissions.cards.tool.waitingForOutput", { defaultValue: "Waiting for output" })}
           {duration !== undefined ? ` for ${formatToolDuration(duration)}` : ""}
         </span>
       </div>
@@ -475,13 +499,20 @@ function ToolPendingOutput({ duration }: { duration: number | undefined }) {
 }
 
 function EmptyOutputState({ state }: { state: "output-error" | "cancelled" | "no-output" }) {
+  const { t } = useTranslation();
   let message: string;
   if (state === "cancelled") {
-    message = "Tool was cancelled before output arrived.";
+    message = t("permissions.cards.tool.cancelledBeforeOutput", {
+      defaultValue: "Tool was cancelled before output arrived.",
+    });
   } else if (state === "no-output") {
-    message = "No output was recorded for this tool call.";
+    message = t("permissions.cards.tool.noOutputRecorded", {
+      defaultValue: "No output was recorded for this tool call.",
+    });
   } else {
-    message = "Tool did not return output before the response failed.";
+    message = t("permissions.cards.tool.outputFailed", {
+      defaultValue: "Tool did not return output before the response failed.",
+    });
   }
   return (
     <div className="rounded-md border border-dashed bg-muted/30 px-3 py-2 text-muted-foreground text-sm">
@@ -496,6 +527,7 @@ interface CopyTextButtonProps {
 }
 
 function CopyTextButton({ text, label }: CopyTextButtonProps) {
+  const { t } = useTranslation();
   const [isCopied, setIsCopied] = useState(false);
   const timeoutRef = useRef<number | null>(null);
 
@@ -532,7 +564,9 @@ function CopyTextButton({ text, label }: CopyTextButtonProps) {
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
-          aria-label={isCopied ? "Copied" : label}
+          aria-label={
+            isCopied ? t("permissions.cards.tool.copied", { defaultValue: "Copied" }) : label
+          }
           className="size-6 text-muted-foreground"
           onClick={copyToClipboard}
           size="icon-xs"
@@ -542,7 +576,9 @@ function CopyTextButton({ text, label }: CopyTextButtonProps) {
           <Icon className="size-3.5" />
         </Button>
       </TooltipTrigger>
-      <TooltipContent>{isCopied ? "Copied" : label}</TooltipContent>
+      <TooltipContent>
+        {isCopied ? t("permissions.cards.tool.copied", { defaultValue: "Copied" }) : label}
+      </TooltipContent>
     </Tooltip>
   );
 }
@@ -574,25 +610,39 @@ function getNowSeconds(): number {
   return Date.now() / 1000;
 }
 
-function formatOutputStats(preview: OutputPreview): string {
+function formatOutputStats(preview: OutputPreview, t: TFunction): string {
   if (!preview.isTruncated) {
-    return `${formatCount(preview.lineCount, "line")} / ${formatCount(preview.charCount, "char")}`;
+    return `${formatCount(preview.lineCount, "line", t)} / ${formatCount(preview.charCount, "char", t)}`;
   }
 
   const hidden: string[] = [];
   if (preview.hiddenLineCount > 0) {
-    hidden.push(`${formatCount(preview.hiddenLineCount, "line")} hidden`);
+    hidden.push(
+      `${formatCount(preview.hiddenLineCount, "line", t)} ${t("permissions.cards.tool.hidden", {
+        defaultValue: "hidden",
+      })}`,
+    );
   }
   if (preview.hiddenCharCount > 0) {
-    hidden.push(`${formatCount(preview.hiddenCharCount, "char")} hidden`);
+    hidden.push(
+      `${formatCount(preview.hiddenCharCount, "char", t)} ${t("permissions.cards.tool.hidden", {
+        defaultValue: "hidden",
+      })}`,
+    );
   }
 
-  return `${formatCount(preview.shownLineCount, "line")} / ${formatCount(
+  return `${formatCount(preview.shownLineCount, "line", t)} / ${formatCount(
     preview.shownCharCount,
     "char",
-  )} shown; ${hidden.join(", ")}`;
+    t,
+  )} ${t("permissions.cards.tool.shown", { defaultValue: "shown" })}; ${hidden.join(", ")}`;
 }
 
-function formatCount(count: number, unit: string): string {
-  return `${count.toLocaleString()} ${unit}${count === 1 ? "" : "s"}`;
+function formatCount(count: number, unit: "line" | "char", t: TFunction): string {
+  const singular = unit === "line" ? "line" : "char";
+  const plural = unit === "line" ? "lines" : "chars";
+  const localizedUnit = t(`permissions.cards.tool.${count === 1 ? unit : plural}`, {
+    defaultValue: count === 1 ? singular : plural,
+  });
+  return `${count.toLocaleString()} ${localizedUnit}`;
 }

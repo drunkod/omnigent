@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { PlusIcon, RefreshCwIcon, ShieldCheckIcon, TrashIcon } from "lucide-react";
 import { PageScroll } from "@/components/PageScroll";
 import { Button } from "@/components/ui/button";
@@ -51,6 +52,7 @@ function AddDefaultPolicyDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const [selected, setSelected] = useState<string>("");
   const [filter, setFilter] = useState("");
   const [policyName, setPolicyName] = useState<string>("");
@@ -136,8 +138,8 @@ function AddDefaultPolicyDialog({
     >
       <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Add Global Policy</DialogTitle>
-          <DialogDescription>Choose a policy to apply globally to all sessions.</DialogDescription>
+          <DialogTitle>{t("admin.policies.addDialog.title")}</DialogTitle>
+          <DialogDescription>{t("admin.policies.addDialog.description")}</DialogDescription>
         </DialogHeader>
         <div className="min-w-0 space-y-3 pt-1">
           {!selected &&
@@ -157,7 +159,7 @@ function AddDefaultPolicyDialog({
                     type="text"
                     value={filter}
                     onChange={(e) => setFilter(e.target.value)}
-                    placeholder="Filter policies..."
+                    placeholder={t("admin.policies.addDialog.filter")}
                     className="w-full rounded border border-border bg-background px-2 py-1.5 text-sm placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring"
                     // eslint-disable-next-line jsx-a11y/no-autofocus
                     autoFocus
@@ -181,8 +183,8 @@ function AddDefaultPolicyDialog({
                     {filtered.length === 0 && (
                       <p className="py-2 text-center text-xs text-muted-foreground">
                         {available.length === 0
-                          ? "All available policies are already applied."
-                          : "No policies match your filter."}
+                          ? t("admin.policies.addDialog.allApplied")
+                          : t("admin.policies.addDialog.noMatch")}
                       </p>
                     )}
                   </div>
@@ -203,7 +205,7 @@ function AddDefaultPolicyDialog({
                   }}
                   className="text-[11px] text-muted-foreground hover:text-foreground"
                 >
-                  Change
+                  {t("admin.policies.addDialog.change")}
                 </button>
               </div>
               {entry.description && (
@@ -214,7 +216,9 @@ function AddDefaultPolicyDialog({
           {entry && (
             <div>
               <label className="flex items-center gap-1 text-xs text-muted-foreground">
-                <span className="font-medium text-foreground">name</span>
+                <span className="font-medium text-foreground">
+                  {t("admin.policies.addDialog.nameLabel")}
+                </span>
               </label>
               <input
                 type="text"
@@ -236,9 +240,9 @@ function AddDefaultPolicyDialog({
                         <span>
                           (
                           {prop.type === "array" && prop.items?.enum
-                            ? "select"
+                            ? t("admin.policies.addDialog.typeSelect")
                             : prop.type === "array"
-                              ? "comma-separated"
+                              ? t("admin.policies.addDialog.typeCommaSeparated")
                               : prop.type}
                           )
                         </span>
@@ -327,7 +331,7 @@ function AddDefaultPolicyDialog({
                           prop?.type === "array"
                             ? prop?.default !== undefined
                               ? (prop.default as string[]).join(", ")
-                              : "comma-separated values"
+                              : t("admin.policies.addDialog.commaSeparatedPlaceholder")
                             : prop?.default !== undefined
                               ? String(prop.default)
                               : ""
@@ -371,7 +375,7 @@ function AddDefaultPolicyDialog({
               }}
               className="rounded px-3 py-1.5 text-xs hover:bg-muted"
             >
-              Cancel
+              {t("admin.policies.addDialog.cancel")}
             </button>
             <button
               type="button"
@@ -379,7 +383,9 @@ function AddDefaultPolicyDialog({
               disabled={!selected || addPolicy.isPending}
               className="rounded bg-primary px-3 py-1.5 text-xs text-primary-foreground disabled:opacity-50"
             >
-              {addPolicy.isPending ? "Adding..." : "Add"}
+              {addPolicy.isPending
+                ? t("admin.policies.addDialog.adding")
+                : t("admin.policies.addDialog.add")}
             </button>
           </div>
         </div>
@@ -393,6 +399,7 @@ function AddDefaultPolicyDialog({
 // ---------------------------------------------------------------------------
 
 export function PoliciesPage() {
+  const { t } = useTranslation();
   const info = useServerInfo();
   // Plain header/single-user mode: no auth endpoints exist. server_version
   // distinguishes a live single-user server from a failed /v1/info probe
@@ -434,7 +441,7 @@ export function PoliciesPage() {
   if (!isSingleUser && meIsAdmin === null) {
     return (
       <div className="flex min-h-full items-center justify-center text-sm text-muted-foreground">
-        Loading...
+        {t("admin.policies.loading")}
       </div>
     );
   }
@@ -442,10 +449,8 @@ export function PoliciesPage() {
   if (!isSingleUser && meIsAdmin === false) {
     return (
       <div className="mx-auto w-full max-w-2xl px-6 py-12">
-        <h1 className="mb-2 text-2xl font-semibold">Global Policies</h1>
-        <p className="text-sm text-muted-foreground">
-          You don't have permission to manage global policies.
-        </p>
+        <h1 className="mb-2 text-2xl font-semibold">{t("admin.policies.title")}</h1>
+        <p className="text-sm text-muted-foreground">{t("admin.policies.noPermission")}</p>
       </div>
     );
   }
@@ -470,13 +475,11 @@ export function PoliciesPage() {
     <PageScroll contentClassName="px-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Global Policies</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Global policies applied to all sessions.
-          </p>
+          <h1 className="text-2xl font-semibold">{t("admin.policies.title")}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{t("admin.policies.subtitle")}</p>
         </div>
         <Button onClick={() => setAddOpen(true)}>
-          <PlusIcon /> Add policy
+          <PlusIcon /> {t("admin.policies.add")}
         </Button>
       </div>
 
@@ -496,7 +499,7 @@ export function PoliciesPage() {
                         <span className="text-sm font-medium">{p.name}</span>
                         {!p.enabled && (
                           <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                            Disabled
+                            {t("admin.policies.disabled")}
                           </span>
                         )}
                       </div>
@@ -519,13 +522,13 @@ export function PoliciesPage() {
                           enabled: checked,
                         })
                       }
-                      aria-label={`Toggle ${p.name}`}
+                      aria-label={t("admin.policies.toggle", { name: p.name })}
                     />
                     <Button
                       variant="ghost"
                       size="icon"
                       className="size-8 text-muted-foreground hover:text-destructive"
-                      title="Remove policy"
+                      title={t("admin.policies.removePolicyTitle")}
                       onClick={() => setDeleteCandidate(p)}
                       disabled={pendingAction}
                     >
@@ -536,7 +539,7 @@ export function PoliciesPage() {
                 {hasParams && (
                   <div className="ml-6.5 mt-2 rounded-md border border-border/60 bg-muted/40 px-3 py-2">
                     <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">
-                      Parameters
+                      {t("admin.policies.parameters")}
                     </span>
                     <div className="mt-1 flex flex-col gap-0.5">
                       {Object.entries(params).map(([key, value]) => (
@@ -557,14 +560,12 @@ export function PoliciesPage() {
       )}
 
       {policies.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          No global policies configured. Add one to apply it to all sessions.
-        </p>
+        <p className="text-sm text-muted-foreground">{t("admin.policies.empty")}</p>
       )}
 
       <div className="mt-3 flex items-center justify-end">
         <Button variant="ghost" size="sm" onClick={refresh}>
-          <RefreshCwIcon /> Refresh
+          <RefreshCwIcon /> {t("admin.policies.refresh")}
         </Button>
       </div>
 
@@ -588,11 +589,10 @@ export function PoliciesPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Remove {deleteCandidate?.name}?</DialogTitle>
-            <DialogDescription>
-              This removes the global policy from all sessions. Existing session-level policies with
-              the same handler are unaffected.
-            </DialogDescription>
+            <DialogTitle>
+              {t("admin.policies.deleteDialog.title", { name: deleteCandidate?.name })}
+            </DialogTitle>
+            <DialogDescription>{t("admin.policies.deleteDialog.description")}</DialogDescription>
           </DialogHeader>
           {actionError !== null && (
             <div
@@ -608,14 +608,16 @@ export function PoliciesPage() {
               onClick={() => setDeleteCandidate(null)}
               disabled={pendingAction}
             >
-              Cancel
+              {t("admin.policies.deleteDialog.cancel")}
             </Button>
             <Button
               variant="destructive"
               onClick={() => void onConfirmDelete()}
               disabled={pendingAction}
             >
-              {pendingAction ? "Removing..." : "Remove"}
+              {pendingAction
+                ? t("admin.policies.deleteDialog.removing")
+                : t("admin.policies.deleteDialog.remove")}
             </Button>
           </DialogFooter>
         </DialogContent>

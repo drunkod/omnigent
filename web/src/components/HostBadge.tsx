@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useHosts } from "@/hooks/useHosts";
 import type { Host } from "@/hooks/useHosts";
 import { useSession } from "@/hooks/useSession";
@@ -49,12 +50,6 @@ const STATUS_DOT_CLASS: Record<HostBadgeStatus, string> = {
   unknown: "bg-muted-foreground/50",
 };
 
-const STATUS_WORD: Record<HostBadgeStatus, string> = {
-  online: "online",
-  offline: "offline",
-  unknown: "status unknown",
-};
-
 /**
  * Host indicator for the open conversation, rendered in the composer's
  * status-line tray, immediately left of the worktree branch
@@ -64,6 +59,7 @@ const STATUS_WORD: Record<HostBadgeStatus, string> = {
  * circle: green online, red offline, neutral while liveness is still unknown.
  */
 export function HostBadge({ sessionId }: { sessionId: string }) {
+  const { t } = useTranslation();
   const { session } = useSession(sessionId);
   const hostId = session?.hostId ?? null;
   // Keep sandbox hosts so managed sessions resolve to a provider label.
@@ -85,11 +81,13 @@ export function HostBadge({ sessionId }: { sessionId: string }) {
   const badge = resolveHostBadge({ hostId, host, online });
   if (!badge) return null;
 
+  const statusWord = t(`misc.host.${badge.status}`);
+
   return (
     <div
       data-testid="host-badge"
       className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground"
-      title={`Host ${badge.label}, ${STATUS_WORD[badge.status]}`}
+      title={t("misc.host.title", { host: badge.label, status: statusWord })}
     >
       <span
         aria-hidden
@@ -102,7 +100,7 @@ export function HostBadge({ sessionId }: { sessionId: string }) {
           `title` carries the same text for mouse hover. No aria-label: on a
           non-interactive div it's announced unreliably and would only
           duplicate this text where it is honored. */}
-      <span className="sr-only">, {STATUS_WORD[badge.status]}</span>
+      <span className="sr-only">, {statusWord}</span>
     </div>
   );
 }

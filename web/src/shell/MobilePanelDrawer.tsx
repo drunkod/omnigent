@@ -13,6 +13,7 @@
 // can't collide with the rail.
 
 import { XIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -55,6 +56,7 @@ export function MobilePanelDrawer({
   children,
   testId,
 }: MobilePanelDrawerProps) {
+  const { t } = useTranslation();
   return (
     <aside
       data-testid={testId}
@@ -70,7 +72,13 @@ export function MobilePanelDrawer({
     >
       <header className="flex shrink-0 items-center justify-between border-border border-b px-4 py-2">
         <h2 className="font-medium text-sm">{title}</h2>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="Close" onClick={onClose}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t("panels.workspace.close", { defaultValue: "Close" })}
+          onClick={onClose}
+        >
           <XIcon className="size-4" />
         </Button>
       </header>

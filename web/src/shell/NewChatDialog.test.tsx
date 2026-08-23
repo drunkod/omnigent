@@ -24,6 +24,7 @@ import {
 import { CapabilitiesProvider } from "@/lib/CapabilitiesContext";
 import type { ServerInfo } from "@/lib/capabilities";
 import { authenticatedFetch } from "@/lib/identity";
+import i18n from "@/i18n";
 import { useHosts, type Host } from "@/hooks/useHosts";
 import { useAvailableAgents, type AvailableAgent } from "@/hooks/useAvailableAgents";
 import { useHostFilesystem, type HostFilesystemEntry } from "@/hooks/useHostFilesystem";
@@ -675,6 +676,12 @@ describe("NewChatLandingScreen", () => {
   afterEach(() => {
     cleanup();
     localStorage.clear();
+  });
+
+  it("renders the landing title in Russian", async () => {
+    await i18n.changeLanguage("ru");
+    renderLanding();
+    expect(screen.getByText("Что будем делать?")).toBeInTheDocument();
   });
 
   it("renders the inline composer with the prompt headline", () => {

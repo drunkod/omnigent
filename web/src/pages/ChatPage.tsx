@@ -161,7 +161,6 @@ import {
 } from "@/components/CostRoutingControl";
 import { useServerInfo } from "@/lib/CapabilitiesContext";
 import { MainTerminalView } from "@/shell/MainTerminalView";
-import { UNTITLED_CONVERSATION_LABEL } from "@/shell/sidebarNav";
 import { NewChatLandingScreen } from "@/shell/NewChatDialog";
 import { ResumeWithDirectoryDialog } from "@/shell/ResumeWithDirectoryDialog";
 import { ReconnectSessionDialog } from "@/shell/ReconnectSessionDialog";
@@ -180,6 +179,8 @@ import {
 import { copyText } from "@/lib/clipboard";
 import { showToast } from "@/components/ui/toast";
 import { useIsMobileViewport } from "@/hooks/useIsMobileViewport";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 
 // Matches both wordings the native executors emit: "[Attached: <path>]"
 // (claude/pi/cursor) and "[Attached file: <path>]" (codex). Capturing group
@@ -557,6 +558,7 @@ const sessionDrafts = loadDraftsFromStorage();
  * items fetch (no useConversationItems here).
  */
 export function ChatPage() {
+  const { t } = useTranslation();
   const { conversationId: urlConvId } = useParams<{ conversationId: string }>();
   const navigate = useNavigate();
   // Optional first message handed off by the landing composer through the
@@ -862,7 +864,7 @@ export function ChatPage() {
   // Non-null only when the active session is a sub-agent (child): the
   // composer then peeks a "Chatting with sub-agent …" tray and the
   // scroll-pinned "Working…" tab is suppressed (the tray owns that slot).
-  const subAgentLabel = subAgentComposerLabel(activeSession);
+  const subAgentLabel = subAgentComposerLabel(activeSession, t);
 
   // Hoisted above the early-return guards so the title-update effect can read them.
   const activeConv = urlConvId ? conversations?.find((c) => c.id === urlConvId) : null;
@@ -949,10 +951,10 @@ export function ChatPage() {
       ? (boundAgentBySession?.name ?? boundAgentName ?? subAgentLabel ?? null)
       : null;
   useEffect(() => {
-    const fallback = urlConvId ? UNTITLED_CONVERSATION_LABEL : "Omnigent";
+    const fallback = urlConvId ? t("misc.untitledConversation") : "Omnigent";
     const base = truncateTitle(activeConv?.title ?? subAgentTabTitle ?? fallback);
     document.title = showsWorking ? `● ${base}` : base;
-  }, [activeConv?.title, subAgentTabTitle, showsWorking, urlConvId]);
+  }, [activeConv?.title, subAgentTabTitle, showsWorking, t, urlConvId]);
 
   const codexModelOptions = useChatStore((s) => s.codexModelOptions);
   const selectedModel = useChatStore((s) => s.selectedModel);
@@ -1051,7 +1053,7 @@ export function ChatPage() {
     urlConvId,
     conversationsData !== undefined,
   );
-  const readOnlyReason = readOnlyReasonForSessionLabels(activeSession, activeConv);
+  const readOnlyReason = readOnlyReasonForSessionLabels(activeSession, activeConv, t);
   // Once present, the live session snapshot is authoritative.
   const capabilitySource = {
     labels: activeSession ? (activeSession.labels ?? {}) : (activeConv?.labels ?? {}),
@@ -1192,6 +1194,7 @@ function SelectionPopup({
   containerRef: React.RefObject<HTMLElement | null>;
   onReply: (text: string) => void;
 }) {
+  const { t } = useTranslation();
   const [popupPos, setPopupPos] = useState<{ x: number; y: number } | null>(null);
   const selectedTextRef = useRef<string>("");
 
@@ -1278,7 +1281,7 @@ function SelectionPopup({
         }}
       >
         <CornerUpLeftIcon className="size-3.5" />
-        Reply ↵
+        {t("chat.selection.reply", { defaultValue: "Reply ↵" })}
       </Button>
     </div>
   );
@@ -1421,6 +1424,7 @@ function MainAgentSurface({
   costRoutingEligible,
   subAgentLabel,
 }: MainAgentSurfaceProps) {
+  const { t } = useTranslation();
   const terminalFirst = useTerminalFirst();
   // Mirrors ChatPage's `sandboxLaunching`: while the managed-sandbox
   // launch runs, the composer must stay sendable — the server parks
@@ -1657,12 +1661,20 @@ function MainAgentSurface({
                 <ConversationEmptyState>
                   <div className="space-y-1.5">
                     <h3 className="text-2xl font-medium tracking-[-0.02em]">
-                      What should we work on?
+                      {t("chat.empty.title", { defaultValue: "What should we work on?" })}
                     </h3>
                     <p className="text-muted-foreground text-base">
                       {agentsError
-                        ? `Failed to load agents: ${agentsError instanceof Error ? agentsError.message : String(agentsError)}`
-                        : "Send a message to get started."}
+                        ? t("chat.empty.agentsLoadError", {
+                            defaultValue: "Failed to load agents: {{error}}",
+                            error:
+                              agentsError instanceof Error
+                                ? agentsError.message
+                                : String(agentsError),
+                          })
+                        : t("chat.empty.description", {
+                            defaultValue: "Send a message to get started.",
+                          })}
                     </p>
                   </div>
                 </ConversationEmptyState>
@@ -1787,10 +1799,11 @@ function MainAgentSurface({
 }
 
 function HydratingPlaceholder() {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-1 items-center justify-center gap-2 text-muted-foreground text-sm">
       <Loader2Icon className="size-4 animate-spin" />
-      Loading conversation…
+      {t("chat.loadingConversation", { defaultValue: "Loading conversation…" })}
     </div>
   );
 }
@@ -1810,19 +1823,24 @@ function ConversationLoadError({
   conversationId: string;
   error: Error;
 }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   return (
     <div className="flex flex-1 items-center justify-center px-6">
       <div className="flex max-w-md flex-col items-center gap-3 text-center">
-        <h1 className="font-medium text-foreground text-lg">Conversation not found</h1>
+        <h1 className="font-medium text-foreground text-lg">
+          {t("chat.loadError.title", { defaultValue: "Conversation not found" })}
+        </h1>
         <p className="text-muted-foreground text-sm">
-          Couldn't load{" "}
-          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{conversationId}</code>
-          : {error.message}
+          {t("chat.loadError.description", {
+            defaultValue: "Couldn't load {{conversationId}}: {{error}}",
+            conversationId,
+            error: error.message,
+          })}
         </p>
         {/* Route to the home composer ("/"), which owns session creation. */}
         <Button type="button" variant="outline" onClick={() => navigate("/")}>
-          Start a new chat
+          {t("chat.loadError.startNew", { defaultValue: "Start a new chat" })}
         </Button>
       </div>
     </div>
@@ -1853,6 +1871,7 @@ function UserMessageNavConnected(props: React.ComponentProps<typeof UserMessageN
  *   the "Working…" tab would otherwise stack on top of it.
  */
 function WorkingStatusPin({ show, suppress = false }: { show: boolean; suppress?: boolean }) {
+  const { t } = useTranslation();
   const { isAtBottom } = useStickToBottomContext();
   const bgCount = useChatStore((s) => s.backgroundTaskCount);
   const tick = useWorkingLabelTick();
@@ -1874,7 +1893,9 @@ function WorkingStatusPin({ show, suppress = false }: { show: boolean; suppress?
           the agent is working, so it announces whether the tab is painted
           (scrolled up) or collapsed (at the bottom, where the inline shimmer
           owns the visuals). */}
-      {show && <span className="sr-only">Working…</span>}
+      {show && (
+        <span className="sr-only">{t("chat.working.working", { defaultValue: "Working…" })}</span>
+      )}
       {/* Mirror the conversation content column (mx-auto + px-6 + width) so the
           tab's left edge lines up with the inline shimmer's. */}
       <div className={cn("mx-auto w-full px-6", CHAT_COLUMN_WIDTH)}>
@@ -1893,7 +1914,7 @@ function WorkingStatusPin({ show, suppress = false }: { show: boolean; suppress?
           >
             <OttoIcon className="otto-working h-4 w-auto shrink-0" />
             <Shimmer className="text-xs font-mono" duration={1.5}>
-              {workingIndicatorLabel(bgCount, tick)}
+              {workingIndicatorLabel(bgCount, tick, t)}
             </Shimmer>
           </div>
         )}
@@ -2156,6 +2177,7 @@ export function JumpToTopButton({
   scroller: ConversationScroller | null;
   hasMoreHistory: boolean;
 }) {
+  const { t } = useTranslation();
   const [atTop, setAtTop] = useState(true);
   const [hovering, setHovering] = useState(false);
   const [jumping, setJumping] = useState(false);
@@ -2289,7 +2311,9 @@ export function JumpToTopButton({
         size="sm"
         disabled={jumping}
         onClick={() => void jumpToTop()}
-        aria-label="Jump to the first message"
+        aria-label={t("chat.history.jumpToFirst", {
+          defaultValue: "Jump to the first message",
+        })}
         // When hidden (opacity-0 / pointer-events-none) keep the button out of
         // the tab order and the accessibility tree so it can't take focus or be
         // announced while invisible.
@@ -2313,7 +2337,9 @@ export function JumpToTopButton({
         ) : (
           <ArrowUpIcon className="size-3.5" aria-hidden />
         )}
-        {jumping ? "Loading history…" : "Jump to top"}
+        {jumping
+          ? t("chat.history.loading", { defaultValue: "Loading history…" })
+          : t("chat.history.jumpToTop", { defaultValue: "Jump to top" })}
       </Button>
     </div>
   );
@@ -2347,25 +2373,50 @@ export const WORKING_MESSAGES = [
   "Brewing…",
 ] as const;
 
+const WORKING_MESSAGE_KEYS = [
+  "chat.working.working",
+  "chat.working.cooking",
+  "chat.working.crunching",
+  "chat.working.tinkering",
+  "chat.working.pondering",
+  "chat.working.brewing",
+] as const;
+
 /**
  * The label shown next to the working spinner. When background shells outlive
  * the turn (`bgCount > 0`) it names how many are still running (the tick is
  * ignored — that count is information, not decoration). Otherwise it rotates
  * through `WORKING_MESSAGES` by wall-clock `tick`.
  */
-export function workingIndicatorLabel(bgCount: number, tick = 0): string {
+export function workingIndicatorLabel(bgCount: number, tick = 0, t?: TFunction): string {
   if (bgCount > 0) {
+    if (!t) {
+      return bgCount === 1
+        ? "1 background task still running"
+        : `${bgCount} background tasks still running`;
+    }
     return bgCount === 1
-      ? "1 background task still running"
-      : `${bgCount} background tasks still running`;
+      ? t("chat.working.backgroundTask", {
+          defaultValue: "{{count}} background task still running",
+          count: bgCount,
+        })
+      : t("chat.working.backgroundTasks", {
+          defaultValue: "{{count}} background tasks still running",
+          count: bgCount,
+        });
   }
-  return WORKING_MESSAGES[tick % WORKING_MESSAGES.length]!;
+  const index = tick % WORKING_MESSAGES.length;
+  return (
+    t?.(WORKING_MESSAGE_KEYS[index]!, { defaultValue: WORKING_MESSAGES[index]! }) ??
+    WORKING_MESSAGES[index]!
+  );
 }
 
 function WorkingIndicator() {
+  const { t } = useTranslation();
   const bgCount = useChatStore((s) => s.backgroundTaskCount);
   const tick = useWorkingLabelTick();
-  const label = workingIndicatorLabel(bgCount, tick);
+  const label = workingIndicatorLabel(bgCount, tick, t);
   return (
     <Message from="assistant" data-testid="working-indicator" aria-hidden="true">
       <MessageContent>
@@ -2413,11 +2464,11 @@ export function shouldShowWorkingIndicator(showsWorking: boolean, bubbles: Bubbl
  * error band.
  */
 const SANDBOX_STAGE_LABELS: Record<string, string | undefined> = {
-  provisioning: "Provisioning sandbox",
-  cloning: "Cloning repository",
-  starting: "Connecting host",
-  connecting: "Starting agent",
-};
+  provisioning: "chat.sandbox.provisioning",
+  cloning: "chat.sandbox.cloning",
+  starting: "chat.sandbox.connectingHost",
+  connecting: "chat.sandbox.startingAgent",
+} as const;
 
 /**
  * Failure band for a managed-sandbox session whose background launch
@@ -2428,6 +2479,7 @@ const SANDBOX_STAGE_LABELS: Record<string, string | undefined> = {
  * one consistent line.
  */
 export function SandboxFailedIndicator({ status }: { status: SandboxStatus }) {
+  const { t } = useTranslation();
   return (
     <div
       data-testid="sandbox-failed-indicator"
@@ -2438,7 +2490,14 @@ export function SandboxFailedIndicator({ status }: { status: SandboxStatus }) {
       )}
     >
       <AlertTriangleIcon className="size-3.5 shrink-0" aria-hidden />
-      <span>Sandbox launch failed{status.error ? `: ${status.error}` : ""}</span>
+      <span>
+        {status.error
+          ? t("chat.sandbox.launchFailedWithError", {
+              defaultValue: "Sandbox launch failed: {{error}}",
+              error: status.error,
+            })
+          : t("chat.sandbox.launchFailed", { defaultValue: "Sandbox launch failed" })}
+      </span>
     </div>
   );
 }
@@ -2454,6 +2513,7 @@ export function ConnectionIndicator({
   // the native iOS bar so it doesn't float over an opened sidebar/panel.
   surfaceFrontmost?: boolean;
 }) {
+  const { t } = useTranslation();
   const terminalFirst = useTerminalFirst();
   const keyboardVisible = useIOSNativeKeyboardVisible(
     terminalFirst?.isTerminalFirst === true,
@@ -2506,8 +2566,8 @@ export function ConnectionIndicator({
         <WifiOffIcon className="size-3.5 shrink-0" />
         <span>
           {liveness.kind === "host_offline"
-            ? "Host is offline — click to reconnect"
-            : "Agent disconnected — click to reconnect"}
+            ? t("chat.connection.hostOffline")
+            : t("chat.connection.agentDisconnected")}
         </span>
       </button>
     );
@@ -2561,7 +2621,7 @@ export function ConnectionIndicator({
         )}
       >
         <Loader2Icon className="size-3.5 shrink-0 animate-spin" aria-hidden />
-        <span>Connecting…</span>
+        <span>{t("chat.connection.connecting")}</span>
       </div>
     );
   }
@@ -2591,15 +2651,17 @@ export function ConnectionIndicator({
  * there).
  */
 export function RunnerStartingIndicator({ variant }: { variant: "hero" | "row" }) {
+  const { t } = useTranslation();
   const terminalFirst = useTerminalFirst();
   const sandboxStatus = useChatStore((s) => s.sandboxStatus);
   // `ready` never reaches the store (cleared) and `failed` renders the
   // destructive band in ConnectionIndicator — only in-flight stages
   // with known copy show here.
-  const sandboxLabel =
+  const sandboxCopy =
     sandboxStatus !== null && sandboxStatus.stage !== "failed"
       ? SANDBOX_STAGE_LABELS[sandboxStatus.stage]
       : undefined;
+  const sandboxLabel = sandboxCopy ? t(sandboxCopy) : undefined;
   // `terminalStartingUp` is computed for ALL sessions in AppShell (it does not
   // check isTerminalFirst), so gate on isTerminalFirst too: regular agents
   // (e.g. polly) get the generic ConnectionIndicator "Connecting…" band and
@@ -2610,7 +2672,10 @@ export function RunnerStartingIndicator({ variant }: { variant: "hero" | "row" }
   if (sandboxLabel === undefined && !terminalSpinUp) {
     return null;
   }
-  const line = sandboxLabel !== undefined ? `${sandboxLabel}…` : "Starting up…";
+  const line =
+    sandboxLabel !== undefined
+      ? t("chat.runner.stage", { stage: sandboxLabel })
+      : t("chat.runner.startingUp");
   // role=status + aria-live so assistive tech announces the transient wait;
   // the spinner glyph itself is decorative (aria-hidden).
   if (variant === "hero") {
@@ -2620,11 +2685,11 @@ export function RunnerStartingIndicator({ variant }: { variant: "hero" | "row" }
         role="status"
         aria-live="polite"
         icon={<Loader2Icon className="size-7 animate-spin" aria-hidden />}
-        title={sandboxLabel !== undefined ? `${sandboxLabel}…` : "Starting up…"}
+        title={line}
         description={
           sandboxLabel !== undefined
-            ? "Setting up your sandbox — this can take a minute."
-            : "This can take a few seconds."
+            ? t("chat.runner.sandboxDescription")
+            : t("chat.runner.description")
         }
       />
     );
@@ -2710,6 +2775,7 @@ function ConnectedTerminalFirstPill({
 }: {
   ctx: NonNullable<ReturnType<typeof useTerminalFirst>>;
 }) {
+  const { t } = useTranslation();
   // `terminalStartingUp` is the single loading signal — AppShell folds the
   // launch (liveness `starting`) and PTY-creation (`terminalPending`)
   // sources into it. The button is disabled whenever no terminal is
@@ -2726,14 +2792,14 @@ function ConnectedTerminalFirstPill({
     >
       <div
         role="group"
-        aria-label="View mode"
+        aria-label={t("chat.viewMode.label")}
         className="terminal-first-switcher flex items-center gap-1 rounded-full border border-border bg-card/90 p-1 text-xs shadow-sm"
       >
         <div className="flex items-center gap-0.5">
           <button
             type="button"
             aria-pressed={view === "chat"}
-            aria-label="Chat"
+            aria-label={t("chat.viewMode.chat")}
             onClick={() => setView("chat")}
             className={cn(
               "terminal-first-switcher-option flex cursor-pointer items-center gap-1 rounded-full px-2 py-0.5 transition-colors",
@@ -2743,14 +2809,14 @@ function ConnectedTerminalFirstPill({
             )}
           >
             <MessageSquareIcon className="size-3.5 shrink-0" />
-            <span>Chat</span>
+            <span>{t("chat.viewMode.chat")}</span>
           </button>
           <button
             type="button"
             aria-pressed={view === "terminal"}
-            aria-label="Terminal"
+            aria-label={t("chat.viewMode.terminal")}
             disabled={!terminalsAvailable}
-            title={terminalStartingUp ? "Terminal is starting up…" : undefined}
+            title={terminalStartingUp ? t("chat.viewMode.terminalStarting") : undefined}
             onClick={() => setView("terminal")}
             className={cn(
               "terminal-first-switcher-option flex cursor-pointer items-center gap-1 rounded-full px-2 py-0.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50",
@@ -2764,7 +2830,7 @@ function ConnectedTerminalFirstPill({
             ) : (
               <TerminalIcon className="size-3.5 shrink-0" />
             )}
-            <span>Terminal</span>
+            <span>{t("chat.viewMode.terminal")}</span>
           </button>
         </div>
       </div>
@@ -2788,6 +2854,7 @@ function isSystemBubble(bubble: Bubble): boolean {
 }
 
 function CompactionLoadingIndicator() {
+  const { t } = useTranslation();
   const [elapsed, setElapsed] = useState(0);
   const startRef = useRef(performance.now());
 
@@ -2803,9 +2870,14 @@ function CompactionLoadingIndicator() {
       <MessageContent>
         <div className="flex items-center gap-2 text-xs font-mono">
           <Shimmer as="span" duration={1.5}>
-            Compacting conversation…
+            {t("chat.compaction.loading", { defaultValue: "Compacting conversation…" })}
           </Shimmer>
-          {elapsed > 0 && <span className="text-muted-foreground">({elapsed}s)</span>}
+          {elapsed > 0 && (
+            <span className="text-muted-foreground">
+              ({t("chat.compaction.elapsedSeconds", { defaultValue: "{{count}}s", count: elapsed })}
+              )
+            </span>
+          )}
         </div>
         <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted">
           <div
@@ -2862,6 +2934,7 @@ function useCopyMessage(getText: () => string): {
   isCopied: boolean;
   handleCopy: () => void;
 } {
+  const { t } = useTranslation();
   const [isCopied, setIsCopied] = useState(false);
   const timeoutRef = useRef<number>(0);
   const isMobile = useIsMobileViewport();
@@ -2878,19 +2951,25 @@ function useCopyMessage(getText: () => string): {
         window.clearTimeout(timeoutRef.current);
         timeoutRef.current = window.setTimeout(() => setIsCopied(false), 2000);
         if (isMobile) {
-          showToast(<span className="text-sm">Copied to clipboard</span>, { duration: 1500 });
+          showToast(
+            <span className="text-sm">
+              {t("chat.copy.copiedToast", { defaultValue: "Copied to clipboard" })}
+            </span>,
+            { duration: 1500 },
+          );
         }
       },
       (error) => {
         console.warn("Failed to copy message", error);
       },
     );
-  }, [getText, isCopied, isMobile]);
+  }, [getText, isCopied, isMobile, t]);
 
   return { isCopied, handleCopy };
 }
 
 function UserBubble({ bubble }: { bubble: Extract<Bubble, { kind: "user" }> }) {
+  const { t } = useTranslation();
   const sessionId = useChatStore((s) => s.conversationId);
   // Author labels only matter once the session is shared with someone else.
   const isSessionShared = useContext(SessionSharedContext);
@@ -3048,7 +3127,10 @@ function UserBubble({ bubble }: { bubble: Extract<Bubble, { kind: "user" }> }) {
       </div>
       {text && (
         <MessageActions className="mt-1 ml-auto opacity-40 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
-          <MessageAction tooltip="Copy" onClick={handleCopy}>
+          <MessageAction
+            tooltip={t("chat.message.copy", { defaultValue: "Copy" })}
+            onClick={handleCopy}
+          >
             {isCopied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
           </MessageAction>
         </MessageActions>
@@ -3058,6 +3140,7 @@ function UserBubble({ bubble }: { bubble: Extract<Bubble, { kind: "user" }> }) {
 }
 
 function AssistantBubble({ bubble }: { bubble: Extract<Bubble, { kind: "assistant" }> }) {
+  const { t } = useTranslation();
   // The walker only emits an assistant bubble when at least one
   // assistant-side block exists, so `items` is non-empty here in the
   // common case. The "Working…" shimmer for the empty-items / streaming
@@ -3096,12 +3179,15 @@ function AssistantBubble({ bubble }: { bubble: Extract<Bubble, { kind: "assistan
             data-testid="assistant-interrupted-indicator"
           >
             <XIcon className="size-3" aria-hidden="true" />
-            <span>Interrupted</span>
+            <span>{t("chat.message.interrupted", { defaultValue: "Interrupted" })}</span>
           </p>
         )}
         {markdownText && (
           <MessageActions className="mt-1 opacity-40 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-            <MessageAction tooltip="Copy" onClick={handleCopy}>
+            <MessageAction
+              tooltip={t("chat.message.copy", { defaultValue: "Copy" })}
+              onClick={handleCopy}
+            >
               {isCopied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
             </MessageAction>
             {/* Fork from this response: clone the session with history
@@ -3110,7 +3196,7 @@ function AssistantBubble({ bubble }: { bubble: Extract<Bubble, { kind: "assistan
                 the session can't be forked (sub-agent / isolated mount). */}
             {forkDialog?.canFork && bubble.lifecycle !== "streaming" && (
               <MessageAction
-                tooltip="Fork from here"
+                tooltip={t("chat.message.forkFromHere", { defaultValue: "Fork from here" })}
                 data-testid="fork-from-response"
                 onClick={() => forkDialog.openForkDialog({ upToResponseId: bubble.responseId })}
               >
@@ -3122,7 +3208,9 @@ function AssistantBubble({ bubble }: { bubble: Extract<Bubble, { kind: "assistan
       </Message>
 
       {bubble.lifecycle === "failed" && (
-        <p className="text-destructive text-xs">Error: {bubble.error}</p>
+        <p className="text-destructive text-xs">
+          {t("chat.message.error", { defaultValue: "Error: {{error}}", error: bubble.error })}
+        </p>
       )}
     </>
   );
@@ -3293,6 +3381,7 @@ const RING_CIRCUMFERENCE = 2 * Math.PI * 5.5;
 
 /** Circular progress ring showing how much context window is used, with the used percentage beside it. */
 function ContextRing({ contextWindow, tokensUsed }: { contextWindow: number; tokensUsed: number }) {
+  const { t } = useTranslation();
   const pct = Math.min(tokensUsed / contextWindow, 1);
   // Arc, %, label, and tooltip all encode context USED: a fresh session
   // shows an empty ring at 0% and the ring fills as context is consumed.
@@ -3307,7 +3396,10 @@ function ContextRing({ contextWindow, tokensUsed }: { contextWindow: number; tok
       <TooltipTrigger asChild>
         <span
           className={cn("flex items-center gap-1.5", color)}
-          aria-label={`${usedPct}% of context used`}
+          aria-label={t("chat.context.percentUsed", {
+            defaultValue: "{{percent}}% of context used",
+            percent: usedPct,
+          })}
         >
           <svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true">
             {/* Track */}
@@ -3332,7 +3424,12 @@ function ContextRing({ contextWindow, tokensUsed }: { contextWindow: number; tok
         </span>
       </TooltipTrigger>
       <TooltipContent side="top" className="max-w-44 text-center text-xs">
-        <p className="tabular-nums">{usedPct}% of context used.</p>
+        <p className="tabular-nums">
+          {t("chat.context.percentUsedDescription", {
+            defaultValue: "{{percent}}% of context used.",
+            percent: usedPct,
+          })}
+        </p>
       </TooltipContent>
     </Tooltip>
   );
@@ -3439,6 +3536,7 @@ function ComposerStatusLine({
   codexGoal: CodexGoal | null;
   isSubAgentSession: boolean;
 }) {
+  const { t } = useTranslation();
   const conversationId = useChatStore((s) => s.conversationId);
   const contextWindow = useChatStore((s) => s.contextWindow);
   const tokensUsed = useChatStore((s) => s.tokensUsed);
@@ -3504,7 +3602,7 @@ function ComposerStatusLine({
             className="inline-flex items-center gap-1 text-xs font-medium text-foreground"
           >
             <FileTextIcon className="size-3.5 shrink-0" />
-            <span>Plan mode</span>
+            <span>{t("chat.plan.status", { defaultValue: "Plan mode" })}</span>
           </span>
         )}
         {showGoal && codexGoal && <CodexGoalStatusPill goal={codexGoal} />}
@@ -3543,6 +3641,7 @@ function ComposerStatusLine({
  */
 export function subAgentComposerLabel(
   session: Pick<Session, "parentSessionId" | "title" | "subAgentName" | "agentName"> | null,
+  t?: TFunction,
 ): string | null {
   if (!session || session.parentSessionId == null) return null;
   // Strip the user-added "ui:" sentinel so its "agent:name" suffix reads
@@ -3556,7 +3655,13 @@ export function subAgentComposerLabel(
   // Last-resort display string: a sub-agent session always has a seeded
   // title in practice, so the final "sub-agent" only guards a degenerate
   // all-null snapshot (the tray still needs something to render).
-  return title ?? session.subAgentName ?? session.agentName ?? "sub-agent";
+  return (
+    title ??
+    session.subAgentName ??
+    session.agentName ??
+    t?.("chat.subagent.fallback", { defaultValue: "sub-agent" }) ??
+    "sub-agent"
+  );
 }
 
 /**
@@ -3576,6 +3681,7 @@ export function subAgentComposerLabel(
  *   ``"check-account-eligibility"`` (from ``subAgentComposerLabel``).
  */
 function SubagentComposerTray({ label }: { label: string }) {
+  const { t } = useTranslation();
   return (
     <div
       data-testid="composer-subagent-tray"
@@ -3587,7 +3693,8 @@ function SubagentComposerTray({ label }: { label: string }) {
       <BotIcon className="size-3.5 shrink-0" aria-hidden="true" />
       {/* truncate so a long sub-agent name never wraps the tray to two rows */}
       <span className="min-w-0 truncate">
-        Chatting with sub-agent <strong className="font-semibold">{label}</strong>
+        {t("chat.subagent.chattingWith", { defaultValue: "Chatting with sub-agent" })}{" "}
+        <strong className="font-semibold">{label}</strong>
       </span>
     </div>
   );
@@ -3630,6 +3737,7 @@ export function Composer({
   costRoutingEligible = false,
   subAgentLabel = null,
 }: ComposerProps) {
+  const { t } = useTranslation();
   const [value, setValue] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
@@ -3861,7 +3969,17 @@ export function Composer({
       await useChatStore.getState().setCodexPlanMode(!codexPlanMode);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      setCommandError(`Could not ${codexPlanMode ? "exit" : "enter"} Plan mode: ${message}`);
+      setCommandError(
+        codexPlanMode
+          ? t("chat.plan.exitError", {
+              defaultValue: "Could not exit Plan mode: {{error}}",
+              error: message,
+            })
+          : t("chat.plan.enterError", {
+              defaultValue: "Could not enter Plan mode: {{error}}",
+              error: message,
+            }),
+      );
     } finally {
       setPlanModeBusy(false);
     }
@@ -3990,7 +4108,11 @@ export function Composer({
     switch (cmd) {
       case "/compact":
         if (!showCompact) {
-          setCommandError("/compact is not supported for this agent type");
+          setCommandError(
+            t("chat.commands.compactUnsupported", {
+              defaultValue: "/compact is not supported for this agent type",
+            }),
+          );
           return true;
         }
         dirtyRef.current = true;
@@ -4000,14 +4122,23 @@ export function Composer({
           .getState()
           .compact()
           .catch((err: unknown) => {
-            setCommandError(err instanceof Error ? err.message : "Compact failed");
+            setCommandError(
+              err instanceof Error
+                ? err.message
+                : t("chat.commands.compactFailed", { defaultValue: "Compact failed" }),
+            );
           });
         return true;
       case "/effort": {
         if (!showEffort) return false;
         const valid = [...effortLevels, "default"];
         if (!arg || !valid.includes(arg.toLowerCase())) {
-          setCommandError(`Usage: /effort ${valid.join(" | ")}`);
+          setCommandError(
+            t("chat.commands.effortUsage", {
+              defaultValue: "Usage: /effort {{levels}}",
+              levels: valid.join(" | "),
+            }),
+          );
           return true;
         }
         const level = arg.toLowerCase() === "default" ? null : arg.toLowerCase();
@@ -4018,7 +4149,11 @@ export function Composer({
           .getState()
           .setEffort(level)
           .catch((err: unknown) => {
-            setCommandError(err instanceof Error ? err.message : "Failed to set effort");
+            setCommandError(
+              err instanceof Error
+                ? err.message
+                : t("chat.commands.effortFailed", { defaultValue: "Failed to set effort" }),
+            );
           });
         return true;
       }
@@ -4031,9 +4166,20 @@ export function Composer({
         if (!target) {
           const { sessionModelOverride, llmModel } = useChatStore.getState();
           const current = sessionModelOverride
-            ? `${sessionModelOverride} (override)`
-            : (llmModel ?? "agent default");
-          setCommandError(`Model: ${current}\nUsage: /model <name> · /model default to reset`);
+            ? t("chat.commands.modelOverride", {
+                defaultValue: "{{model}} (override)",
+                model: sessionModelOverride,
+              })
+            : (llmModel ??
+              t("chat.commands.agentDefault", {
+                defaultValue: "agent default",
+              }));
+          setCommandError(
+            t("chat.commands.modelHelp", {
+              defaultValue: "Model: {{model}}\nUsage: /model <name> · /model default to reset",
+              model: current,
+            }),
+          );
           return true;
         }
         // ``default | off | reset`` clear the override (REPL clear aliases);
@@ -4049,7 +4195,11 @@ export function Composer({
           .getState()
           .setModel(clear ? null : target)
           .catch((err: unknown) => {
-            setCommandError(err instanceof Error ? err.message : "Failed to set model");
+            setCommandError(
+              err instanceof Error
+                ? err.message
+                : t("chat.commands.modelFailed", { defaultValue: "Failed to set model" }),
+            );
           });
         return true;
       }
@@ -4057,8 +4207,18 @@ export function Composer({
         const state = useChatStore.getState();
         const { contextWindow, llmModel, sessionModelOverride, tokensUsed, blocks } = state;
         const lines: string[] = [];
-        if (sessionModelOverride) lines.push(`Model: ${sessionModelOverride} (override)`);
-        else if (llmModel) lines.push(`Model: ${llmModel}`);
+        if (sessionModelOverride) {
+          lines.push(
+            t("chat.commands.contextModelOverride", {
+              defaultValue: "Model: {{model}} (override)",
+              model: sessionModelOverride,
+            }),
+          );
+        } else if (llmModel) {
+          lines.push(
+            t("chat.commands.contextModel", { defaultValue: "Model: {{model}}", model: llmModel }),
+          );
+        }
         // contextWindow > 0 keeps a zero window out of the division (0/0 → "NaN%").
         if (tokensUsed != null && contextWindow != null && contextWindow > 0) {
           const pct = Math.min(tokensUsed / contextWindow, 1);
@@ -4066,16 +4226,39 @@ export function Composer({
           const bar = "█".repeat(filled) + "░".repeat(20 - filled);
           const pctStr = (pct * 100).toFixed(1);
           lines.push(
-            `${tokensUsed.toLocaleString()} / ${contextWindow.toLocaleString()} tokens (${pctStr}%)`,
+            t("chat.commands.contextTokens", {
+              defaultValue: "{{used}} / {{total}} tokens ({{percent}}%)",
+              used: tokensUsed.toLocaleString(),
+              total: contextWindow.toLocaleString(),
+              percent: pctStr,
+            }),
           );
           lines.push(bar);
         } else if (tokensUsed != null) {
-          lines.push(`${tokensUsed.toLocaleString()} tokens`);
-          lines.push("(Context window size unknown)");
+          lines.push(
+            t("chat.commands.tokens", {
+              defaultValue: "{{count}} tokens",
+              count: tokensUsed.toLocaleString(),
+            }),
+          );
+          lines.push(
+            t("chat.commands.contextWindowUnknown", {
+              defaultValue: "(Context window size unknown)",
+            }),
+          );
         } else {
-          lines.push("No usage data yet — send a message first.");
+          lines.push(
+            t("chat.commands.noUsage", {
+              defaultValue: "No usage data yet — send a message first.",
+            }),
+          );
         }
-        lines.push(`Items in context: ${blocks.length}`);
+        lines.push(
+          t("chat.commands.itemsInContext", {
+            defaultValue: "Items in context: {{count}}",
+            count: blocks.length,
+          }),
+        );
         setCommandError(lines.join("\n"));
         return true;
       }
@@ -4086,7 +4269,11 @@ export function Composer({
       }
       default:
         setCommandError(
-          `Unknown command: ${cmd}. Available: ${Object.keys(slashCommands).join(", ")}`,
+          t("chat.commands.unknown", {
+            defaultValue: "Unknown command: {{command}}. Available: {{available}}",
+            command: cmd,
+            available: Object.keys(slashCommands).join(", "),
+          }),
         );
         return false;
     }
@@ -4476,7 +4663,9 @@ export function Composer({
       >
         {isDragActive && (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-card/80">
-            <span className="text-sm font-medium text-ring">Drop files here</span>
+            <span className="text-sm font-medium text-ring">
+              {t("chat.composer.dropFiles", { defaultValue: "Drop files here" })}
+            </span>
           </div>
         )}
         {/* Slash-command suggestions — floats above the composer box */}
@@ -4515,7 +4704,7 @@ export function Composer({
                   type="button"
                   onClick={() => onRemoveQuote(i)}
                   className="mt-0.5 shrink-0 rounded-full text-muted-foreground hover:text-foreground"
-                  aria-label="Remove quote"
+                  aria-label={t("chat.composer.removeQuote", { defaultValue: "Remove quote" })}
                 >
                   <XIcon className="size-3.5" />
                 </button>
@@ -4592,25 +4781,42 @@ export function Composer({
               // Keep the overlay's scroll position locked to the textarea's.
               if (backdropRef.current) backdropRef.current.scrollTop = e.currentTarget.scrollTop;
             }}
-            aria-label="Message the agent"
+            aria-label={t("chat.composer.messageAria", { defaultValue: "Message the agent" })}
             placeholder={
               readOnlyReason !== null
                 ? readOnlyReason
                 : isReadOnly
-                  ? "You have read-only access to this session"
+                  ? t("chat.composer.readOnly", {
+                      defaultValue: "You have read-only access to this session",
+                    })
                   : unreachable
-                    ? "Session offline — reconnect below to continue"
+                    ? t("chat.composer.offline", {
+                        defaultValue: "Session offline — reconnect below to continue",
+                      })
                     : hasPendingElicitation
-                      ? "Respond to the pending request above to continue"
+                      ? t("chat.composer.pendingRequest", {
+                          defaultValue: "Respond to the pending request above to continue",
+                        })
                       : disabled
-                        ? "Waiting for agents…"
+                        ? t("chat.composer.waitingForAgents", {
+                            defaultValue: "Waiting for agents…",
+                          })
                         : isStreaming
-                          ? "Send a follow-up (queued) — Esc to stop"
+                          ? t("chat.composer.followUp", {
+                              defaultValue: "Send a follow-up (queued) — Esc to stop",
+                            })
                           : sandboxAsleepHint
-                            ? "Current session's host is offline. Next message will resume the sandbox host which can take minutes"
+                            ? t("chat.composer.sandboxAsleep", {
+                                defaultValue:
+                                  "Current session's host is offline. Next message will resume the sandbox host which can take minutes",
+                              })
                             : reconnectHint
-                              ? "Send a message to reconnect this session"
-                              : "Ask the agent anything…"
+                              ? t("chat.composer.reconnect", {
+                                  defaultValue: "Send a message to reconnect this session",
+                                })
+                              : t("chat.composer.placeholder", {
+                                  defaultValue: "Ask the agent anything…",
+                                })
             }
             rows={1}
             disabled={disabled || isReadOnly || unreachable || hasPendingElicitation}
@@ -4641,7 +4847,10 @@ export function Composer({
                   type="button"
                   onClick={() => removeFile(i)}
                   className="ml-0.5 rounded-full hover:text-foreground"
-                  aria-label={`Remove ${file.name || "image.png"}`}
+                  aria-label={t("chat.composer.removeAttachment", {
+                    defaultValue: "Remove {{name}}",
+                    name: file.name || "image.png",
+                  })}
                 >
                   <XIcon className="size-3" />
                 </button>
@@ -4682,7 +4891,10 @@ export function Composer({
                   type="button"
                   onClick={() => removeMentionedItem(i)}
                   className="ml-0.5 rounded-full hover:text-foreground"
-                  aria-label={`Remove ${item.path}`}
+                  aria-label={t("chat.composer.removeAttachment", {
+                    defaultValue: "Remove {{name}}",
+                    name: item.path,
+                  })}
                 >
                   <XIcon className="size-3" />
                 </button>
@@ -4706,10 +4918,12 @@ export function Composer({
               className="size-9 md:size-8"
               disabled={disabled || isReadOnly || hasPendingElicitation}
               onClick={() => fileInputRef.current?.click()}
-              title="Attach files"
+              title={t("chat.composer.attachFiles", { defaultValue: "Attach files" })}
             >
               <PaperclipIcon className="size-4" />
-              <span className="sr-only">Attach files</span>
+              <span className="sr-only">
+                {t("chat.composer.attachFiles", { defaultValue: "Attach files" })}
+              </span>
             </Button>
             <ComposerMicButton
               disabled={disabled || isReadOnly || hasPendingElicitation}
@@ -4751,7 +4965,11 @@ export function Composer({
                     )}
                     disabled={isReadOnly || planModeBusy}
                     aria-pressed={codexPlanMode}
-                    aria-label={codexPlanMode ? "Exit Plan mode" : "Enter Plan mode"}
+                    aria-label={
+                      codexPlanMode
+                        ? t("chat.plan.exit", { defaultValue: "Exit Plan mode" })
+                        : t("chat.plan.enter", { defaultValue: "Enter Plan mode" })
+                    }
                     data-testid="codex-plan-mode-toggle"
                     data-active={codexPlanMode ? "true" : undefined}
                     onClick={() => void toggleCodexPlanMode()}
@@ -4761,11 +4979,13 @@ export function Composer({
                     ) : (
                       <FileTextIcon className="size-3.5" />
                     )}
-                    <span>Plan</span>
+                    <span>{t("chat.plan.action", { defaultValue: "Plan" })}</span>
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {codexPlanMode ? "Exit Plan mode" : "Enter Plan mode"}
+                  {codexPlanMode
+                    ? t("chat.plan.exit", { defaultValue: "Exit Plan mode" })
+                    : t("chat.plan.enter", { defaultValue: "Enter Plan mode" })}
                 </TooltipContent>
               </Tooltip>
             )}
@@ -4807,15 +5027,27 @@ export function Composer({
                   ? isReadOnly
                   : !hasDraft || disabled || isReadOnly || hasPendingElicitation
               }
-              title={showInterruptButton ? "Interrupt" : "Send"}
-              aria-label={showInterruptButton ? "Interrupt" : "Send"}
+              title={
+                showInterruptButton
+                  ? t("chat.composer.interrupt", { defaultValue: "Interrupt" })
+                  : t("chat.composer.send", { defaultValue: "Send" })
+              }
+              aria-label={
+                showInterruptButton
+                  ? t("chat.composer.interrupt", { defaultValue: "Interrupt" })
+                  : t("chat.composer.send", { defaultValue: "Send" })
+              }
             >
               {showInterruptButton ? (
                 <SquareIcon className="size-4 fill-current" />
               ) : (
                 <ArrowUpIcon className="size-4" />
               )}
-              <span className="sr-only">{showInterruptButton ? "Interrupt" : "Send"}</span>
+              <span className="sr-only">
+                {showInterruptButton
+                  ? t("chat.composer.interrupt", { defaultValue: "Interrupt" })
+                  : t("chat.composer.send", { defaultValue: "Send" })}
+              </span>
             </Button>
           </div>
         </div>
@@ -5019,14 +5251,25 @@ type LabelSource = { labels?: Record<string, string | null> | null } | null | un
 export function readOnlyReasonForSessionLabels(
   activeSession: LabelSource,
   activeConv: LabelSource,
+  t?: TFunction,
 ): string | null {
   const closed =
     activeSession?.labels?.["omnigent.closed"] ?? activeConv?.labels?.["omnigent.closed"];
-  if (closed === "true") return "This sub-agent session is closed";
+  if (closed === "true") {
+    return (
+      t?.("chat.composer.subagentClosed", {
+        defaultValue: "This sub-agent session is closed",
+      }) ?? "This sub-agent session is closed"
+    );
+  }
   const wrapper =
     activeSession?.labels?.["omnigent.wrapper"] ?? activeConv?.labels?.["omnigent.wrapper"];
   if (wrapper === "claude-code-native-ui-subagent") {
-    return "Claude Code sub-agents are read-only";
+    return (
+      t?.("chat.composer.claudeCodeSubagentsReadOnly", {
+        defaultValue: "Claude Code sub-agents are read-only",
+      }) ?? "Claude Code sub-agents are read-only"
+    );
   }
   return null;
 }
@@ -5179,6 +5422,7 @@ function AgentPicker({
   disabled = false,
   openNonce = 0,
 }: AgentPickerProps) {
+  const { t } = useTranslation();
   // Controlled so bare "/model" in the composer can open the dropdown.
   const [open, setOpen] = useState(false);
   const appliedOpenNonce = useRef(0);
@@ -5282,9 +5526,9 @@ function AgentPicker({
   // identity is carried by the status tray below.
   let triggerContent: React.ReactNode;
   if (isLoading) {
-    triggerContent = "Loading…";
+    triggerContent = t("chat.agentPicker.loading", { defaultValue: "Loading…" });
   } else if (!hasAgents) {
-    triggerContent = "No agents";
+    triggerContent = t("chat.agentPicker.noAgents", { defaultValue: "No agents" });
   } else if (modelLabel) {
     triggerContent = (
       <>
@@ -5308,7 +5552,10 @@ function AgentPicker({
     // identity fallback rather than hiding the picker entirely. For kiro, prefer
     // the catalog default (e.g. "Auto") over the agent name so the launch-window
     // label reads as a model.
-    triggerContent = kiroLaunchFallbackLabel ?? agentDisplayName ?? "Model";
+    triggerContent =
+      kiroLaunchFallbackLabel ??
+      agentDisplayName ??
+      t("chat.agentPicker.modelFallback", { defaultValue: "Model" });
   } else {
     return null;
   }
@@ -5331,7 +5578,9 @@ function AgentPicker({
       <DropdownMenuContent align="start" className="min-w-64 p-1">
         {showAgents && (
           <>
-            <PickerSectionHeader>Agents</PickerSectionHeader>
+            <PickerSectionHeader>
+              {t("chat.agentPicker.agents", { defaultValue: "Agents" })}
+            </PickerSectionHeader>
             {agents?.map((a) => (
               <DropdownMenuItem
                 key={a.id}
@@ -5358,7 +5607,9 @@ function AgentPicker({
         {modelOptions.length > 0 && (
           <>
             {!isNativeModelPicker && <DropdownMenuSeparator className="my-1" />}
-            <PickerSectionHeader>Models</PickerSectionHeader>
+            <PickerSectionHeader>
+              {t("chat.agentPicker.models", { defaultValue: "Models" })}
+            </PickerSectionHeader>
             {modelOptions.map((m) => {
               const isExplicit = pickerSelectedModel === m.id;
               const isImplicit =
@@ -5397,7 +5648,9 @@ function AgentPicker({
         {showEffort && (
           <>
             {(showAgents || modelOptions.length > 0) && <DropdownMenuSeparator className="my-1" />}
-            <PickerSectionHeader>Effort</PickerSectionHeader>
+            <PickerSectionHeader>
+              {t("chat.agentPicker.effort", { defaultValue: "Effort" })}
+            </PickerSectionHeader>
             {effortLevels.map((level) => (
               <DropdownMenuItem
                 key={level}

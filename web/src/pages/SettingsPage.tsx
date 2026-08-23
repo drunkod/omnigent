@@ -54,6 +54,7 @@ import {
   SunIcon,
 } from "lucide-react";
 import { useTheme } from "next-themes";
+import { useTranslation } from "react-i18next";
 import { PageScroll } from "@/components/PageScroll";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -121,6 +122,14 @@ import {
 } from "@/lib/terminalThemePreferences";
 import { readDefaultBaseBranch, writeDefaultBaseBranch } from "@/lib/baseBranchPreferences";
 import {
+  isLocale,
+  LOCALE_LABELS,
+  readLocale,
+  SUPPORTED_LOCALES,
+  type Locale,
+  writeLocale,
+} from "@/lib/localePreferences";
+import {
   applyThemePalette,
   isThemePalette,
   PALETTES,
@@ -152,6 +161,7 @@ const PoliciesPage = lazy(() =>
  * the iOS native bars, matching the Inbox / Members pages.
  */
 export function SettingsPage() {
+  const { t } = useTranslation();
   const info = useServerInfo();
   // A login session exists (accounts OR OIDC) when the server advertises a
   // login_url; gates the Account section so SSO users get it too.
@@ -183,8 +193,8 @@ export function SettingsPage() {
       {section === "cli" && isElectronShell() && <LocalCliSection />}
       {section === "runners" && (
         <Section
-          title="Runners"
-          description="Inspect paired machines and their reported capabilities."
+          title={t("settings.runners.title")}
+          description={t("settings.runners.description")}
         >
           <HostCapabilityPanel enabled={info !== "loading" && info.remote_local_runner} />
         </Section>
@@ -212,16 +222,16 @@ function Section({
   );
 }
 
-const themeCards: { mode: ThemeMode; label: string; icon: typeof SunIcon }[] = [
-  { mode: "system", label: "System", icon: LaptopMinimalIcon },
-  { mode: "light", label: "Light", icon: SunIcon },
-  { mode: "dark", label: "Dark", icon: MoonIcon },
+const themeCards: { mode: ThemeMode; icon: typeof SunIcon }[] = [
+  { mode: "system", icon: LaptopMinimalIcon },
+  { mode: "light", icon: SunIcon },
+  { mode: "dark", icon: MoonIcon },
 ];
 
-const terminalThemeCards: { mode: TerminalThemeMode; label: string; icon: typeof SunIcon }[] = [
-  { mode: "auto", label: "Match app", icon: MonitorIcon },
-  { mode: "light", label: "Light", icon: SunIcon },
-  { mode: "dark", label: "Dark", icon: MoonIcon },
+const terminalThemeCards: { mode: TerminalThemeMode; icon: typeof SunIcon }[] = [
+  { mode: "auto", icon: MonitorIcon },
+  { mode: "light", icon: SunIcon },
+  { mode: "dark", icon: MoonIcon },
 ];
 
 /**
@@ -417,14 +427,15 @@ function ThemeSubsection({
 
 /** Appearance mode: System / Light / Dark. */
 function ModeControl() {
+  const { t } = useTranslation();
   const { theme, setTheme } = useTheme();
   const mode = normalizeThemeMode(theme);
   const labelId = useId();
   return (
     <ThemeSubsection
       labelId={labelId}
-      title="Mode"
-      helper="Follow your system, or force light or dark."
+      title={t("settings.mode.title")}
+      helper={t("settings.mode.helper")}
     >
       <CardRadioGroup<ThemeMode>
         labelledBy={labelId}
@@ -438,7 +449,9 @@ function ModeControl() {
           body: (
             <>
               <ModePreview variant={card.mode} />
-              <span className="text-center text-sm font-medium">{card.label}</span>
+              <span className="text-center text-sm font-medium">
+                {t(`settings.mode.options.${card.mode}`)}
+              </span>
             </>
           ),
         }))}
@@ -449,6 +462,7 @@ function ModeControl() {
 
 /** Terminal light/dark/match-app theme — its own section. */
 function TerminalThemeControl() {
+  const { t } = useTranslation();
   const [mode, setMode] = useState(() => readTerminalThemeMode());
   const labelId = useId();
   const choose = useCallback((next: TerminalThemeMode) => {
@@ -458,8 +472,8 @@ function TerminalThemeControl() {
   return (
     <ThemeSubsection
       labelId={labelId}
-      title="Terminal theme"
-      helper="Use a light or dark terminal, or match the app."
+      title={t("settings.terminalTheme.title")}
+      helper={t("settings.terminalTheme.helper")}
     >
       <CardRadioGroup<TerminalThemeMode>
         labelledBy={labelId}
@@ -470,7 +484,7 @@ function TerminalThemeControl() {
         items={terminalThemeCards.map((card) => ({
           value: card.mode,
           testId: `terminal-theme-${card.mode}`,
-          body: iconCardBody(card.icon, card.label),
+          body: iconCardBody(card.icon, t(`settings.terminalTheme.options.${card.mode}`)),
         }))}
       />
     </ThemeSubsection>
@@ -484,6 +498,7 @@ function TerminalThemeControl() {
  * top of the chosen light/dark mode.
  */
 function ColorThemeControl() {
+  const { t } = useTranslation();
   // Render each chip in the currently-resolved mode so it matches the app now.
   const { resolvedTheme } = useTheme();
   const isDark = normalizeResolvedTheme(resolvedTheme) === "dark";
@@ -501,10 +516,11 @@ function ColorThemeControl() {
   return (
     <ThemeSubsection
       labelId={labelId}
-      title="Color theme"
-      helper="Applies on top of your chosen mode."
+      title={t("settings.colorTheme.title")}
+      helper={t("settings.colorTheme.helper")}
     >
       <Select
+        name="color-theme"
         value={palette}
         onValueChange={(next) => {
           if (isThemePalette(next)) choose(next);
@@ -577,7 +593,54 @@ function PaletteSwatchPreview({ swatch }: { swatch: PaletteSwatch }) {
   );
 }
 
+function LanguageControl() {
+  const { t, i18n } = useTranslation();
+  const labelId = useId();
+  const [locale, setLocale] = useState<Locale>(() => readLocale());
+
+  const choose = useCallback(
+    (next: Locale) => {
+      setLocale(next);
+      writeLocale(next);
+      void i18n.changeLanguage(next);
+    },
+    [i18n],
+  );
+
+  return (
+    <ThemeSubsection
+      labelId={labelId}
+      title={t("settings.language.title")}
+      helper={t("settings.language.helper")}
+    >
+      <Select
+        name="ui-language"
+        value={locale}
+        onValueChange={(next) => {
+          if (isLocale(next)) choose(next);
+        }}
+      >
+        <SelectTrigger
+          aria-labelledby={labelId}
+          data-testid="language-select"
+          className="w-full max-w-xs gap-2"
+        >
+          <SelectValue>{LOCALE_LABELS[locale]}</SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          {SUPPORTED_LOCALES.map((supportedLocale) => (
+            <SelectItem key={supportedLocale} value={supportedLocale}>
+              {LOCALE_LABELS[supportedLocale]}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </ThemeSubsection>
+  );
+}
+
 function AppearanceSection() {
+  const { t } = useTranslation();
   // Embedded: the host owns light/dark, so the Mode and Color theme pickers
   // would be no-ops — hide them and say so (matching ThemeModeMenu). Terminal
   // theme and the font controls are per-device prefs that don't conflict with
@@ -585,13 +648,16 @@ function AppearanceSection() {
   const isEmbedded = useIsEmbedded();
 
   return (
-    <Section title="Appearance" description="Choose how Omnigent looks on this device.">
+    <Section
+      title={t("settings.appearance.title")}
+      description={t("settings.appearance.description")}
+    >
       <div className="flex flex-col gap-8">
         {isEmbedded ? (
           <div className="flex flex-col gap-3">
-            <span className="text-sm font-medium">Theme</span>
+            <span className="text-sm font-medium">{t("settings.appearance.hostThemeTitle")}</span>
             <p className="text-sm text-muted-foreground">
-              Theme is controlled by the host application.
+              {t("settings.appearance.hostThemeHelper")}
             </p>
           </div>
         ) : (
@@ -614,6 +680,8 @@ function AppearanceSection() {
         <UiCodeFontSizeControl />
 
         <UiCodeFontFamilyControl />
+
+        <LanguageControl />
       </div>
     </Section>
   );
@@ -621,8 +689,9 @@ function AppearanceSection() {
 
 /** Git behavior settings. */
 function GitSection() {
+  const { t } = useTranslation();
   return (
-    <Section title="Git" description="Configure how Omnigent works with Git.">
+    <Section title={t("settings.git.title")} description={t("settings.git.description")}>
       <div className="flex flex-col gap-8">
         <DefaultBaseBranchControl />
       </div>
@@ -637,6 +706,7 @@ function GitSection() {
  * the current branch).
  */
 function DefaultBaseBranchControl() {
+  const { t } = useTranslation();
   const [branch, setBranch] = useState(() => readDefaultBaseBranch() ?? "");
 
   const update = useCallback((next: string) => {
@@ -647,16 +717,14 @@ function DefaultBaseBranchControl() {
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="text-sm font-medium">Default base branch</span>
-        <span className="text-sm text-muted-foreground">
-          Auto-filled as the base when you name a new worktree branch. Leave blank to not auto-fill.
-        </span>
+        <span className="text-sm font-medium">{t("settings.git.baseBranchTitle")}</span>
+        <span className="text-sm text-muted-foreground">{t("settings.git.baseBranchHelper")}</span>
       </div>
       <Input
         type="text"
-        aria-label="Default base branch"
+        aria-label={t("settings.git.baseBranchTitle")}
         data-testid="settings-default-base-branch-input"
-        placeholder="e.g. main"
+        placeholder={t("settings.git.baseBranchPlaceholder")}
         spellCheck={false}
         autoCapitalize="off"
         autoCorrect="off"
@@ -675,6 +743,7 @@ function DefaultBaseBranchControl() {
  * per-device readability pref that doesn't conflict with host theming.
  */
 function UiFontSizeControl() {
+  const { t } = useTranslation();
   // `px` is the committed value: clamped, persisted, and applied to the UI.
   // `draft` is the raw text in the box, kept separate so mid-edit states the
   // committed value can't hold — a transient out-of-range number (e.g. "1" on
@@ -719,23 +788,21 @@ function UiFontSizeControl() {
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
       <div className="flex flex-col">
-        <span className="text-sm font-medium">Font size</span>
-        <span className="text-sm text-muted-foreground">
-          Scale the interface text and spacing on this device.
-        </span>
+        <span className="text-sm font-medium">{t("settings.fontSize.title")}</span>
+        <span className="text-sm text-muted-foreground">{t("settings.fontSize.helper")}</span>
       </div>
       {/* One cohesive pill: [ −  | value px |  + ]. Segments share the pill
           border via inner dividers rather than floating as separate boxes. */}
       <div
         role="group"
-        aria-label="Font size"
+        aria-label={t("settings.fontSize.title")}
         className={cn(
           "inline-flex h-9 items-stretch overflow-hidden rounded-lg border border-input bg-background transition-colors dark:bg-input/30",
           "focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50",
         )}
       >
         <StepperButton
-          label="Decrease font size"
+          label={t("settings.fontSize.decrease")}
           testId="ui-font-size-dec"
           disabled={atMin}
           onClick={() => commit(px - UI_FONT_SIZE_STEP)}
@@ -749,7 +816,7 @@ function UiFontSizeControl() {
             min={UI_FONT_SIZE_MIN}
             max={UI_FONT_SIZE_MAX}
             step={UI_FONT_SIZE_STEP}
-            aria-label="Font size in pixels"
+            aria-label={t("settings.fontSize.input")}
             data-testid="ui-font-size-input"
             className="w-8 bg-transparent text-center text-sm font-medium tabular-nums outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             value={draft}
@@ -761,7 +828,7 @@ function UiFontSizeControl() {
           />
         </div>
         <StepperButton
-          label="Increase font size"
+          label={t("settings.fontSize.increase")}
           testId="ui-font-size-inc"
           disabled={atMax}
           onClick={() => commit(px + UI_FONT_SIZE_STEP)}
@@ -782,6 +849,7 @@ function UiFontSizeControl() {
  * doesn't conflict with host theming.
  */
 function UiFontFamilyControl() {
+  const { t } = useTranslation();
   const [family, setFamily] = useState(() => readUiFontFamily());
 
   const update = useCallback((next: string) => {
@@ -798,15 +866,17 @@ function UiFontFamilyControl() {
           this column) so the input stays inline instead of dropping to its own
           row — matches the font-size row's alignment. */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="text-sm font-medium">Font family</span>
-        <span className="text-sm text-muted-foreground">
-          Use any font installed on this device. Leave blank for the system default.
-        </span>
+        <span className="text-sm font-medium">{t("settings.fontFamily.title")}</span>
+        <span className="text-sm text-muted-foreground">{t("settings.fontFamily.helper")}</span>
       </div>
       {/* Reset sits left of the input so the input is the rightmost element and
           its right edge lines up flush with the font-size stepper above.
           `invisible` (not removed) at the default keeps the row from shifting. */}
-      <div role="group" aria-label="Font family" className="flex shrink-0 items-center gap-2">
+      <div
+        role="group"
+        aria-label={t("settings.fontFamily.title")}
+        className="flex shrink-0 items-center gap-2"
+      >
         <Button
           type="button"
           variant="ghost"
@@ -816,13 +886,13 @@ function UiFontFamilyControl() {
           className={cn("h-9", isDefault && "invisible")}
           onClick={() => update(UI_FONT_FAMILY_DEFAULT)}
         >
-          Reset
+          {t("settings.fontFamily.reset")}
         </Button>
         <Input
           type="text"
-          aria-label="UI font family"
+          aria-label={t("settings.fontFamily.input")}
           data-testid="ui-font-family-input"
-          placeholder="System default"
+          placeholder={t("settings.fontFamily.placeholder")}
           spellCheck={false}
           autoCapitalize="off"
           autoCorrect="off"
@@ -843,6 +913,7 @@ function UiFontFamilyControl() {
  * behavior as UiFontSizeControl; only the bounds and storage differ.
  */
 function UiCodeFontSizeControl() {
+  const { t } = useTranslation();
   // `px` is the committed value; `draft` is the raw text in the box, kept
   // separate so a transient out-of-range/empty mid-edit state isn't clamped or
   // persisted on every keystroke. We only commit while typing when the draft is
@@ -883,23 +954,21 @@ function UiCodeFontSizeControl() {
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
       <div className="flex flex-col">
-        <span className="text-sm font-medium">Code font size</span>
-        <span className="text-sm text-muted-foreground">
-          Size of code in the editor and terminal.
-        </span>
+        <span className="text-sm font-medium">{t("settings.codeFontSize.title")}</span>
+        <span className="text-sm text-muted-foreground">{t("settings.codeFontSize.helper")}</span>
       </div>
       {/* One cohesive pill: [ −  | value px |  + ] — same shell as the UI
           font-size control. */}
       <div
         role="group"
-        aria-label="Code font size"
+        aria-label={t("settings.codeFontSize.title")}
         className={cn(
           "inline-flex h-9 items-stretch overflow-hidden rounded-lg border border-input bg-background transition-colors dark:bg-input/30",
           "focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50",
         )}
       >
         <StepperButton
-          label="Decrease code font size"
+          label={t("settings.codeFontSize.decrease")}
           testId="code-font-size-dec"
           disabled={atMin}
           onClick={() => commit(px - CODE_FONT_SIZE_STEP)}
@@ -913,7 +982,7 @@ function UiCodeFontSizeControl() {
             min={CODE_FONT_SIZE_MIN}
             max={CODE_FONT_SIZE_MAX}
             step={CODE_FONT_SIZE_STEP}
-            aria-label="Code font size in pixels"
+            aria-label={t("settings.codeFontSize.input")}
             data-testid="code-font-size-input"
             className="w-8 bg-transparent text-center text-sm font-medium tabular-nums outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             value={draft}
@@ -925,7 +994,7 @@ function UiCodeFontSizeControl() {
           />
         </div>
         <StepperButton
-          label="Increase code font size"
+          label={t("settings.codeFontSize.increase")}
           testId="code-font-size-inc"
           disabled={atMax}
           onClick={() => commit(px + CODE_FONT_SIZE_STEP)}
@@ -944,6 +1013,7 @@ function UiCodeFontSizeControl() {
  * pub/sub (see lib/codeFontPreferences.ts). Mirrors UiFontFamilyControl.
  */
 function UiCodeFontFamilyControl() {
+  const { t } = useTranslation();
   const [family, setFamily] = useState(() => readCodeFontFamily());
 
   const update = useCallback((next: string) => {
@@ -956,15 +1026,17 @@ function UiCodeFontFamilyControl() {
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="text-sm font-medium">Code font family</span>
-        <span className="text-sm text-muted-foreground">
-          Font for the code editor and terminal. Leave blank for the default.
-        </span>
+        <span className="text-sm font-medium">{t("settings.codeFontFamily.title")}</span>
+        <span className="text-sm text-muted-foreground">{t("settings.codeFontFamily.helper")}</span>
       </div>
       {/* Reset sits left of the input so the input's right edge lines up flush
           with the size stepper above. `invisible` (not removed) at the default
           keeps the row from shifting. */}
-      <div role="group" aria-label="Code font family" className="flex shrink-0 items-center gap-2">
+      <div
+        role="group"
+        aria-label={t("settings.codeFontFamily.title")}
+        className="flex shrink-0 items-center gap-2"
+      >
         <Button
           type="button"
           variant="ghost"
@@ -974,13 +1046,13 @@ function UiCodeFontFamilyControl() {
           className={cn("h-9", isDefault && "invisible")}
           onClick={() => update(CODE_FONT_FAMILY_DEFAULT)}
         >
-          Reset
+          {t("settings.codeFontFamily.reset")}
         </Button>
         <Input
           type="text"
-          aria-label="Code font family"
+          aria-label={t("settings.codeFontFamily.input")}
           data-testid="code-font-family-input"
-          placeholder="Editor default"
+          placeholder={t("settings.codeFontFamily.placeholder")}
           spellCheck={false}
           autoCapitalize="off"
           autoCorrect="off"
@@ -1026,8 +1098,12 @@ function StepperButton({
 }
 
 function ShortcutsSection() {
+  const { t } = useTranslation();
   return (
-    <Section title="Keyboard shortcuts" description="Speed up common actions with the keyboard.">
+    <Section
+      title={t("settings.shortcuts.title")}
+      description={t("settings.shortcuts.description")}
+    >
       <KeyboardShortcutsList />
     </Section>
   );
@@ -1041,6 +1117,7 @@ function ShortcutsSection() {
  * here since it chooses no path.
  */
 function LocalCliSection() {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<CliStatus | null | "loading">("loading");
   const [busy, setBusy] = useState(false);
 
@@ -1057,19 +1134,16 @@ function LocalCliSection() {
 
   if (status === "loading") {
     return (
-      <Section title="Local CLI">
-        <p className="text-sm text-muted-foreground">Checking…</p>
+      <Section title={t("settings.cli.title")}>
+        <p className="text-sm text-muted-foreground">{t("settings.cli.checking")}</p>
       </Section>
     );
   }
 
   return (
-    <Section
-      title="Local CLI"
-      description="The Omnigent command-line tool this app uses to run a local server and connect this machine as a runner."
-    >
+    <Section title={t("settings.cli.title")} description={t("settings.cli.description")}>
       {status === null ? (
-        <p className="text-sm text-muted-foreground">CLI status is unavailable.</p>
+        <p className="text-sm text-muted-foreground">{t("settings.cli.unavailable")}</p>
       ) : (
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-2 text-sm">
@@ -1082,15 +1156,19 @@ function LocalCliSection() {
             />
             <span>
               {status.installed
-                ? `Found${status.version ? ` · ${status.version}` : ""}`
-                : "Not found"}
+                ? status.version
+                  ? t("settings.cli.foundVersion", { version: status.version })
+                  : t("settings.cli.found")
+                : t("settings.cli.notFound")}
             </span>
           </div>
 
           {status.path ? (
             <div className="flex flex-col gap-1">
               <span className="text-xs text-muted-foreground">
-                {status.source === "configured" ? "Path (custom)" : "Path (auto-detected)"}
+                {status.source === "configured"
+                  ? t("settings.cli.pathCustom")
+                  : t("settings.cli.pathAuto")}
               </span>
               <code className="block overflow-x-auto rounded-md border border-border bg-muted/40 px-3 py-2 text-xs">
                 {status.path}
@@ -1098,10 +1176,7 @@ function LocalCliSection() {
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              <p className="text-sm text-muted-foreground">
-                The Omnigent CLI wasn't found. Install it, then set its path from the connect
-                screen:
-              </p>
+              <p className="text-sm text-muted-foreground">{t("settings.cli.missing")}</p>
               {status.installCommand && (
                 <code className="block overflow-x-auto rounded-md border border-border bg-muted/40 px-3 py-2 text-xs">
                   {status.installCommand}
@@ -1110,16 +1185,12 @@ function LocalCliSection() {
             </div>
           )}
 
-          <p className="text-xs text-muted-foreground">
-            For security, a custom path can only be set from the connect screen — this prevents a
-            connected server from pointing the app at a different binary. Open it from the Server
-            menu (Change Server…) and use the settings gear.
-          </p>
+          <p className="text-xs text-muted-foreground">{t("settings.cli.security")}</p>
 
           {status.source === "configured" && (
             <div>
               <Button variant="ghost" size="sm" disabled={busy} onClick={() => void onReset()}>
-                Reset to auto-detected
+                {t("settings.cli.reset")}
               </Button>
             </div>
           )}
@@ -1130,6 +1201,7 @@ function LocalCliSection() {
 }
 
 function AccountSection() {
+  const { t } = useTranslation();
   const info = useServerInfo();
   const accountsEnabled = info !== "loading" && info.accounts_enabled;
   // Identity for display. Sourced from the mode-agnostic `/v1/me` probe so it
@@ -1180,7 +1252,7 @@ function AccountSection() {
 
   const onSubmitPassword = useCallback(async () => {
     if (newPw !== confirmPw) {
-      setPwError("New passwords don't match.");
+      setPwError(t("settings.account.passwordMismatch"));
       return;
     }
     setPwBusy(true);
@@ -1192,17 +1264,17 @@ function AccountSection() {
       setOldPw("");
       setNewPw("");
       setConfirmPw("");
-    } else {
+    } else if ("error" in result) {
       setPwError(result.error);
     }
-  }, [oldPw, newPw, confirmPw]);
+  }, [oldPw, newPw, confirmPw, t]);
 
   if (me === "unknown" || me === null) {
-    return <Section title="Account">{null}</Section>;
+    return <Section title={t("settings.account.title")}>{null}</Section>;
   }
 
   return (
-    <Section title="Account">
+    <Section title={t("settings.account.title")}>
       <div className="flex flex-col gap-6">
         <div className="flex items-center gap-3">
           <span className="flex size-10 shrink-0 items-center justify-center rounded-md border border-border">
@@ -1212,7 +1284,9 @@ function AccountSection() {
             <div className="truncate font-medium">
               {me.id}
               {me.is_admin && (
-                <span className="ml-1 text-xs font-normal text-muted-foreground">(admin)</span>
+                <span className="ml-1 text-xs font-normal text-muted-foreground">
+                  ({t("settings.account.admin")})
+                </span>
               )}
             </div>
           </div>
@@ -1235,7 +1309,7 @@ function AccountSection() {
                 setPwOpen(true);
               }}
             >
-              <KeyRoundIcon className="size-4" /> Change password
+              <KeyRoundIcon className="size-4" /> {t("settings.account.changePassword")}
             </Button>
           )}
           <Button
@@ -1243,7 +1317,7 @@ function AccountSection() {
             className="w-full justify-start gap-2"
             onClick={() => void onSignOut()}
           >
-            <LogOutIcon className="size-4" /> Sign out
+            <LogOutIcon className="size-4" /> {t("settings.account.signOut")}
           </Button>
         </div>
       </div>
@@ -1257,11 +1331,11 @@ function AccountSection() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Change password</DialogTitle>
+            <DialogTitle>{t("settings.account.changePassword")}</DialogTitle>
             <DialogDescription>
               {pwDone
-                ? "Your password has been changed."
-                : "Enter your current password and choose a new one."}
+                ? t("settings.account.passwordChanged")
+                : t("settings.account.passwordInstructions")}
             </DialogDescription>
           </DialogHeader>
 
@@ -1276,7 +1350,7 @@ function AccountSection() {
               <Input
                 type="password"
                 autoComplete="current-password"
-                placeholder="Current password"
+                placeholder={t("settings.account.currentPassword")}
                 value={oldPw}
                 onChange={(e) => setOldPw(e.target.value)}
                 disabled={pwBusy}
@@ -1285,7 +1359,7 @@ function AccountSection() {
               <Input
                 type="password"
                 autoComplete="new-password"
-                placeholder="New password"
+                placeholder={t("settings.account.newPassword")}
                 value={newPw}
                 onChange={(e) => setNewPw(e.target.value)}
                 disabled={pwBusy}
@@ -1294,7 +1368,7 @@ function AccountSection() {
               <Input
                 type="password"
                 autoComplete="new-password"
-                placeholder="Confirm new password"
+                placeholder={t("settings.account.confirmPassword")}
                 value={confirmPw}
                 onChange={(e) => setConfirmPw(e.target.value)}
                 disabled={pwBusy}
@@ -1315,7 +1389,7 @@ function AccountSection() {
                     pwBusy || oldPw.length === 0 || newPw.length === 0 || confirmPw.length === 0
                   }
                 >
-                  {pwBusy ? "Changing…" : "Change password"}
+                  {pwBusy ? t("settings.account.changing") : t("settings.account.changePassword")}
                 </Button>
               </DialogFooter>
             </form>
@@ -1323,7 +1397,7 @@ function AccountSection() {
 
           {pwDone && (
             <DialogFooter>
-              <Button onClick={() => setPwOpen(false)}>Done</Button>
+              <Button onClick={() => setPwOpen(false)}>{t("settings.account.done")}</Button>
             </DialogFooter>
           )}
         </DialogContent>
@@ -1333,6 +1407,7 @@ function AccountSection() {
 }
 
 function ArchivedSection() {
+  const { t } = useTranslation();
   // includeArchived:true is the only way to load archived rows; the
   // default sidebar query no longer surfaces them.
   const query = useConversations("", true);
@@ -1342,14 +1417,11 @@ function ArchivedSection() {
   );
 
   return (
-    <Section
-      title="Archived sessions"
-      description="Sessions you've archived. Restore one to the sidebar, or delete it for good."
-    >
+    <Section title={t("settings.archived.title")} description={t("settings.archived.description")}>
       {query.isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
+        <p className="text-sm text-muted-foreground">{t("settings.archived.loading")}</p>
       ) : archived.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No archived sessions.</p>
+        <p className="text-sm text-muted-foreground">{t("settings.archived.empty")}</p>
       ) : (
         <ul className="flex flex-col gap-0.5">
           {archived.map((conv) => (
@@ -1367,6 +1439,7 @@ function ArchivedSection() {
  * Delete / Unarchive controls reveal on hover (always visible on touch).
  */
 function ArchivedRow({ conversation }: { conversation: Conversation }) {
+  const { t } = useTranslation();
   const archive = useArchiveConversation();
   const del = useStopAndDeleteConversation();
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -1392,7 +1465,7 @@ function ArchivedRow({ conversation }: { conversation: Conversation }) {
           type="button"
           variant="ghost"
           size="icon-sm"
-          aria-label="Delete session"
+          aria-label={t("settings.archived.deleteSession")}
           data-testid="delete-archived"
           disabled={busy}
           onClick={() => setDeleteOpen(true)}
@@ -1412,22 +1485,22 @@ function ArchivedRow({ conversation }: { conversation: Conversation }) {
           onClick={() => archive.mutate({ id: conversation.id, archived: false })}
         >
           <ArchiveRestoreIcon className="size-3.5" />
-          Unarchive
+          {t("settings.archived.unarchive")}
         </Button>
       </div>
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete session?</DialogTitle>
+            <DialogTitle>{t("settings.archived.deleteTitle")}</DialogTitle>
             <DialogDescription>
-              <span className="font-medium break-all">{label}</span> and all of its history will be
-              removed. This cannot be undone.
+              <span className="font-medium break-all">{label}</span>{" "}
+              {t("settings.archived.deleteHistory")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setDeleteOpen(false)} disabled={del.isPending}>
-              Cancel
+              {t("settings.archived.cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -1439,7 +1512,7 @@ function ArchivedRow({ conversation }: { conversation: Conversation }) {
                 setDeleteOpen(false);
               }}
             >
-              Delete
+              {t("settings.archived.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>

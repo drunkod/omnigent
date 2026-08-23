@@ -21,6 +21,7 @@ import * as conversationsHook from "@/hooks/useConversations";
 import * as commentInboxHook from "@/hooks/useCommentInbox";
 import * as sessionsApi from "@/lib/sessionsApi";
 import type { CommentInbox } from "@/hooks/useCommentInbox";
+import i18n from "@/i18n";
 
 // Minimal ApprovalCard stub: renders the message and an Accept button that
 // forwards to the page's submit handler. The real card's form/preview UX is
@@ -114,6 +115,7 @@ function renderPage() {
 }
 
 beforeEach(() => {
+  void i18n.changeLanguage("en");
   vi.mocked(conversationsHook.useConversations).mockReturnValue(conversationsStub([]));
   vi.mocked(commentInboxHook.useCommentInbox).mockReturnValue(commentInboxStub());
   vi.mocked(sessionsApi.getSession).mockResolvedValue({
@@ -126,6 +128,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  void i18n.changeLanguage("en");
   vi.clearAllMocks();
 });
 
@@ -140,7 +143,28 @@ describe("InboxPage states", () => {
     expect(screen.getByText("Loading inbox…")).toBeInTheDocument();
   });
 
-  it("shows the empty state once settled with nothing waiting", async () => {
+  it("renders the empty state in Russian when the locale changes", async () => {
+    await i18n.changeLanguage("ru");
+    renderPage();
+    expect(await screen.findByText("Для вас ничего нет")).toBeInTheDocument();
+  });
+
+  it("uses Russian plural forms in the count summary", async () => {
+    await i18n.changeLanguage("ru");
+    const row = conversation({ pending_elicitations_count: 2 });
+    vi.mocked(conversationsHook.useConversations).mockReturnValue(conversationsStub([row]));
+    vi.mocked(sessionsApi.getSession).mockResolvedValue({
+      pendingElicitations: [
+        rawElicitation("eli_1", "Approve this?"),
+        rawElicitation("eli_2", "Approve that?"),
+      ],
+    } as unknown as Awaited<ReturnType<typeof sessionsApi.getSession>>);
+    renderPage();
+
+    expect(await screen.findByText(/2 запроса на подтверждение/)).toBeInTheDocument();
+  });
+
+  it("shows an empty state once settled with nothing waiting", async () => {
     // WHY: a settled list with no approvals and no comments shows the
     // "Nothing waiting on you" empty state.
     renderPage();

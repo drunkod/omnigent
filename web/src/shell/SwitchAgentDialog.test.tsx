@@ -6,6 +6,7 @@ import { SwitchAgentDialog } from "./SwitchAgentDialog";
 import { switchSessionAgent } from "@/lib/sessionsApi";
 import { useAvailableAgents } from "@/hooks/useAvailableAgents";
 import { useSessionAgent } from "@/hooks/useAgents";
+import i18n from "@/i18n";
 
 vi.mock("@/lib/sessionsApi", () => ({ switchSessionAgent: vi.fn() }));
 vi.mock("@/hooks/useAvailableAgents", () => ({ useAvailableAgents: vi.fn() }));
@@ -85,6 +86,12 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("SwitchAgentDialog", () => {
+  it("renders the English fallback for the residual title key", async () => {
+    await i18n.changeLanguage("en");
+    renderDialog();
+    expect(screen.getByText("Switch agent")).toBeInTheDocument();
+  });
+
   it("offers history-preserving targets including cross-family codex-native", () => {
     // Current harness is claude-sdk (anthropic): every classifiable target
     // carries history — SDK targets as replayed context, native targets via

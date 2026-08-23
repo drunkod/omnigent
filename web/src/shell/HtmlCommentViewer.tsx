@@ -10,6 +10,7 @@
 // trust model.
 
 import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MessageSquarePlusIcon } from "lucide-react";
 import { type Comment } from "@/hooks/useComments";
@@ -80,6 +81,7 @@ export function HtmlCommentViewer({
   activeSelection,
   onSetActiveSelection,
 }: HtmlCommentViewerProps) {
+  const { t } = useTranslation();
   const canEdit = useCanEdit(conversationId);
 
   // A fresh nonce + srcDoc per content load. Changing srcDoc reloads the iframe
@@ -235,7 +237,7 @@ export function HtmlCommentViewer({
       srcDoc={srcDoc}
       // oxlint-disable-next-line eslint-plugin-react(iframe-missing-sandbox)
       sandbox={HTML_PREVIEW_SANDBOX}
-      title="HTML preview"
+      title={t("panels.codeViewer.htmlPreview", { defaultValue: "HTML preview" })}
       className="w-full h-full border-0"
     />
   );
@@ -262,7 +264,7 @@ export function HtmlCommentViewer({
             }}
           >
             <MessageSquarePlusIcon className="size-3.5" />
-            Add comment
+            {t("panels.codeViewer.addComment", { defaultValue: "Add comment" })}
           </button>,
           getEmbedRoot() ?? document.body,
         )}

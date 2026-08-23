@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { PlusIcon, TrashIcon } from "lucide-react";
 import {
   Dialog,
@@ -119,6 +120,7 @@ export function CreateAgentDialog({
   onOpenChange: (open: boolean) => void;
   onCreate: (input: AgentBundleInput) => void;
 }) {
+  const { t } = useTranslation();
   const brainHarnessLabels = useBrainHarnessLabels();
   const harnessOptions = Object.entries(brainHarnessLabels).map(([value, label]) => ({
     value,
@@ -185,7 +187,9 @@ export function CreateAgentDialog({
         className="flex max-h-[85vh] flex-col gap-4 sm:max-w-lg"
       >
         <DialogHeader>
-          <DialogTitle>Create custom agent</DialogTitle>
+          <DialogTitle>
+            {t("dialogs.createAgent.title", { defaultValue: "Create custom agent" })}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
@@ -195,7 +199,8 @@ export function CreateAgentDialog({
               htmlFor="create-agent-name"
               className="text-xs font-medium text-muted-foreground"
             >
-              Name <span className="text-destructive">*</span>
+              {t("dialogs.createAgent.name", { defaultValue: "Name" })}{" "}
+              <span className="text-destructive">*</span>
             </label>
             <Input
               id="create-agent-name"
@@ -213,21 +218,24 @@ export function CreateAgentDialog({
               htmlFor="create-agent-description"
               className="text-xs font-medium text-muted-foreground"
             >
-              Description
+              {t("dialogs.createAgent.description", { defaultValue: "Description" })}
             </label>
             <Input
               id="create-agent-description"
               data-testid="create-agent-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="A short summary of what this agent does"
+              placeholder={t("dialogs.createAgent.descriptionPlaceholder", {
+                defaultValue: "A short summary of what this agent does",
+              })}
             />
           </div>
 
           {/* Harness */}
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-muted-foreground">
-              Harness <span className="text-destructive">*</span>
+              {t("dialogs.createAgent.harness", { defaultValue: "Harness" })}{" "}
+              <span className="text-destructive">*</span>
             </label>
             <Select value={harness} onValueChange={setHarness}>
               <SelectTrigger data-testid="create-agent-harness" className="w-full">
@@ -249,7 +257,8 @@ export function CreateAgentDialog({
               htmlFor="create-agent-model"
               className="text-xs font-medium text-muted-foreground"
             >
-              Model <span className="text-destructive">*</span>
+              {t("dialogs.createAgent.model", { defaultValue: "Model" })}{" "}
+              <span className="text-destructive">*</span>
             </label>
             <Input
               id="create-agent-model"
@@ -266,14 +275,18 @@ export function CreateAgentDialog({
               htmlFor="create-agent-instructions"
               className="text-xs font-medium text-muted-foreground"
             >
-              System instructions
+              {t("dialogs.createAgent.systemInstructions", {
+                defaultValue: "System instructions",
+              })}
             </label>
             <Textarea
               id="create-agent-instructions"
               data-testid="create-agent-instructions"
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
-              placeholder="You are a helpful assistant that..."
+              placeholder={t("dialogs.createAgent.instructionsPlaceholder", {
+                defaultValue: "You are a helpful assistant that...",
+              })}
               className="min-h-[120px]"
             />
           </div>
@@ -281,7 +294,9 @@ export function CreateAgentDialog({
           {/* MCP Servers */}
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-muted-foreground">MCP Tools</span>
+              <span className="text-xs font-medium text-muted-foreground">
+                {t("dialogs.createAgent.mcpTools", { defaultValue: "MCP Tools" })}
+              </span>
               <Button
                 type="button"
                 variant="ghost"
@@ -291,7 +306,7 @@ export function CreateAgentDialog({
                 className="h-6 gap-1 px-2 text-xs text-muted-foreground"
               >
                 <PlusIcon className="size-3" />
-                Add server
+                {t("dialogs.createAgent.addServer", { defaultValue: "Add server" })}
               </Button>
             </div>
             {mcpEntries.map((entry) => (
@@ -307,10 +322,10 @@ export function CreateAgentDialog({
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => handleOpenChange(false)}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button data-testid="create-agent-submit" onClick={handleSubmit} disabled={!canSubmit}>
-            Create
+            {t("dialogs.createAgent.create", { defaultValue: "Create" })}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -328,6 +343,8 @@ function MCPServerRow({
   onChange: (patch: Partial<MCPFormEntry>) => void;
   onRemove: () => void;
 }) {
+  const { t } = useTranslation();
+
   return (
     <div
       className="flex flex-col gap-2 rounded-md border border-border p-3"
@@ -371,19 +388,28 @@ function MCPServerRow({
             data-testid="create-agent-mcp-command"
             value={entry.command}
             onChange={(e) => onChange({ command: e.target.value })}
-            placeholder="command (e.g. npx)"
+            placeholder={t("dialogs.createAgent.commandPlaceholder", {
+              defaultValue: "command (e.g. {{command}})",
+              command: "npx",
+            })}
           />
           <Input
             data-testid="create-agent-mcp-args"
             value={entry.args}
             onChange={(e) => onChange({ args: e.target.value })}
-            placeholder="args (e.g. -y @modelcontextprotocol/server-github)"
+            placeholder={t("dialogs.createAgent.argsPlaceholder", {
+              defaultValue: "args (e.g. {{args}})",
+              args: "-y @modelcontextprotocol/server-github",
+            })}
           />
           <Textarea
             data-testid="create-agent-mcp-env"
             value={entry.env}
             onChange={(e) => onChange({ env: e.target.value })}
-            placeholder={"Environment variables (KEY=VALUE per line)\ne.g. GITHUB_TOKEN=ghp_..."}
+            placeholder={t("dialogs.createAgent.environmentPlaceholder", {
+              defaultValue: "Environment variables (KEY=VALUE per line)\ne.g. {{example}}",
+              example: "GITHUB_TOKEN=ghp_...",
+            })}
             className="min-h-[60px] font-mono text-xs"
           />
         </>
@@ -399,7 +425,10 @@ function MCPServerRow({
             data-testid="create-agent-mcp-headers"
             value={entry.headers}
             onChange={(e) => onChange({ headers: e.target.value })}
-            placeholder={"HTTP headers (KEY=VALUE per line)\ne.g. Authorization=Bearer tok_..."}
+            placeholder={t("dialogs.createAgent.headersPlaceholder", {
+              defaultValue: "HTTP headers (KEY=VALUE per line)\ne.g. {{example}}",
+              example: "Authorization=Bearer tok_...",
+            })}
             className="min-h-[60px] font-mono text-xs"
           />
         </>

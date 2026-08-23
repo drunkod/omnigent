@@ -15,6 +15,8 @@
 // click opens it in a new tab, matching the sidebar's behavior.
 
 import { useState } from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import type { ComponentType, SVGProps } from "react";
 import {
   BookOpenIcon,
@@ -91,6 +93,7 @@ interface SubagentsPanelProps {
 }
 
 export function SubagentsPanel({ conversationId, rootSessionId }: SubagentsPanelProps) {
+  const { t } = useTranslation();
   // Every list in the tree polls at TREE_POLL_MS as a staleness floor;
   // stream pushes remain the fast path. The stream only carries
   // ``session.child_session.updated`` for the *streamed* (active)
@@ -108,14 +111,14 @@ export function SubagentsPanel({ conversationId, rootSessionId }: SubagentsPanel
   if (isLoading && children.length === 0) {
     return (
       <div className="flex h-full flex-1 items-center justify-center px-4 py-8 text-center text-xs text-muted-foreground bg-card">
-        Loading…
+        {t("panels.subagents.loading", { defaultValue: "Loading…" })}
       </div>
     );
   }
   if (error && children.length === 0) {
     return (
       <div className="flex h-full flex-1 items-center justify-center px-4 py-8 text-center text-xs text-muted-foreground bg-card">
-        Failed to load agents.
+        {t("panels.subagents.loadFailed", { defaultValue: "Failed to load agents." })}
       </div>
     );
   }
@@ -129,7 +132,7 @@ export function SubagentsPanel({ conversationId, rootSessionId }: SubagentsPanel
         className="hidden"
       >
         <PlusIcon className="size-3.5 shrink-0" />
-        Add agent
+        {t("panels.subagents.addAgent", { defaultValue: "Add agent" })}
       </button>
       <ul className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-1">
         <MainRow rootSessionId={rootSessionId} isActive={conversationId === rootSessionId} />
@@ -200,44 +203,68 @@ function firstErrorLine(message: string): string {
  * @returns The collapsed activity + its label, e.g.
  *   ``{ activity: "working", label: "Working" }``.
  */
-function childStatus(child: ChildSessionInfo): AgentStatus {
+function childStatus(child: ChildSessionInfo, t: TFunction): AgentStatus {
   // Awaiting input outranks ``busy``: a sub-agent parked on an
   // elicitation is still "running" its turn (the future is pending),
   // so checking ``busy`` first would hide the prompt behind a generic
   // "Working" pill — exactly the signal the user needs to act on.
   if (child.pending_elicitations_count > 0) {
-    return { activity: "awaiting", label: "Needs response" };
+    return {
+      activity: "awaiting",
+      label: t("panels.subagents.status.needsResponse", { defaultValue: "Needs response" }),
+    };
   }
   // ``busy`` is the authoritative live flag (queued or in_progress);
   // ``current_task_status`` may be "launching", "completed", "failed",
   // "cancelled", or null when no task has run yet.
   if (child.current_task_status === "launching") {
-    return { activity: "launching", label: "Launching" };
+    return {
+      activity: "launching",
+      label: t("panels.subagents.status.launching", { defaultValue: "Launching" }),
+    };
   }
-  if (child.busy) return { activity: "working", label: "Working" };
+  if (child.busy) {
+    return {
+      activity: "working",
+      label: t("panels.subagents.status.working", { defaultValue: "Working" }),
+    };
+  }
   // A runner disconnect/exit is NOT a task failure — branch on the error
   // code before the generic failed paths so it renders the quiet blue
   // disconnected dot instead of the red "Failed" pill.
   if (isRunnerDisconnectCode(child.last_task_error?.code)) {
     return {
       activity: "disconnected",
-      label: "Disconnected",
+      label: t("panels.subagents.status.disconnected", { defaultValue: "Disconnected" }),
       details: child.last_task_error ? firstErrorLine(child.last_task_error.message) : undefined,
     };
   }
   if (child.last_task_error) {
     return {
       activity: "failed",
-      label: "Failed",
+      label: t("panels.subagents.status.failed", { defaultValue: "Failed" }),
       details: firstErrorLine(child.last_task_error.message),
     };
   }
-  if (child.current_task_status === "failed") return { activity: "failed", label: "Failed" };
-  if (child.current_task_status === "completed") return { activity: "done", label: "Done" };
+  if (child.current_task_status === "failed") {
+    return {
+      activity: "failed",
+      label: t("panels.subagents.status.failed", { defaultValue: "Failed" }),
+    };
+  }
+  if (child.current_task_status === "completed") {
+    return {
+      activity: "done",
+      label: t("panels.subagents.status.done", { defaultValue: "Done" }),
+    };
+  }
   if (child.current_task_status) {
     return { activity: "other", label: child.current_task_status };
   }
-  return { activity: "idle", label: "Idle" };
+  return {
+    activity: "idle",
+    label: t("panels.subagents.status.idle", { defaultValue: "Idle" }),
+  };
 }
 
 /**
@@ -252,10 +279,21 @@ function childStatus(child: ChildSessionInfo): AgentStatus {
  */
 function sessionStatus(
   status: string | undefined,
-  lastTaskError?: { code: string; message: string } | null,
+  lastTaskError: { code: string; message: string } | null | undefined,
+  t: TFunction,
 ): AgentStatus {
-  if (status === "launching") return { activity: "launching", label: "Launching" };
-  if (status === "running") return { activity: "working", label: "Working" };
+  if (status === "launching") {
+    return {
+      activity: "launching",
+      label: t("panels.subagents.status.launching", { defaultValue: "Launching" }),
+    };
+  }
+  if (status === "running") {
+    return {
+      activity: "working",
+      label: t("panels.subagents.status.working", { defaultValue: "Working" }),
+    };
+  }
   if (status === "failed") {
     // A runner disconnect/exit collapses the snapshot to ``failed`` but
     // preserves the cause in ``lastTaskError.code`` — branch on it before
@@ -264,13 +302,19 @@ function sessionStatus(
     if (isRunnerDisconnectCode(lastTaskError?.code)) {
       return {
         activity: "disconnected",
-        label: "Disconnected",
+        label: t("panels.subagents.status.disconnected", { defaultValue: "Disconnected" }),
         details: lastTaskError ? firstErrorLine(lastTaskError.message) : undefined,
       };
     }
-    return { activity: "failed", label: "Failed" };
+    return {
+      activity: "failed",
+      label: t("panels.subagents.status.failed", { defaultValue: "Failed" }),
+    };
   }
-  return { activity: "idle", label: "Idle" };
+  return {
+    activity: "idle",
+    label: t("panels.subagents.status.idle", { defaultValue: "Idle" }),
+  };
 }
 
 // Dot color per dot-rendered state. Working uses the animated RunningDot
@@ -411,7 +455,14 @@ function brandChildIcon(child: ChildSessionInfo): AgentRowIcon | null {
  * @param status - The resolved activity + label to render.
  */
 function StatusIndicator({ activity, label, details }: AgentStatus) {
-  const title = details ? `${label}: ${details}` : label;
+  const { t } = useTranslation();
+  const title = details
+    ? t("panels.subagents.status.withDetails", {
+        defaultValue: "{{label}}: {{message}}",
+        label,
+        message: details,
+      })
+    : label;
   // Awaiting renders the exact same "Needs response" tag as the sidebar
   // (SessionStateBadge) so the approval affordance reads identically across
   // the app. The tag carries its own copy, so the row's separate label word
@@ -424,7 +475,7 @@ function StatusIndicator({ activity, label, details }: AgentStatus) {
         data-testid="subagent-status-dot"
         className="inline-flex shrink-0 items-center text-xs"
       >
-        <Badge className="border-transparent bg-warning/15 text-warning">Needs response</Badge>
+        <Badge className="border-transparent bg-warning/15 text-warning">{label}</Badge>
       </span>
     );
   }
@@ -575,6 +626,7 @@ function iconForWrapperOrHarness(
 }
 
 function MainRow({ rootSessionId, isActive }: { rootSessionId: string; isActive: boolean }) {
+  const { t } = useTranslation();
   const { session } = useSession(rootSessionId);
   const search = railLinkSearch(useLocation().search);
   // Same wrapper-label probe used by the sidebar (Sidebar.tsx) and
@@ -587,7 +639,10 @@ function MainRow({ rootSessionId, isActive }: { rootSessionId: string; isActive:
   // of the spec's YAML name (e.g. "claude-native-ui"); other agents show
   // their agent name, with "main" only while the session loads or when it
   // carries no name.
-  const label = nativeAgent?.displayName ?? session?.agentName ?? "main";
+  const label =
+    nativeAgent?.displayName ??
+    session?.agentName ??
+    t("panels.subagents.main", { defaultValue: "main" });
   const preview = mainMessagePreview(session?.items);
   return (
     <li>
@@ -612,7 +667,7 @@ function MainRow({ rootSessionId, isActive }: { rootSessionId: string; isActive:
           <Icon className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="shrink-0 truncate text-xs font-medium">{label}</span>
           <span className="flex-1" />
-          <StatusIndicator {...sessionStatus(session?.status, session?.lastTaskError)} />
+          <StatusIndicator {...sessionStatus(session?.status, session?.lastTaskError, t)} />
         </div>
         {preview && (
           // Indented to align with the title text above: 14px icon + 4px gap.
@@ -650,7 +705,8 @@ function SubagentRow({
   /** The conversation currently rendered in main, for row highlighting. */
   conversationId: string;
 }) {
-  const status = childStatus(child);
+  const { t } = useTranslation();
+  const status = childStatus(child, t);
   const search = railLinkSearch(useLocation().search);
   const Icon = brandChildIcon(child) ?? iconForAgentType(child.tool);
   const primary = childPrimaryLabel(child);

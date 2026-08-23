@@ -12,6 +12,7 @@ import {
   ShareIcon,
   TerminalIcon,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Link } from "@/lib/routing";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -181,6 +182,8 @@ export function ChatHeader({
   onToggleRightPanel,
   mobileMenu,
 }: ChatHeaderProps) {
+  const { t } = useTranslation();
+
   return (
     <header
       className={cn(
@@ -211,7 +214,7 @@ export function ChatHeader({
                 type="button"
                 variant="ghost"
                 size="icon"
-                aria-label="Open sidebar"
+                aria-label={t("chat.header.openSidebar")}
                 onClick={onOpenSidebar}
                 className="text-muted-foreground hover:text-foreground"
               >
@@ -220,7 +223,7 @@ export function ChatHeader({
             </TooltipTrigger>
             {/* Bottom placement keeps the tooltip clear of the macOS
                 Electron shell's traffic lights at the window's top edge. */}
-            <TooltipContent side="bottom">Open sidebar</TooltipContent>
+            <TooltipContent side="bottom">{t("chat.header.openSidebar")}</TooltipContent>
           </Tooltip>
         )}
         {isChildSession && parentSessionId && (
@@ -238,9 +241,9 @@ export function ChatHeader({
               size="sm"
               className="gap-0.5 pl-1.5 pr-2 text-muted-foreground hover:text-foreground"
             >
-              <Link to={`/c/${parentSessionId}`} aria-label="Back to parent session">
+              <Link to={`/c/${parentSessionId}`} aria-label={t("chat.header.backToParentSession")}>
                 <ChevronLeftIcon className="size-4" />
-                <span>Back</span>
+                <span>{t("chat.header.back")}</span>
               </Link>
             </Button>
             {/* Divider + sub-agent identity. The agent name (from the bound
@@ -257,10 +260,12 @@ export function ChatHeader({
                   <span className="truncate text-sm font-semibold text-foreground">
                     {boundAgent.name}
                   </span>
-                  <span className="text-xs text-muted-foreground">Sub-agent</span>
+                  <span className="text-xs text-muted-foreground">{t("chat.header.subAgent")}</span>
                 </div>
               ) : (
-                <span className="text-sm font-semibold text-foreground">Sub-agent</span>
+                <span className="text-sm font-semibold text-foreground">
+                  {t("chat.header.subAgent")}
+                </span>
               )}
             </div>
           </>
@@ -299,7 +304,7 @@ export function ChatHeader({
                 type="button"
                 variant="ghost"
                 size="icon"
-                aria-label="Session actions"
+                aria-label={t("chat.header.sessionActions")}
                 data-testid="session-actions-menu"
                 className="text-muted-foreground hover:text-foreground md:hidden"
               >
@@ -316,7 +321,7 @@ export function ChatHeader({
                   className="gap-2.5 px-2.5 py-2 text-base"
                 >
                   <ShareIcon className="size-4" />
-                  Share
+                  {t("chat.header.share")}
                 </DropdownMenuItem>
               )}
               {hasAgentInfo && (
@@ -326,7 +331,7 @@ export function ChatHeader({
                   className="gap-2.5 px-2.5 py-2 text-base"
                 >
                   <InfoIcon className="size-4" />
-                  Agent info
+                  {t("chat.header.agentInfo")}
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>
@@ -339,12 +344,14 @@ export function ChatHeader({
                   owns hover/focus for the explanatory tooltip. */}
               <span
                 tabIndex={0}
-                aria-label={`Share session disabled: ${shareDisabledReason}`}
+                aria-label={t("chat.header.shareSessionDisabled", {
+                  reason: shareDisabledReason,
+                })}
                 className="hidden md:inline-flex"
               >
                 <Button
                   type="button"
-                  aria-label="Share session"
+                  aria-label={t("chat.header.shareSession")}
                   disabled
                   title={shareDisabledReason}
                   // share-button-glassy (index.css) paints the pink gradient,
@@ -352,7 +359,7 @@ export function ChatHeader({
                   className="share-button-glassy h-8 rounded-full px-6 text-13 font-normal text-white"
                 >
                   <ShareIcon className="size-4" />
-                  Share
+                  {t("chat.header.share")}
                 </Button>
               </span>
             </TooltipTrigger>
@@ -361,14 +368,14 @@ export function ChatHeader({
         ) : canShare ? (
           <Button
             type="button"
-            aria-label="Share session"
+            aria-label={t("chat.header.shareSession")}
             onClick={onShare}
             // share-button-glassy (index.css) paints the pink gradient,
             // shadow, and white text in both light and dark mode.
             className="share-button-glassy hidden h-8 rounded-full px-6 text-13 font-normal text-white md:inline-flex"
           >
             <ShareIcon className="size-4" />
-            Share
+            {t("chat.header.share")}
           </Button>
         ) : null}
         {conversationId && hasRailContent && (
@@ -378,7 +385,11 @@ export function ChatHeader({
                 type="button"
                 variant="ghost"
                 size="icon"
-                aria-label={rightPanelOpen ? "Collapse right panel" : "Expand right panel"}
+                aria-label={
+                  rightPanelOpen
+                    ? t("chat.header.collapseRightPanel")
+                    : t("chat.header.expandRightPanel")
+                }
                 onClick={onToggleRightPanel}
                 className="hidden md:inline-flex text-muted-foreground hover:text-foreground"
               >
@@ -390,7 +401,9 @@ export function ChatHeader({
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              {rightPanelOpen ? "Collapse right panel" : "Expand right panel"}
+              {rightPanelOpen
+                ? t("chat.header.collapseRightPanel")
+                : t("chat.header.expandRightPanel")}
             </TooltipContent>
           </Tooltip>
         )}
@@ -419,7 +432,7 @@ export function ChatHeader({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  aria-label="Open session menu"
+                  aria-label={t("chat.header.openSessionMenu")}
                   className="text-muted-foreground hover:text-foreground md:hidden"
                 >
                   <PanelRightIcon className="size-4" />
@@ -432,7 +445,7 @@ export function ChatHeader({
                     className="gap-2.5 px-2.5 py-2 text-base"
                   >
                     <FileIcon className="size-4" />
-                    Files
+                    {t("chat.header.files")}
                     {mobileMenu.changedCount > 0 && (
                       <span
                         className={cn(TAB_BADGE_BASE, "ml-auto bg-muted text-muted-foreground")}
@@ -450,7 +463,7 @@ export function ChatHeader({
                   className="gap-2.5 px-2.5 py-2 text-base"
                 >
                   <BotIcon className="size-4" />
-                  Agents
+                  {t("chat.header.agents")}
                   <span
                     className={cn(
                       TAB_BADGE_BASE,
@@ -475,7 +488,7 @@ export function ChatHeader({
                     className="gap-2.5 px-2.5 py-2 text-base"
                   >
                     <TerminalIcon className="size-4" />
-                    Shells
+                    {t("chat.header.shells")}
                     {mobileMenu.terminalsLength > 0 && (
                       <span
                         className={cn(TAB_BADGE_BASE, "ml-auto bg-muted text-muted-foreground")}
@@ -491,7 +504,7 @@ export function ChatHeader({
                     className="gap-2.5 px-2.5 py-2 text-base"
                   >
                     <ListTodoIcon className="size-4" />
-                    Tasks
+                    {t("chat.header.tasks")}
                     <span className={cn(TAB_BADGE_BASE, "ml-auto bg-muted text-muted-foreground")}>
                       {mobileMenu.todosCompleted}/{mobileMenu.todosTotal}
                     </span>
@@ -503,7 +516,7 @@ export function ChatHeader({
                     className="gap-2.5 px-2.5 py-2 text-base"
                   >
                     <ListIcon className="size-4" />
-                    Logs
+                    {t("chat.header.logs")}
                   </DropdownMenuItem>
                 )}
               </DropdownMenuContent>

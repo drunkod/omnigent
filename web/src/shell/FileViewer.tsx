@@ -43,6 +43,7 @@ import {
   SquareArrowOutUpRightIcon,
   Trash2Icon,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useSearchParams } from "@/lib/routing";
 import { Button } from "@/components/ui/button";
 import {
@@ -327,6 +328,7 @@ function FileViewerBody({
   onCommentsOpenChange,
   sort = "recent",
 }: FileViewerProps) {
+  const { t } = useTranslation();
   // null = single-user mode (no enforcement); undefined = prop not provided (treat as unrestricted).
   // LEVEL_EDIT = 2; levels below 2 are read-only.
   const canEdit = permissionLevel == null || permissionLevel >= 2;
@@ -793,24 +795,24 @@ function FileViewerBody({
     const modeOptions: ToolbarOption[] = [
       {
         key: "md-preview",
-        label: "Preview",
-        tooltip: "Rendered preview",
+        label: t("panels.fileViewer.preview", { defaultValue: "Preview" }),
+        tooltip: t("panels.fileViewer.previewTooltip", { defaultValue: "Rendered preview" }),
         icon: <EyeIcon className="size-4" />,
         active: viewMode === "preview",
         onSelect: () => switchTo("preview"),
       },
       {
         key: "md-edit",
-        label: "Edit",
-        tooltip: "Rich text editor",
+        label: t("panels.fileViewer.edit", { defaultValue: "Edit" }),
+        tooltip: t("panels.fileViewer.editTooltip", { defaultValue: "Rich text editor" }),
         icon: <PencilLineIcon className="size-4" />,
         active: viewMode === "editor",
         onSelect: () => switchTo("editor"),
       },
       {
         key: "md-source",
-        label: "Source",
-        tooltip: "Raw Markdown source",
+        label: t("panels.fileViewer.source", { defaultValue: "Source" }),
+        tooltip: t("panels.fileViewer.sourceTooltip", { defaultValue: "Raw Markdown source" }),
         icon: <CodeIcon className="size-4" />,
         active: viewMode === "source",
         onSelect: () => switchTo("source"),
@@ -819,8 +821,11 @@ function FileViewerBody({
     const activeMode = modeOptions.find((o) => o.active) ?? modeOptions[0];
     toolbarActions.push({
       key: "md-view-mode",
-      label: `View mode: ${activeMode.label}`,
-      tooltip: "View mode",
+      label: t("panels.fileViewer.viewModeWithLabel", {
+        defaultValue: "View mode: {{label}}",
+        label: activeMode.label,
+      }),
+      tooltip: t("panels.fileViewer.viewMode", { defaultValue: "View mode" }),
       icon: activeMode.icon,
       options: modeOptions,
     });
@@ -829,7 +834,10 @@ function FileViewerBody({
     // preview ↔ source.
     toolbarActions.push({
       key: "preview",
-      label: viewMode === "preview" ? "View source" : "View preview",
+      label:
+        viewMode === "preview"
+          ? t("panels.fileViewer.viewSource", { defaultValue: "View source" })
+          : t("panels.fileViewer.viewPreview", { defaultValue: "View preview" }),
       icon:
         viewMode === "preview" ? <CodeIcon className="size-4" /> : <EyeIcon className="size-4" />,
       // Write the absolute target keyed off the RESOLVED viewMode, not the raw
@@ -848,14 +856,16 @@ function FileViewerBody({
   if (lang === "html" && fileQuery.data && viewMode !== "diff") {
     toolbarActions.push({
       key: "open-new-tab",
-      label: "Open in new tab",
+      label: t("panels.fileViewer.openInNewTab", { defaultValue: "Open in new tab" }),
       icon: <SquareArrowOutUpRightIcon className="size-4" />,
       onSelect: openHtmlInNewTab,
     });
   }
   toolbarActions.push({
     key: "comments",
-    label: commentsOpen ? "Hide comments" : "Show comments",
+    label: commentsOpen
+      ? t("panels.fileViewer.hideComments", { defaultValue: "Hide comments" })
+      : t("panels.fileViewer.showComments", { defaultValue: "Show comments" }),
     icon: <MessageSquareTextIcon className="size-4" />,
     active: commentsOpen,
     onSelect: () => {
@@ -866,7 +876,10 @@ function FileViewerBody({
   if (isDiffAvailable) {
     toolbarActions.push({
       key: "diff",
-      label: viewMode === "diff" ? "Exit diff view" : "Show diff",
+      label:
+        viewMode === "diff"
+          ? t("panels.fileViewer.exitDiffView", { defaultValue: "Exit diff view" })
+          : t("panels.fileViewer.showDiff", { defaultValue: "Show diff" }),
       icon: <FileDiffIcon className="size-4" />,
       active: viewMode === "diff",
       onSelect: () => guardDirty(() => setDiffActive((prev) => !prev)),
@@ -875,7 +888,10 @@ function FileViewerBody({
   if (viewMode === "diff" && splitToggleAvailable) {
     toolbarActions.push({
       key: "diff-layout",
-      label: diffLayout === "unified" ? "Split view" : "Unified view",
+      label:
+        diffLayout === "unified"
+          ? t("panels.fileViewer.splitView", { defaultValue: "Split view" })
+          : t("panels.fileViewer.unifiedView", { defaultValue: "Unified view" }),
       icon:
         diffLayout === "unified" ? (
           <Columns2Icon className="size-4" />
@@ -888,7 +904,13 @@ function FileViewerBody({
   if (viewMode === "diff") {
     toolbarActions.push({
       key: "hide-whitespace",
-      label: hideWhitespace ? "Show whitespace changes" : "Hide whitespace changes",
+      label: hideWhitespace
+        ? t("panels.fileViewer.showWhitespaceChanges", {
+            defaultValue: "Show whitespace changes",
+          })
+        : t("panels.fileViewer.hideWhitespaceChanges", {
+            defaultValue: "Hide whitespace changes",
+          }),
       icon: hideWhitespace ? <EyeIcon className="size-4" /> : <EyeOffIcon className="size-4" />,
       active: hideWhitespace,
       onSelect: () => setHideWhitespace((prev) => !prev),
@@ -896,25 +918,29 @@ function FileViewerBody({
   }
   toolbarActions.push({
     key: "search",
-    label: "Find in file",
+    label: t("panels.fileViewer.findInFile", { defaultValue: "Find in file" }),
     icon: <SearchIcon className="size-4" />,
     onSelect: openSearch,
   });
   if (!isDeletedFile && fileQuery.data) {
     toolbarActions.push({
       key: "download",
-      label: "Download file",
+      label: t("panels.fileViewer.downloadFile", { defaultValue: "Download file" }),
       tooltip: fileQuery.data.truncated
-        ? "Download (file was truncated — content may be incomplete)"
-        : "Download",
+        ? t("panels.fileViewer.downloadTruncated", {
+            defaultValue: "Download (file was truncated — content may be incomplete)",
+          })
+        : t("panels.fileViewer.download", { defaultValue: "Download" }),
       icon: <DownloadIcon className="size-4" />,
       onSelect: downloadFile,
     });
   }
   toolbarActions.push({
     key: "copy-link",
-    label: "Copy link to file",
-    tooltip: linkCopied ? "Copied!" : "Copy link",
+    label: t("panels.fileViewer.copyLinkToFile", { defaultValue: "Copy link to file" }),
+    tooltip: linkCopied
+      ? t("panels.fileViewer.copied", { defaultValue: "Copied!" })
+      : t("panels.fileViewer.copyLink", { defaultValue: "Copy link" }),
     icon: linkCopied ? (
       <CheckIcon className="size-4 text-green-500" />
     ) : (
@@ -1028,13 +1054,17 @@ function FileViewerBody({
                       type="button"
                       variant="ghost"
                       size="icon-sm"
-                      aria-label="Close file viewer"
+                      aria-label={t("panels.fileViewer.closeViewer", {
+                        defaultValue: "Close file viewer",
+                      })}
                       onClick={() => guardDirty(onClose)}
                     >
                       <ArrowLeftIcon className="size-4" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Close</TooltipContent>
+                  <TooltipContent>
+                    {t("panels.fileViewer.close", { defaultValue: "Close" })}
+                  </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             </div>
@@ -1045,7 +1075,7 @@ function FileViewerBody({
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Previous file"
+                aria-label={t("panels.fileViewer.previousFile", { defaultValue: "Previous file" })}
                 disabled={!prevPath}
                 onClick={() => prevPath && guardDirty(() => onNavigateTo(prevPath))}
               >
@@ -1058,7 +1088,7 @@ function FileViewerBody({
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Next file"
+                aria-label={t("panels.fileViewer.nextFile", { defaultValue: "Next file" })}
                 disabled={!nextPath}
                 onClick={() => nextPath && guardDirty(() => onNavigateTo(nextPath))}
               >
@@ -1082,7 +1112,9 @@ function FileViewerBody({
               aria-live="polite"
               title={
                 saveStatus === "offline"
-                  ? "Runner offline — your changes will save when it reconnects"
+                  ? t("panels.fileViewer.runnerOffline", {
+                      defaultValue: "Runner offline — your changes will save when it reconnects",
+                    })
                   : undefined
               }
               className={cn(
@@ -1093,31 +1125,31 @@ function FileViewerBody({
               {saveStatus === "unsaved" && (
                 <>
                   <span className="size-1.5 rounded-full bg-muted-foreground/70" />
-                  Unsaved
+                  {t("panels.fileViewer.unsaved", { defaultValue: "Unsaved" })}
                 </>
               )}
               {saveStatus === "saving" && (
                 <>
                   <Loader2Icon className="size-3 animate-spin" />
-                  Saving…
+                  {t("panels.fileViewer.saving", { defaultValue: "Saving…" })}
                 </>
               )}
               {saveStatus === "saved" && (
                 <>
                   <CheckIcon className="size-3 text-green-500" />
-                  Saved
+                  {t("panels.fileViewer.saved", { defaultValue: "Saved" })}
                 </>
               )}
               {saveStatus === "error" && (
                 <>
                   <AlertTriangleIcon className="size-3" />
-                  Save failed
+                  {t("panels.fileViewer.saveFailed", { defaultValue: "Save failed" })}
                 </>
               )}
               {saveStatus === "offline" && (
                 <>
                   <CloudOffIcon className="size-3" />
-                  Unsaved
+                  {t("panels.fileViewer.unsaved", { defaultValue: "Unsaved" })}
                 </>
               )}
             </span>
@@ -1130,7 +1162,14 @@ function FileViewerBody({
             {toolbarCollapsed ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button type="button" variant="ghost" size="icon-sm" aria-label="More actions">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t("panels.fileViewer.moreActions", {
+                      defaultValue: "More actions",
+                    })}
+                  >
                     <MoreHorizontalIcon className="size-4" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -1202,11 +1241,18 @@ function FileViewerBody({
           {isDeletedFile && viewMode !== "diff" ? (
             <div className="flex flex-col items-center justify-center gap-2 p-8 text-sm text-muted-foreground">
               <Trash2Icon className="size-5 opacity-40" />
-              <span>This file has been deleted.</span>
+              <span>
+                {t("panels.fileViewer.fileDeleted", {
+                  defaultValue: "This file has been deleted.",
+                })}
+              </span>
               {isDiffAvailable && (
                 <span className="text-xs">
-                  Click <FileDiffIcon className="inline size-3.5 align-text-bottom" /> to view its
-                  previous content.
+                  {t("panels.fileViewer.deletedDiffHintBefore", { defaultValue: "Click" })}{" "}
+                  <FileDiffIcon className="inline size-3.5 align-text-bottom" />{" "}
+                  {t("panels.fileViewer.deletedDiffHintAfter", {
+                    defaultValue: "to view its previous content.",
+                  })}
                 </span>
               )}
             </div>
@@ -1217,10 +1263,13 @@ function FileViewerBody({
             // undefined on error, which would otherwise read as still-loading.
             diffQuery.isError ? (
               <div className="flex items-center justify-center p-8 text-destructive text-sm">
-                Failed to load:{" "}
-                {diffQuery.error instanceof Error
-                  ? diffQuery.error.message
-                  : String(diffQuery.error)}
+                {t("panels.fileViewer.diffLoadFailed", {
+                  defaultValue: "Failed to load: {{message}}",
+                  message:
+                    diffQuery.error instanceof Error
+                      ? diffQuery.error.message
+                      : String(diffQuery.error),
+                })}
               </div>
             ) : // Wait for the diff payload before mounting Monaco. useFileDiff uses
             // null to mean new (before=null) / deleted (after=null) file, so
@@ -1229,13 +1278,13 @@ function FileViewerBody({
             // present, pass the real before/after through (legitimate nulls and all).
             !diffQuery.data ? (
               <div className="flex items-center justify-center p-8 text-muted-foreground text-sm">
-                Loading diff…
+                {t("panels.fileViewer.loadingDiff", { defaultValue: "Loading diff…" })}
               </div>
             ) : (
               <Suspense
                 fallback={
                   <div className="flex items-center justify-center p-8 text-muted-foreground text-sm">
-                    Loading diff…
+                    {t("panels.fileViewer.loadingDiff", { defaultValue: "Loading diff…" })}
                   </div>
                 }
               >
@@ -1343,14 +1392,18 @@ function FileViewerBody({
       >
         <DialogContent showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle>Unsaved changes</DialogTitle>
+            <DialogTitle>
+              {t("panels.fileViewer.unsavedChanges", { defaultValue: "Unsaved changes" })}
+            </DialogTitle>
             <DialogDescription>
-              Your edits will be lost if you leave without saving.
+              {t("panels.fileViewer.unsavedDescription", {
+                defaultValue: "Your edits will be lost if you leave without saving.",
+              })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPendingAction(null)}>
-              Keep editing
+              {t("panels.fileViewer.keepEditing", { defaultValue: "Keep editing" })}
             </Button>
             <Button
               variant="destructive"
@@ -1360,7 +1413,7 @@ function FileViewerBody({
                 setPendingAction(null);
               }}
             >
-              Discard changes
+              {t("panels.fileViewer.discardChanges", { defaultValue: "Discard changes" })}
             </Button>
           </DialogFooter>
         </DialogContent>

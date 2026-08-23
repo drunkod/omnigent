@@ -15,6 +15,7 @@
 
 import { TerminalIcon, XIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { TerminalView } from "@/components/blocks/TerminalView";
 import { AGENT_TERMINAL_IDS, terminalTabKey, useTerminals } from "@/hooks/useTerminals";
 import { selectRunnerState, useTerminalLifecycleStore } from "@/store/terminalLifecycleStore";
@@ -56,12 +57,13 @@ export function MainTerminalView({
   readOnly = false,
   onSurfaceElement,
 }: MainTerminalViewProps) {
-  const { terminals, isLoading } = useTerminals(conversationId);
+  const { t } = useTranslation();
+  const { terminals, isLoading, error } = useTerminals(conversationId);
   const terminalFirstCtx = useTerminalFirst();
   // The agent's own terminal (SDK REPL / native vendor pane) — the
   // auto-selection target and the pane the pill's Terminal view shows.
   const agentTerminals = useMemo(
-    () => terminals.filter((t) => AGENT_TERMINAL_IDS.has(t.id)),
+    () => terminals.filter((terminal) => AGENT_TERMINAL_IDS.has(terminal.id)),
     [terminals],
   );
   // Restore the last selected terminal for this conversation on reload. An
@@ -98,7 +100,7 @@ export function MainTerminalView({
   // persisted shell key with the agent REPL before reconnect completed.
   useEffect(() => {
     if (isLoading || terminals.length === 0 || runnerState !== "online") return;
-    const stillValid = terminals.some((t) => terminalTabKey(t) === activeKey);
+    const stillValid = terminals.some((terminal) => terminalTabKey(terminal) === activeKey);
     if (!stillValid && !isExitedTombstone) {
       setActiveKey(terminalTabKey(agentTerminals[0] ?? terminals[0]));
     }
@@ -145,9 +147,20 @@ export function MainTerminalView({
       className="main-terminal-view flex min-h-0 flex-1 flex-col px-3 pt-14 pb-1.5"
     >
       <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card p-3 shadow-sm">
-        {terminals.length === 0 && activeTerminal === null ? (
+        {isLoading && terminals.length === 0 && activeTerminal === null ? (
           <div className="flex flex-1 items-center justify-center text-muted-foreground text-sm">
-            No terminals available.
+            {t("panels.terminals.loading", { defaultValue: "Loading terminals…" })}
+          </div>
+        ) : !isLoading && error !== null && terminals.length === 0 && activeTerminal === null ? (
+          <div className="flex flex-1 items-center justify-center px-6 text-center text-destructive text-sm">
+            {t("panels.terminals.error", {
+              error: error.message,
+              defaultValue: "Failed to load terminals: {{error}}",
+            })}
+          </div>
+        ) : terminals.length === 0 && activeTerminal === null ? (
+          <div className="flex flex-1 items-center justify-center text-muted-foreground text-sm">
+            {t("panels.terminals.empty", { defaultValue: "No terminals available." })}
           </div>
         ) : (
           <>
@@ -165,7 +178,8 @@ export function MainTerminalView({
                 <span className="flex-1" />
                 <button
                   type="button"
-                  aria-label="Close shell"
+                  aria-label={t("panels.terminals.closeShell", { defaultValue: "Close shell" })}
+                  title={t("panels.terminals.closeShell", { defaultValue: "Close shell" })}
                   onClick={() => terminalFirstCtx?.setView("chat")}
                   className="cursor-pointer rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                 >

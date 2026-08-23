@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { useTerminalLifecycleStore, selectRunnerState } from "@/store/terminalLifecycleStore";
 import { useSessionRunnerOnline } from "@/hooks/RunnerHealthProvider";
 
@@ -14,6 +15,7 @@ export function RunnerStatusBadge({
   workspaceLabel,
   policyMode,
 }: RunnerStatusBadgeProps) {
+  const { t } = useTranslation();
   const lifecycle = useTerminalLifecycleStore(selectRunnerState(conversationId));
   const pollOnline = useSessionRunnerOnline(conversationId);
 
@@ -23,16 +25,19 @@ export function RunnerStatusBadge({
     lifecycle === "runner_offline" || (lifecycle === "online" && pollOnline === false);
   const reconnecting = lifecycle === "runner_reconnected";
   const label = offline
-    ? "Local runner offline"
+    ? t("misc.runner.offline")
     : reconnecting
-      ? "Reconnecting local runner"
+      ? t("misc.runner.reconnecting")
       : workspaceLabel
-        ? `Local · ${workspaceLabel}`
-        : "Local runner";
+        ? t("misc.runner.localWorkspace", { workspace: workspaceLabel })
+        : t("misc.runner.local");
   const title = offline
-    ? "Session is preserved while the runner is offline"
+    ? t("misc.runner.offlineTitle")
     : policyMode
-      ? `Local workspace${workspaceLabel ? `: ${workspaceLabel}` : ""} · ${policyMode} permissions`
+      ? t("misc.runner.workspacePermissions", {
+          workspaceSuffix: workspaceLabel ? `: ${workspaceLabel}` : "",
+          policyMode,
+        })
       : label;
 
   return (
@@ -53,11 +58,7 @@ export function RunnerStatusBadge({
         }
       />
       <span>{label}</span>
-      {offline && (
-        <span className="sr-only">
-          Session is preserved and will recover when the runner returns.
-        </span>
-      )}
+      {offline && <span className="sr-only">{t("misc.runner.offlineRecovery")}</span>}
     </span>
   );
 }

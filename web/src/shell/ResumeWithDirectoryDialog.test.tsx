@@ -9,6 +9,7 @@ import { useDirectorySessions } from "@/hooks/useDirectorySessions";
 import { useRunnerHealthRegistration } from "@/hooks/RunnerHealthProvider";
 import { getSessionSlim, launchRunner } from "@/lib/sessionsApi";
 import type { Session } from "@/lib/types";
+import i18n from "@/i18n";
 
 // Heavy children are exercised by their own tests; stub them so this
 // test focuses on the dialog's prefill + bind + fallback logic.
@@ -113,6 +114,13 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("ResumeWithDirectoryDialog", () => {
+  it("renders the translated title in Russian", async () => {
+    await i18n.changeLanguage("ru");
+    useHostsMock.mockReturnValue({ data: [] } as unknown as ReturnType<typeof useHosts>);
+    renderDialog();
+    expect(screen.getByText("Продолжить эту сессию")).toBeInTheDocument();
+  });
+
   it("prefills the source host + directory and binds via launchRunner with a branch", async () => {
     useHostsMock.mockReturnValue({
       data: [{ host_id: "host_src", name: "laptop", owner: "me", status: "online" }],

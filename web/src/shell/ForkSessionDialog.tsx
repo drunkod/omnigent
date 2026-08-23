@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "@/lib/routing";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -86,9 +87,9 @@ function HostLabel({ host }: { host: Host }) {
  * doesn't, returns "" so submitting omits the title and the server
  * derives it (rather than inventing a client-side placeholder).
  */
-function defaultForkTitle(sourceTitle: string | null | undefined): string {
+function defaultForkTitle(sourceTitle: string | null | undefined, forkOfLabel: string): string {
   const trimmed = sourceTitle?.trim();
-  return trimmed ? `Fork of ${trimmed}` : "";
+  return trimmed ? `${forkOfLabel} ${trimmed}` : "";
 }
 
 /**
@@ -154,6 +155,7 @@ export function ForkSessionForm({
   upToResponseId?: string | null;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   // Name is optional — left blank, the server derives "Fork of <source
@@ -236,7 +238,7 @@ export function ForkSessionForm({
     )?.display_name ??
     sourceAgentBaseName ??
     sourceAgentName ??
-    "the original agent";
+    t("dialogs.fork.originalAgent", { defaultValue: "the original agent" });
 
   // Switch targets, excluding:
   //   1. the source's OWN agent — "Same as source" already represents
@@ -415,7 +417,11 @@ export function ForkSessionForm({
       navigate(`/c/${fork.id}`);
     } catch (e) {
       // forkSession failed — nothing created, so inputs stay editable for a resubmit.
-      setError(e instanceof Error ? e.message : "Couldn't clone the session. Try again.");
+      setError(
+        e instanceof Error
+          ? e.message
+          : t("dialogs.fork.error", { defaultValue: "Couldn't clone the session. Try again." }),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -423,7 +429,9 @@ export function ForkSessionForm({
 
   // Suggested name shown as the input placeholder; blank input → the server
   // applies this same "Fork of <source title>" default.
-  const namePlaceholder = defaultForkTitle(sourceTitle) || "Name the cloned session";
+  const namePlaceholder =
+    defaultForkTitle(sourceTitle, t("dialogs.fork.forkOf", { defaultValue: "Fork of" })) ||
+    t("dialogs.fork.namePlaceholder", { defaultValue: "Name the cloned session" });
 
   return (
     <>
@@ -435,10 +443,12 @@ export function ForkSessionForm({
               instructions directly when none are. */}
         {isCodingSource && (
           <div className="flex flex-col gap-2">
-            <span className="text-xs font-medium text-muted-foreground">Host</span>
+            <span className="text-xs font-medium text-muted-foreground">
+              {t("dialogs.fork.host", { defaultValue: "Host" })}
+            </span>
             {hosts === undefined ? (
               <p className="text-xs text-muted-foreground" data-testid="fork-session-no-hosts">
-                Loading hosts…
+                {t("dialogs.fork.loadingHosts", { defaultValue: "Loading hosts…" })}
               </p>
             ) : onlineHosts.length === 0 ? (
               // Nothing usable (no hosts, or all offline) — show the connect
@@ -448,8 +458,13 @@ export function ForkSessionForm({
                 serverUrl={serverUrl}
                 label={
                   allHosts.length === 0
-                    ? "No hosts connected yet. Connect one from your terminal:"
-                    : "No hosts online. Reconnect from your terminal to start the clone:"
+                    ? t("dialogs.fork.noHosts", {
+                        defaultValue: "No hosts connected yet. Connect one from your terminal:",
+                      })
+                    : t("dialogs.fork.noHostsOnline", {
+                        defaultValue:
+                          "No hosts online. Reconnect from your terminal to start the clone:",
+                      })
                 }
               />
             ) : (
@@ -471,7 +486,9 @@ export function ForkSessionForm({
                   }}
                 >
                   <SelectTrigger className="w-full text-xs" data-testid="fork-session-host-select">
-                    <SelectValue placeholder="Select a host" />
+                    <SelectValue
+                      placeholder={t("dialogs.fork.selectHost", { defaultValue: "Select a host" })}
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {onlineHosts.map((host) => (
@@ -506,7 +523,9 @@ export function ForkSessionForm({
                   ) : (
                     <ChevronDownIcon className="size-3.5" />
                   )}
-                  Connect another host from your terminal
+                  {t("dialogs.fork.connectAnotherHost", {
+                    defaultValue: "Connect another host from your terminal",
+                  })}
                 </button>
                 {showConnect && <ConnectHostInstructions serverUrl={serverUrl} />}
               </>
@@ -516,7 +535,7 @@ export function ForkSessionForm({
 
         <div className="flex flex-col gap-1.5">
           <label htmlFor="fork-session-agent" className="text-xs font-medium text-muted-foreground">
-            Agent
+            {t("dialogs.fork.agent", { defaultValue: "Agent" })}
           </label>
           <Select value={agentChoice} onValueChange={setAgentChoice}>
             <SelectTrigger
@@ -533,7 +552,11 @@ export function ForkSessionForm({
                 ) : (
                   <>
                     {sourceAgentDisplay}{" "}
-                    <span className="text-muted-foreground">(same as original session)</span>
+                    <span className="text-muted-foreground">
+                      {t("dialogs.fork.sameAsOriginal", {
+                        defaultValue: "(same as original session)",
+                      })}
+                    </span>
                   </>
                 )}
               </SelectValue>
@@ -545,7 +568,11 @@ export function ForkSessionForm({
                 className="text-xs"
               >
                 {sourceAgentDisplay}{" "}
-                <span className="text-muted-foreground">(same as original session)</span>
+                <span className="text-muted-foreground">
+                  {t("dialogs.fork.sameAsOriginal", {
+                    defaultValue: "(same as original session)",
+                  })}
+                </span>
               </SelectItem>
               {builtinSwitchable.map((agent) => (
                 <SelectItem
@@ -578,7 +605,9 @@ export function ForkSessionForm({
               directory; changing it lives under Advanced settings. */}
         {usingSourceDir && (
           <p className="text-xs text-muted-foreground" data-testid="fork-session-reuse-dir-hint">
-            By default the clone reuses the original session's{" "}
+            {t("dialogs.fork.reuseOriginalDirectory", {
+              defaultValue: "By default the clone reuses the original session's",
+            })}{" "}
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
@@ -586,12 +615,14 @@ export function ForkSessionForm({
                   className="cursor-pointer underline decoration-dotted underline-offset-2"
                   data-testid="fork-session-reuse-dir-path"
                 >
-                  working directory
+                  {t("dialogs.fork.workingDirectory", { defaultValue: "working directory" })}
                 </button>
               </TooltipTrigger>
               <TooltipContent className="font-mono break-all">{workspaceTrimmed}</TooltipContent>
             </Tooltip>
-            . Open Advanced settings to change it.
+            {t("dialogs.fork.changeAdvanced", {
+              defaultValue: ". Open Advanced settings to change it.",
+            })}
           </p>
         )}
 
@@ -605,11 +636,13 @@ export function ForkSessionForm({
           >
             <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" />
             <span>
-              {conflictingSessions.length === 1
-                ? "1 other agent is"
-                : `${conflictingSessions.length} other agents are`}{" "}
-              working in this directory, so writes may conflict. Name a git branch under Advanced
-              settings to work in an isolated copy.
+              {t("dialogs.fork.conflictHint", {
+                count: conflictingSessions.length,
+                defaultValue:
+                  conflictingSessions.length === 1
+                    ? "1 other agent is working in this directory, so writes may conflict. Name a git branch under Advanced settings to work in an isolated copy."
+                    : "{{count}} other agents are working in this directory, so writes may conflict. Name a git branch under Advanced settings to work in an isolated copy.",
+              })}
             </span>
           </p>
         )}
@@ -632,7 +665,7 @@ export function ForkSessionForm({
             ) : (
               <ChevronDownIcon className="size-3.5" />
             )}
-            Advanced settings
+            {t("dialogs.fork.advancedSettings", { defaultValue: "Advanced settings" })}
           </button>
 
           {showAdvanced && (
@@ -646,7 +679,7 @@ export function ForkSessionForm({
                   htmlFor="fork-session-title"
                   className="text-xs font-medium text-muted-foreground"
                 >
-                  Name (optional)
+                  {t("dialogs.fork.nameOptional", { defaultValue: "Name (optional)" })}
                 </label>
                 <input
                   id="fork-session-title"
@@ -666,7 +699,7 @@ export function ForkSessionForm({
                 <>
                   <div className="flex flex-col gap-2">
                     <span className="text-xs font-medium text-muted-foreground">
-                      Working directory
+                      {t("dialogs.fork.workingDirectory", { defaultValue: "Working directory" })}
                     </span>
                     {selectedHostId ? (
                       <>
@@ -700,16 +733,19 @@ export function ForkSessionForm({
                           >
                             <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" />
                             <span>
-                              This directory differs from the original session's. Earlier file
-                              references in the transcript may not apply — the agent will need to
-                              re-orient.
+                              {t("dialogs.fork.directoryMismatch", {
+                                defaultValue:
+                                  "This directory differs from the original session's. Earlier file references in the transcript may not apply — the agent will need to re-orient.",
+                              })}
                             </span>
                           </p>
                         )}
                       </>
                     ) : (
                       <p className="text-xs text-muted-foreground">
-                        Select a host to choose a directory.
+                        {t("dialogs.fork.selectHostForDirectory", {
+                          defaultValue: "Select a host to choose a directory.",
+                        })}
                       </p>
                     )}
                   </div>
@@ -720,7 +756,9 @@ export function ForkSessionForm({
                       className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
                     >
                       <GitBranchIcon className="size-3.5" />
-                      Git worktree (optional)
+                      {t("dialogs.fork.gitWorktreeOptional", {
+                        defaultValue: "Git worktree (optional)",
+                      })}
                     </label>
                     <input
                       id="fork-session-branch"
@@ -737,16 +775,21 @@ export function ForkSessionForm({
                         type="text"
                         value={baseBranch}
                         onChange={(e) => setBaseBranch(e.target.value)}
-                        placeholder="Base branch (defaults to the current branch)"
-                        aria-label="Base branch"
+                        placeholder={t("dialogs.fork.baseBranchPlaceholder", {
+                          defaultValue: "Base branch (defaults to the current branch)",
+                        })}
+                        aria-label={t("dialogs.fork.baseBranchAriaLabel", {
+                          defaultValue: "Base branch",
+                        })}
                         data-testid="fork-session-base-branch-input"
                         className="rounded-md border border-input bg-background px-3 py-2 font-mono text-xs outline-none transition-colors focus-visible:border-ring"
                       />
                     )}
                     <p className="text-xs text-muted-foreground">
-                      Creates a git worktree for a new branch in an isolated directory — keeps the
-                      clone from fighting the original over the same files. Leave blank to start in
-                      the picked directory.
+                      {t("dialogs.fork.worktreeDescription", {
+                        defaultValue:
+                          "Creates a git worktree for a new branch in an isolated directory — keeps the clone from fighting the original over the same files. Leave blank to start in the picked directory.",
+                      })}
                     </p>
                   </div>
                 </>
@@ -764,7 +807,7 @@ export function ForkSessionForm({
 
       <DialogFooter>
         <Button variant="ghost" onClick={onClose} disabled={submitting}>
-          Cancel
+          {t("common.cancel")}
         </Button>
         <Button
           data-testid="fork-session-submit"
@@ -773,11 +816,11 @@ export function ForkSessionForm({
         >
           {submitting
             ? isCodingSource
-              ? "Starting…"
-              : "Cloning…"
+              ? t("dialogs.fork.starting", { defaultValue: "Starting…" })
+              : t("dialogs.fork.cloning", { defaultValue: "Cloning…" })
             : isCodingSource
-              ? "Clone & start"
-              : "Clone"}
+              ? t("dialogs.fork.cloneAndStart", { defaultValue: "Clone & start" })
+              : t("dialogs.fork.clone", { defaultValue: "Clone" })}
         </Button>
       </DialogFooter>
     </>
@@ -822,16 +865,28 @@ export function ForkSessionDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const truncated = upToResponseId != null;
   // Shown in the title's info tooltip (and a visually-hidden DialogDescription
   // for screen readers). Coding sources also start on a picked host/directory.
-  const cloneDescription = `${
-    truncated
-      ? "Copies this session's history up to the selected response into a new session you own — messages after it aren't carried over"
-      : "Copies this session's history into a new session you own"
-  }${
-    sourceWorkspace ? ", then starts it on the host and directory you pick" : ""
-  }. Comments aren't copied, and changes in the clone won't affect the original.`;
+  const cloneDescription = t(
+    sourceWorkspace
+      ? truncated
+        ? "dialogs.fork.description.truncatedWithDirectory"
+        : "dialogs.fork.description.fullWithDirectory"
+      : truncated
+        ? "dialogs.fork.description.truncated"
+        : "dialogs.fork.description.full",
+    {
+      defaultValue: sourceWorkspace
+        ? truncated
+          ? "Copies this session's history up to the selected response into a new session you own — messages after it aren't carried over, then starts it on the host and directory you pick. Comments aren't copied, and changes in the clone won't affect the original."
+          : "Copies this session's history into a new session you own, then starts it on the host and directory you pick. Comments aren't copied, and changes in the clone won't affect the original."
+        : truncated
+          ? "Copies this session's history up to the selected response into a new session you own — messages after it aren't carried over. Comments aren't copied, and changes in the clone won't affect the original."
+          : "Copies this session's history into a new session you own. Comments aren't copied, and changes in the clone won't affect the original.",
+    },
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -841,12 +896,16 @@ export function ForkSessionDialog({
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-1.5">
-            {truncated ? "Fork from this response" : "Clone session"}
+            {truncated
+              ? t("dialogs.fork.titleFromResponse", { defaultValue: "Fork from this response" })
+              : t("dialogs.fork.title", { defaultValue: "Clone session" })}
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  aria-label="What does cloning do?"
+                  aria-label={t("dialogs.fork.infoLabel", {
+                    defaultValue: "What does cloning do?",
+                  })}
                   data-testid="fork-session-info"
                   // tabIndex=-1 keeps the dialog's open-autofocus (and tabbing)
                   // off this icon, so the tooltip only opens on hover — not the

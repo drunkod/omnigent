@@ -9,6 +9,7 @@
 // guard against a missing `ref.current`.
 
 import { Loader2Icon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
@@ -556,6 +557,7 @@ function StatusOverlay({
   resumePending: boolean;
   resumeError: string | null;
 }) {
+  const { t } = useTranslation();
   // Compute exactly one overlay branch. Runner state owns the surface,
   // followed by terminal lifecycle, followed by the lower-level bridge.
   // This prevents the same outage arriving over SSE and WS close codes from
@@ -565,30 +567,44 @@ function StatusOverlay({
   if (runnerState === "runner_offline") {
     content = (
       <span data-testid="terminal-runner-offline">
-        Runner offline. Session is preserved; restart the runner to continue.
+        {t("panels.terminals.runnerOffline", {
+          defaultValue: "Runner offline. Session is preserved; restart the runner to continue.",
+        })}
       </span>
     );
   } else if (runnerState === "runner_reconnected") {
-    content = <span data-testid="terminal-reconciling">Reconnected, checking terminals…</span>;
+    content = (
+      <span data-testid="terminal-reconciling">
+        {t("panels.terminals.reconnectedChecking", {
+          defaultValue: "Reconnected, checking terminals…",
+        })}
+      </span>
+    );
   } else if (state.kind !== "connected" && lifecycleTerminalState === "terminal_relaunching") {
-    content = <span>Relaunching terminal…</span>;
+    content = (
+      <span>{t("panels.terminals.relaunching", { defaultValue: "Relaunching terminal…" })}</span>
+    );
   } else if (state.kind !== "connected" && lifecycleTerminalState === "terminal_detached") {
     content = (
       <div className="flex flex-wrap items-center justify-center gap-2 px-3">
-        <span>Terminal detached. Session is still running.</span>
+        <span>
+          {t("panels.terminals.detached", {
+            defaultValue: "Terminal detached. Session is still running.",
+          })}
+        </span>
         <Button type="button" size="xs" variant="secondary" onClick={onReattach}>
-          Attach
+          {t("panels.terminals.attach", { defaultValue: "Attach" })}
         </Button>
       </div>
     );
   } else if (state.kind !== "connected" && lifecycleTerminalState === "terminal_exited") {
-    content = <span>Terminal exited.</span>;
+    content = <span>{t("panels.terminals.exited", { defaultValue: "Terminal exited." })}</span>;
   } else if (state.kind !== "connected" && lifecycleTerminalState === "terminal_failed") {
     content = (
       <div className="flex flex-wrap items-center justify-center gap-2 px-3">
-        <span>Terminal failed to start.</span>
+        <span>{t("panels.terminals.failed", { defaultValue: "Terminal failed to start." })}</span>
         <Button type="button" size="xs" variant="secondary" onClick={onReattach}>
-          Retry
+          {t("panels.terminals.retry", { defaultValue: "Retry" })}
         </Button>
       </div>
     );
@@ -596,20 +612,22 @@ function StatusOverlay({
     content = (
       <span className="flex items-center gap-2">
         <Loader2Icon className="size-4 animate-spin" />
-        Connecting…
+        {t("panels.terminals.connecting", { defaultValue: "Connecting…" })}
       </span>
     );
   } else if (state.kind === "closed" && reconnectPending) {
     content = (
       <span data-testid="terminal-reconnecting" className="flex items-center gap-2">
         <Loader2Icon className="size-4 animate-spin" />
-        Reconnecting…
+        {t("panels.terminals.reconnecting", { defaultValue: "Reconnecting…" })}
       </span>
     );
   } else if (state.kind === "closed") {
     content = (
       <div className="flex flex-wrap items-center justify-center gap-2 px-3">
-        <span>Bridge closed: {state.reason}</span>
+        <span>
+          {t("panels.terminals.bridgeClosed", { defaultValue: "Bridge closed:" })} {state.reason}
+        </span>
         {onResume && (
           <Button
             type="button"
@@ -628,26 +646,34 @@ function StatusOverlay({
       </div>
     );
   } else if (state.kind === "error") {
-    content = <span>Bridge error</span>;
+    content = <span>{t("panels.terminals.bridgeError", { defaultValue: "Bridge error" })}</span>;
   } else if (state.kind === "runner_offline") {
     content = (
       <span data-testid="terminal-runner-offline">
-        Runner offline. Session is preserved; restart the runner to continue.
+        {t("panels.terminals.runnerOffline", {
+          defaultValue: "Runner offline. Session is preserved; restart the runner to continue.",
+        })}
       </span>
     );
   } else if (state.kind === "retry_with_pty") {
-    content = <span>Retrying with PTY…</span>;
+    content = (
+      <span>{t("panels.terminals.retryingWithPty", { defaultValue: "Retrying with PTY…" })}</span>
+    );
   } else if (state.kind === "lifecycle" && state.state === "terminal_detached") {
     content = (
       <div className="flex flex-wrap items-center justify-center gap-2 px-3">
-        <span>Terminal detached. Session is still running.</span>
+        <span>
+          {t("panels.terminals.detached", {
+            defaultValue: "Terminal detached. Session is still running.",
+          })}
+        </span>
         <Button type="button" size="xs" variant="secondary" onClick={onReattach}>
-          Attach
+          {t("panels.terminals.attach", { defaultValue: "Attach" })}
         </Button>
       </div>
     );
   } else if (state.kind === "lifecycle") {
-    content = <span>Terminal exited.</span>;
+    content = <span>{t("panels.terminals.exited", { defaultValue: "Terminal exited." })}</span>;
   }
 
   // Render outside the xterm container so close/error messages don't

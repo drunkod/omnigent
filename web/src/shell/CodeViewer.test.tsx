@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import i18n from "@/i18n";
 import type { useFileContent } from "@/hooks/useFileContent";
 import { CodeViewer } from "./CodeViewer";
 import { ImageLightboxProvider } from "@/components/ImageLightbox";
@@ -100,12 +101,14 @@ function fireCopyEvent(): ReturnType<typeof vi.fn> {
 
 // ── Setup / teardown ──────────────────────────────────────────────────────────
 
-beforeEach(() => {
+beforeEach(async () => {
+  await i18n.changeLanguage("en");
   vi.mocked(permissions.useCanEdit).mockReturnValue(true);
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  await i18n.changeLanguage("en");
 });
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -217,6 +220,18 @@ describe("CodeViewer editor routing", () => {
     // Markdown source must NOT route to Monaco — it stays on the Shiki render
     // (TipTap handles markdown editing; Monaco is for non-markdown files).
     expect(screen.queryByTestId("monaco-editor-stub")).toBeNull();
+  });
+});
+
+describe("CodeViewer localization", () => {
+  it("renders the binary preview message in Russian", async () => {
+    await i18n.changeLanguage("ru");
+    try {
+      renderViewer("", true, "data.bin");
+      expect(screen.getByText("Предпросмотр бинарных файлов недоступен.")).toBeDefined();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 });
 

@@ -10,6 +10,8 @@
 // it without prop-drilling). Mount it once near the app shell.
 
 import { useEffect, useState, type ReactNode } from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 
 import {
   Dialog,
@@ -126,6 +128,103 @@ function shortcutGroupsFor(native: boolean): ShortcutGroup[] {
   );
 }
 
+const SHORTCUT_LABELS: Record<string, { key: string; defaultValue: string }> = {
+  "Open command palette": {
+    key: "misc.residual.keyboardShortcuts.openCommandPalette",
+    defaultValue: "Open command palette",
+  },
+  "Show keyboard shortcuts": {
+    key: "misc.residual.keyboardShortcuts.showKeyboardShortcuts",
+    defaultValue: "Show keyboard shortcuts",
+  },
+  "Send message": {
+    key: "misc.residual.keyboardShortcuts.sendMessage",
+    defaultValue: "Send message",
+  },
+  "New line in message": {
+    key: "misc.residual.keyboardShortcuts.newLineInMessage",
+    defaultValue: "New line in message",
+  },
+  "Recall previous prompt": {
+    key: "misc.residual.keyboardShortcuts.recallPreviousPrompt",
+    defaultValue: "Recall previous prompt",
+  },
+  "Recall next prompt": {
+    key: "misc.residual.keyboardShortcuts.recallNextPrompt",
+    defaultValue: "Recall next prompt",
+  },
+  "Accept approval prompt": {
+    key: "misc.residual.keyboardShortcuts.acceptApprovalPrompt",
+    defaultValue: "Accept approval prompt",
+  },
+  "Stop response": {
+    key: "misc.residual.keyboardShortcuts.stopResponse",
+    defaultValue: "Stop response",
+  },
+  "Previous session": {
+    key: "misc.residual.keyboardShortcuts.previousSession",
+    defaultValue: "Previous session",
+  },
+  "Next session": {
+    key: "misc.residual.keyboardShortcuts.nextSession",
+    defaultValue: "Next session",
+  },
+  "Toggle conversations sidebar": {
+    key: "misc.residual.keyboardShortcuts.toggleConversationsSidebar",
+    defaultValue: "Toggle conversations sidebar",
+  },
+  "Toggle workspace sidebar": {
+    key: "misc.residual.keyboardShortcuts.toggleWorkspaceSidebar",
+    defaultValue: "Toggle workspace sidebar",
+  },
+  "Navigate suggestions": {
+    key: "misc.residual.keyboardShortcuts.navigateSuggestions",
+    defaultValue: "Navigate suggestions",
+  },
+  "Apply highlighted command": {
+    key: "misc.residual.keyboardShortcuts.applyHighlightedCommand",
+    defaultValue: "Apply highlighted command",
+  },
+  "Dismiss menu": {
+    key: "misc.residual.keyboardShortcuts.dismissMenu",
+    defaultValue: "Dismiss menu",
+  },
+  "Jump to pinned session (1–10)": {
+    key: "misc.residual.keyboardShortcuts.jumpToPinnedSession",
+    defaultValue: "Jump to pinned session (1–10)",
+  },
+};
+
+const SHORTCUT_GROUP_LABELS: Record<string, { key: string; defaultValue: string }> = {
+  General: { key: "misc.residual.keyboardShortcuts.general", defaultValue: "General" },
+  "In chats": { key: "misc.residual.keyboardShortcuts.inChats", defaultValue: "In chats" },
+  Navigation: { key: "misc.residual.keyboardShortcuts.navigation", defaultValue: "Navigation" },
+  View: { key: "misc.residual.keyboardShortcuts.view", defaultValue: "View" },
+  "Slash commands": {
+    key: "misc.residual.keyboardShortcuts.slashCommands",
+    defaultValue: "Slash commands",
+  },
+};
+
+function translateShortcut(t: TFunction, label: string): string {
+  const entry = SHORTCUT_LABELS[label];
+  return entry ? t(entry.key, { defaultValue: entry.defaultValue }) : label;
+}
+
+function translateShortcutGroup(t: TFunction, title: string): string {
+  const entry = SHORTCUT_GROUP_LABELS[title];
+  return entry ? t(entry.key, { defaultValue: entry.defaultValue }) : title;
+}
+
+function translateShortcutNote(t: TFunction, title: string, note: string): string {
+  if (title === "Slash commands" && note === "while the suggestions menu is open") {
+    return t("misc.residual.keyboardShortcuts.suggestionsMenuOpen", {
+      defaultValue: "while the suggestions menu is open",
+    });
+  }
+  return note;
+}
+
 function Kbd({ children }: { children: ReactNode }) {
   return (
     <kbd className="inline-flex h-6 min-w-6 items-center justify-center rounded-md border border-border bg-muted px-1.5 font-sans text-xs font-medium text-muted-foreground">
@@ -140,6 +239,7 @@ function Kbd({ children }: { children: ReactNode }) {
  * Settings page, which embeds it directly instead of behind a trigger.
  */
 export function KeyboardShortcutsList() {
+  const { t } = useTranslation();
   // Feature-based, stable per session; computed at render so tests can vary it.
   const groups = shortcutGroupsFor(isNativeShell());
   return (
@@ -147,9 +247,11 @@ export function KeyboardShortcutsList() {
       {groups.map((group) => (
         <section key={group.title} className="mb-4 last:mb-0">
           <h3 className="mb-1 text-xs font-medium text-muted-foreground">
-            {group.title}
+            {translateShortcutGroup(t, group.title)}
             {group.note ? (
-              <span className="ml-1.5 font-normal text-muted-foreground/70">· {group.note}</span>
+              <span className="ml-1.5 font-normal text-muted-foreground/70">
+                · {translateShortcutNote(t, group.title, group.note)}
+              </span>
             ) : null}
           </h3>
           <ul>
@@ -158,7 +260,7 @@ export function KeyboardShortcutsList() {
                 key={item.label}
                 className="flex items-center justify-between gap-4 border-b border-border/60 py-2.5 last:border-b-0"
               >
-                <span className="text-sm text-foreground">{item.label}</span>
+                <span className="text-sm text-foreground">{translateShortcut(t, item.label)}</span>
                 <span className="flex shrink-0 items-center gap-1">
                   {item.keys.map((key) => (
                     <Kbd key={`${item.label}-${key}`}>{key}</Kbd>
@@ -174,6 +276,7 @@ export function KeyboardShortcutsList() {
 }
 
 export function KeyboardShortcutsDialog() {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -198,9 +301,13 @@ export function KeyboardShortcutsDialog() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Keyboard shortcuts</DialogTitle>
+          <DialogTitle>
+            {t("misc.residual.keyboardShortcuts.title", { defaultValue: "Keyboard shortcuts" })}
+          </DialogTitle>
           <DialogDescription className="sr-only">
-            The keyboard shortcuts available in the chat.
+            {t("misc.residual.keyboardShortcuts.description", {
+              defaultValue: "The keyboard shortcuts available in the chat.",
+            })}
           </DialogDescription>
         </DialogHeader>
         <div className="max-h-[70vh] overflow-y-auto pr-1">

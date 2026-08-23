@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { Outlet, useParams, useSearchParams } from "@/lib/routing";
 import { useConversations } from "@/hooks/useConversations";
@@ -118,6 +119,7 @@ import type { RightRailTab } from "./railTabs";
  * more than one agent (the root has at least one child).
  */
 export function AppShell() {
+  const { t: translate } = useTranslation();
   // Cmd/Ctrl+Enter accepts the pending harness approval prompt. Bound once
   // here so it works on every chat route, regardless of where focus sits.
   useApproveHotkey();
@@ -351,7 +353,9 @@ export function AppShell() {
     !!conversationId && isKnownTopLevel && (permissionLevel === null || permissionLevel >= 3);
   const shareDisabled = canShare && isCurrentServerLocal();
   const shareDisabledReason = shareDisabled
-    ? "Sharing is unavailable from a local server."
+    ? translate("misc.residual.appShell.shareUnavailableLocalServer", {
+        defaultValue: "Sharing is unavailable from a local server.",
+      })
     : undefined;
   // Any viewer can fork a shared session; top-level only (the server
   // rejects forking a sub-agent). Surfaced as ForkDialogContext.canFork —
@@ -1256,7 +1260,7 @@ export function AppShell() {
               {conversationId && rootSessionId && (
                 <MobilePanelDrawer
                   open={subagentsPanelOpen}
-                  title="Agents"
+                  title={translate("panels.workspace.agents", { defaultValue: "Agents" })}
                   onClose={() => setSubagentsPanelOpen(false)}
                   testId="subagents-panel-drawer"
                 >
@@ -1266,7 +1270,7 @@ export function AppShell() {
               {conversationId && (
                 <MobilePanelDrawer
                   open={shellsPanelOpen}
-                  title="Shells"
+                  title={translate("panels.workspace.shells", { defaultValue: "Shells" })}
                   onClose={() => setShellsPanelOpen(false)}
                   testId="shells-panel-drawer"
                 >
@@ -1279,7 +1283,7 @@ export function AppShell() {
               {conversationId && (
                 <MobilePanelDrawer
                   open={todosPanelOpen}
-                  title="Tasks"
+                  title={translate("panels.workspace.tasks", { defaultValue: "Tasks" })}
                   onClose={() => setTodosPanelOpen(false)}
                   testId="todos-panel-drawer"
                 >
@@ -1335,9 +1339,13 @@ export function AppShell() {
             <Dialog open={agentInfoOpen} onOpenChange={setAgentInfoOpen}>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Agent</DialogTitle>
+                  <DialogTitle>
+                    {translate("misc.residual.appShell.agentTitle", { defaultValue: "Agent" })}
+                  </DialogTitle>
                   <DialogDescription className="sr-only">
-                    Tools and policies configured for the active agent.
+                    {translate("misc.residual.appShell.agentDescription", {
+                      defaultValue: "Tools and policies configured for the active agent.",
+                    })}
                   </DialogDescription>
                 </DialogHeader>
                 <AgentInfoContent agent={boundAgent} sessionId={conversationId} />

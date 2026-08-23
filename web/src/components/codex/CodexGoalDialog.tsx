@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { CheckIcon, Loader2Icon, PauseCircleIcon, PlayCircleIcon, TargetIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -52,18 +53,21 @@ interface CodexGoalSummaryProps {
  * @returns Current-goal summary element.
  */
 function CodexGoalSummary({ loading, goal }: CodexGoalSummaryProps) {
+  const { t } = useTranslation();
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Loader2Icon className="size-4 animate-spin" />
-        <span>Loading goal</span>
+        <span>
+          {t("misc.residual.codexGoalDialog.loadingGoal", { defaultValue: "Loading goal" })}
+        </span>
       </div>
     );
   }
   if (!goal) {
     return (
       <p data-testid="codex-goal-empty" className="text-sm text-muted-foreground">
-        No goal set.
+        {t("misc.residual.codexGoalDialog.noGoalSet", { defaultValue: "No goal set." })}
       </p>
     );
   }
@@ -122,6 +126,7 @@ function CodexGoalEditor({
   onTokenBudgetChange,
   onModeChange,
 }: CodexGoalEditorProps) {
+  const { t } = useTranslation();
   const showKeepCurrentMode = goal != null && !isCodexGoalUserMode(goal.status);
   const modeButtonClass = (selected: boolean) =>
     cn(
@@ -136,7 +141,7 @@ function CodexGoalEditor({
     <>
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-muted-foreground" htmlFor="codex-goal">
-          Objective
+          {t("misc.residual.codexGoalDialog.objective", { defaultValue: "Objective" })}
         </label>
         <Textarea
           id="codex-goal"
@@ -150,10 +155,12 @@ function CodexGoalEditor({
       </div>
 
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-muted-foreground">Mode</label>
+        <label className="text-xs font-medium text-muted-foreground">
+          {t("misc.residual.codexGoalDialog.mode", { defaultValue: "Mode" })}
+        </label>
         <div
           role="radiogroup"
-          aria-label="Goal mode"
+          aria-label={t("misc.residual.codexGoalDialog.goalMode", { defaultValue: "Goal mode" })}
           className="flex w-full gap-1 rounded-lg border border-border bg-muted/30 p-1"
           data-testid="codex-goal-mode"
         >
@@ -168,7 +175,9 @@ function CodexGoalEditor({
               data-testid="codex-goal-mode-keep"
             >
               <CheckIcon className="size-3.5" />
-              <span>Keep current</span>
+              <span>
+                {t("misc.residual.codexGoalDialog.keepCurrent", { defaultValue: "Keep current" })}
+              </span>
             </button>
           )}
           <button
@@ -181,7 +190,7 @@ function CodexGoalEditor({
             data-testid="codex-goal-mode-active"
           >
             <PlayCircleIcon className="size-3.5" />
-            <span>Active</span>
+            <span>{t("misc.residual.codexGoalDialog.active", { defaultValue: "Active" })}</span>
           </button>
           <button
             type="button"
@@ -193,7 +202,7 @@ function CodexGoalEditor({
             data-testid="codex-goal-mode-paused"
           >
             <PauseCircleIcon className="size-3.5" />
-            <span>Paused</span>
+            <span>{t("misc.residual.codexGoalDialog.paused", { defaultValue: "Paused" })}</span>
           </button>
         </div>
       </div>
@@ -203,7 +212,7 @@ function CodexGoalEditor({
           className="text-xs font-medium text-muted-foreground"
           htmlFor="codex-goal-token-budget"
         >
-          Token budget
+          {t("misc.residual.codexGoalDialog.tokenBudget", { defaultValue: "Token budget" })}
         </label>
         <Input
           id="codex-goal-token-budget"
@@ -214,7 +223,7 @@ function CodexGoalEditor({
           value={tokenBudget}
           onChange={(event) => onTokenBudgetChange(event.currentTarget.value)}
           disabled={readOnly || busy}
-          placeholder="Optional"
+          placeholder={t("misc.residual.codexGoalDialog.optional", { defaultValue: "Optional" })}
           data-testid="codex-goal-token-budget"
         />
       </div>
@@ -315,6 +324,7 @@ function CodexGoalActions({
   onPause,
   onResume,
 }: CodexGoalActionsProps) {
+  const { t } = useTranslation();
   const showPause = canPauseCodexGoal(goal);
   const showResume = canResumeCodexGoal(goal);
   return (
@@ -327,7 +337,7 @@ function CodexGoalActions({
         loading={clearing}
         data-testid="codex-goal-clear"
       >
-        Clear
+        {t("misc.residual.codexGoalDialog.clear", { defaultValue: "Clear" })}
       </Button>
       {showPause && (
         <Button
@@ -339,7 +349,7 @@ function CodexGoalActions({
           data-testid="codex-goal-pause"
         >
           <PauseCircleIcon className="size-3.5" />
-          Pause
+          {t("misc.residual.codexGoalDialog.pause", { defaultValue: "Pause" })}
         </Button>
       )}
       {showResume && (
@@ -352,7 +362,7 @@ function CodexGoalActions({
           data-testid="codex-goal-resume"
         >
           <PlayCircleIcon className="size-3.5" />
-          Resume
+          {t("misc.residual.codexGoalDialog.resume", { defaultValue: "Resume" })}
         </Button>
       )}
       <Button
@@ -362,7 +372,9 @@ function CodexGoalActions({
         loading={saving}
         data-testid="codex-goal-save"
       >
-        {hasGoal ? "Update goal" : "Set goal"}
+        {hasGoal
+          ? t("misc.residual.codexGoalDialog.updateGoal", { defaultValue: "Update goal" })
+          : t("misc.residual.codexGoalDialog.setGoal", { defaultValue: "Set goal" })}
       </Button>
     </DialogFooter>
   );
@@ -383,6 +395,7 @@ function useCodexGoalDialogState({
   CodexGoalDialogProps,
   "open" | "conversationId" | "goal" | "onGoalChange"
 >): CodexGoalDialogState {
+  const { t } = useTranslation();
   const [objective, setObjective] = useState(goal?.objective ?? "");
   const [tokenBudget, setTokenBudget] = useState(goal?.tokenBudget?.toString() ?? "");
   const [modeDraft, setModeDraftState] = useState<CodexGoalModeDraft>(
@@ -405,11 +418,18 @@ function useCodexGoalDialogState({
       setTokenBudget(response.goal?.tokenBudget?.toString() ?? "");
       setModeDraftState(codexGoalModeDraftForGoal(response.goal));
     } catch (err) {
-      setError(codexGoalError("Could not read goal", err));
+      setError(
+        codexGoalError(
+          t("misc.residual.codexGoalDialog.couldNotReadGoal", {
+            defaultValue: "Could not read goal",
+          }),
+          err,
+        ),
+      );
     } finally {
       setLoading(false);
     }
-  }, [conversationId, onGoalChange]);
+  }, [conversationId, onGoalChange, t]);
 
   useEffect(() => {
     if (!open) return;
@@ -440,14 +460,22 @@ function useCodexGoalDialogState({
     if (!conversationId) return;
     const trimmedObjective = objective.trim();
     if (!trimmedObjective) {
-      setError("Goal objective cannot be empty.");
+      setError(
+        t("misc.residual.codexGoalDialog.emptyObjective", {
+          defaultValue: "Goal objective cannot be empty.",
+        }),
+      );
       return;
     }
     let parsedBudget: number | null;
     try {
       parsedBudget = parseCodexGoalBudget(tokenBudget);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+    } catch {
+      setError(
+        t("misc.residual.codexGoalDialog.invalidTokenBudget", {
+          defaultValue: "Token budget must be a positive whole number.",
+        }),
+      );
       return;
     }
     setSaving(true);
@@ -463,7 +491,14 @@ function useCodexGoalDialogState({
       setTokenBudget(response.goal?.tokenBudget?.toString() ?? tokenBudget.trim());
       setModeDraftState(codexGoalModeDraftForGoal(response.goal));
     } catch (err) {
-      setError(codexGoalError("Could not set goal", err));
+      setError(
+        codexGoalError(
+          t("misc.residual.codexGoalDialog.couldNotSetGoal", {
+            defaultValue: "Could not set goal",
+          }),
+          err,
+        ),
+      );
     } finally {
       setSaving(false);
     }
@@ -480,7 +515,14 @@ function useCodexGoalDialogState({
       setTokenBudget("");
       setModeDraftState("active");
     } catch (err) {
-      setError(codexGoalError("Could not clear goal", err));
+      setError(
+        codexGoalError(
+          t("misc.residual.codexGoalDialog.couldNotClearGoal", {
+            defaultValue: "Could not clear goal",
+          }),
+          err,
+        ),
+      );
     } finally {
       setClearing(false);
     }
@@ -497,8 +539,18 @@ function useCodexGoalDialogState({
       setTokenBudget(response.goal?.tokenBudget?.toString() ?? "");
       setModeDraftState(codexGoalModeDraftForGoal(response.goal));
     } catch (err) {
-      const action = status === "paused" ? "pause" : "resume";
-      setError(codexGoalError(`Could not ${action} goal`, err));
+      setError(
+        codexGoalError(
+          status === "paused"
+            ? t("misc.residual.codexGoalDialog.couldNotPauseGoal", {
+                defaultValue: "Could not pause goal",
+              })
+            : t("misc.residual.codexGoalDialog.couldNotResumeGoal", {
+                defaultValue: "Could not resume goal",
+              }),
+          err,
+        ),
+      );
     } finally {
       setStatusUpdating(null);
     }
@@ -543,6 +595,7 @@ export function CodexGoalDialog({
   goal,
   onGoalChange,
 }: CodexGoalDialogProps) {
+  const { t } = useTranslation();
   const state = useCodexGoalDialogState({
     open,
     conversationId,
@@ -558,7 +611,7 @@ export function CodexGoalDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <TargetIcon className="size-4" />
-            <span>Goal</span>
+            <span>{t("misc.residual.codexGoalDialog.goal", { defaultValue: "Goal" })}</span>
           </DialogTitle>
         </DialogHeader>
 

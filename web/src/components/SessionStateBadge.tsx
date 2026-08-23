@@ -2,6 +2,8 @@
 // it reads at a glance; running/unseen stay as compact dots. Verbose copy
 // (incl. the approval count) lives in the tooltip.
 
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import { RunningDot } from "@/components/RunningDot";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -20,25 +22,26 @@ interface Visual {
   render: () => ReactElement;
 }
 
-function describe(state: SessionState): Visual {
+function describe(state: SessionState, t: TFunction): Visual {
   switch (state.kind) {
     case "awaiting": {
-      const tooltip =
-        state.count === 1 ? "1 approval prompt waiting" : `${state.count} approval prompts waiting`;
+      const tooltip = t("misc.sessionState.approvalPromptWaiting", { count: state.count });
       return {
         kind: state.kind,
         ariaLabel: tooltip,
         tooltip,
         render: () => (
-          <Badge className="border-transparent bg-warning/25 text-warning">Needs response</Badge>
+          <Badge className="border-transparent bg-warning/25 text-warning">
+            {t("misc.sessionState.needsResponse")}
+          </Badge>
         ),
       };
     }
     case "running":
       return {
         kind: state.kind,
-        ariaLabel: "Session running",
-        tooltip: "Session running",
+        ariaLabel: t("misc.sessionState.running"),
+        tooltip: t("misc.sessionState.running"),
         render: () => <RunningDot />,
       };
     case "unseen":
@@ -46,8 +49,8 @@ function describe(state: SessionState): Visual {
       // which is a grey spinner.
       return {
         kind: state.kind,
-        ariaLabel: "New messages",
-        tooltip: "New messages",
+        ariaLabel: t("misc.sessionState.newMessages"),
+        tooltip: t("misc.sessionState.newMessages"),
         render: () => <Dot tone="bg-brand-accent" />,
       };
   }
@@ -58,7 +61,8 @@ function Dot({ tone }: { tone: string }) {
 }
 
 export function SessionStateBadge({ state }: SessionStateBadgeProps) {
-  const visual = describe(state);
+  const { t } = useTranslation();
+  const visual = describe(state, t);
   return (
     <Tooltip>
       <TooltipTrigger asChild>

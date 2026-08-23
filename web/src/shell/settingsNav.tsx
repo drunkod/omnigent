@@ -7,6 +7,9 @@
 // and the content (in the outlet) stay in sync without shared state.
 
 import { useEffect } from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 import {
   ArchiveIcon,
   ArrowLeftIcon,
@@ -77,30 +80,40 @@ export function settingsNavGroups(
   hasAuthSession: boolean,
   isDesktop: boolean,
   isAdmin = false,
+  t: TFunction = i18n.t,
 ): SettingsNavGroup[] {
   const general: SettingsNavItem[] = [
-    { id: "appearance", label: "Appearance", icon: PaletteIcon },
-    { id: "git", label: "Git", icon: GitBranchIcon },
-    { id: "shortcuts", label: "Keyboard shortcuts", icon: KeyboardIcon, hideOnMobile: true },
+    { id: "appearance", label: t("settings.nav.items.appearance"), icon: PaletteIcon },
+    { id: "git", label: t("settings.nav.items.git"), icon: GitBranchIcon },
+    {
+      id: "shortcuts",
+      label: t("settings.nav.items.shortcuts"),
+      icon: KeyboardIcon,
+      hideOnMobile: true,
+    },
   ];
   if (hasAuthSession) {
     // Account leads the group when present — it's the most-visited section
     // on a deploy with sign-in.
-    general.unshift({ id: "account", label: "Account", icon: UserCogIcon });
+    general.unshift({
+      id: "account",
+      label: t("settings.nav.items.account"),
+      icon: UserCogIcon,
+    });
   }
   const groups: SettingsNavGroup[] = [];
   // Desktop (Local CLI) leads when present — it's the shell-specific section a
   // desktop user is most likely here to change.
   if (isDesktop) {
     groups.push({
-      title: "Desktop",
-      items: [{ id: "cli", label: "Local CLI", icon: TerminalIcon }],
+      title: t("settings.nav.groups.desktop"),
+      items: [{ id: "cli", label: t("settings.nav.items.cli"), icon: TerminalIcon }],
     });
   }
-  groups.push({ title: "General", items: general });
+  groups.push({ title: t("settings.nav.groups.general"), items: general });
   groups.push({
-    title: "Infrastructure",
-    items: [{ id: "runners", label: "Runners", icon: ServerIcon }],
+    title: t("settings.nav.groups.infrastructure"),
+    items: [{ id: "runners", label: t("settings.nav.items.runners"), icon: ServerIcon }],
   });
   // Admin: server-wide management, admin-only. Nested here as sub-categories
   // (rather than links out of the Account section) so entering them stays
@@ -111,16 +124,16 @@ export function settingsNavGroups(
   // read-only under OIDC (no password actions); Policies is identical.
   if (isAdmin) {
     groups.push({
-      title: "Admin",
+      title: t("settings.nav.groups.admin"),
       items: [
-        { id: "members", label: "Members", icon: UsersIcon },
-        { id: "policies", label: "Policies", icon: ShieldCheckIcon },
+        { id: "members", label: t("settings.nav.items.members"), icon: UsersIcon },
+        { id: "policies", label: t("settings.nav.items.policies"), icon: ShieldCheckIcon },
       ],
     });
   }
   groups.push({
-    title: "Archived",
-    items: [{ id: "archived", label: "Archived sessions", icon: ArchiveIcon }],
+    title: t("settings.nav.groups.archived"),
+    items: [{ id: "archived", label: t("settings.nav.items.archived"), icon: ArchiveIcon }],
   });
   return groups;
 }
@@ -187,6 +200,7 @@ export function SettingsSidebarBody({
   onNavClick: (e: React.MouseEvent<HTMLAnchorElement>) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const info = useServerInfo();
   // Account section shows whenever there's a login session (accounts OR OIDC).
   const hasAuthSession = info !== "loading" && info.login_url !== null;
@@ -195,7 +209,7 @@ export function SettingsSidebarBody({
   // not just accounts deploys. Non-admins never see it.
   const isAdmin = useIsAdmin();
   const { section } = useSettingsRoute();
-  const groups = settingsNavGroups(hasAuthSession, isElectronShell(), isAdmin);
+  const groups = settingsNavGroups(hasAuthSession, isElectronShell(), isAdmin, t);
 
   return (
     <>
@@ -210,7 +224,7 @@ export function SettingsSidebarBody({
           (persistent card), so dropping it changes nothing there. */}
           <Link to={settingsReturnPath}>
             <ArrowLeftIcon className="size-4" />
-            Back to Omnigent
+            {t("settings.nav.back")}
           </Link>
         </Button>
         <Tooltip>
@@ -219,14 +233,14 @@ export function SettingsSidebarBody({
               type="button"
               variant="ghost"
               size="icon"
-              aria-label="Close sidebar"
+              aria-label={t("settings.nav.closeSidebar")}
               onClick={onClose}
               className="rounded-full"
             >
               <PanelRightOpenIcon className="size-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom">Collapse sidebar</TooltipContent>
+          <TooltipContent side="bottom">{t("settings.nav.collapseSidebar")}</TooltipContent>
         </Tooltip>
       </div>
       <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 py-3">

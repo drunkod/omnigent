@@ -1,4 +1,5 @@
 import { BotIcon, FileIcon, ListTodoIcon, TerminalIcon, XIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useCallback, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { inertProps } from "@/lib/inert";
@@ -34,6 +35,7 @@ function FileTabsStrip({
   /** Close a tab by path. */
   onCloseFile: (path: string) => void;
 }) {
+  const { t } = useTranslation();
   // Scroll the active tab into view when it changes (e.g. a newly opened file
   // appended past the visible edge). `inline: "nearest"` scrolls whichever
   // ancestor is the scroller — the outer strip (<500px) or the file-tabs
@@ -100,7 +102,10 @@ function FileTabsStrip({
             >
               <button
                 type="button"
-                aria-label={`Close ${name}`}
+                aria-label={t("panels.workspace.closeFile", {
+                  defaultValue: "Close {{name}}",
+                  name,
+                })}
                 className="flex size-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -251,6 +256,7 @@ export function WorkspacePanel({
   filesPanelShowHidden,
   onShowHiddenChange,
 }: WorkspacePanelProps) {
+  const { t } = useTranslation();
   // Memoized so FileViewer's Escape-to-close effect doesn't re-subscribe its
   // window keydown listener on every render — an inline arrow would change
   // identity each render and thrash the effect's add/remove cycle.
@@ -259,7 +265,7 @@ export function WorkspacePanel({
   }, [onCloseFile, selectedFilePath]);
   return (
     <aside
-      aria-label="Workspace"
+      aria-label={t("panels.workspace.title", { defaultValue: "Workspace" })}
       {...inertProps(Boolean(inert))}
       // Floating card on desktop: detached from the chat + window edges by
       // margins (no left margin — the left edge hosts the resize handle and
@@ -317,7 +323,7 @@ export function WorkspacePanel({
                 className="h-[32px] gap-[6px] rounded-[8px] px-[12px] text-[13px] leading-5"
               >
                 <FileIcon className="size-4" />
-                Files
+                {t("panels.workspace.files", { defaultValue: "Files" })}
                 {changedCount > 0 && (
                   <span className={cn(TAB_BADGE_BASE, "ml-0.5 bg-muted text-muted-foreground")}>
                     {changedCount}
@@ -330,7 +336,7 @@ export function WorkspacePanel({
               className="h-[32px] gap-[6px] rounded-[8px] px-[12px] text-[13px] leading-5"
             >
               <BotIcon className="size-4" />
-              Agents
+              {t("panels.workspace.agents", { defaultValue: "Agents" })}
               <span
                 className={cn(
                   TAB_BADGE_BASE,
@@ -349,7 +355,7 @@ export function WorkspacePanel({
                 className="h-[32px] gap-[6px] rounded-[8px] px-[12px] text-[13px] leading-5"
               >
                 <TerminalIcon className="size-4" />
-                Shells
+                {t("panels.workspace.shells", { defaultValue: "Shells" })}
                 {/* No badge before the first shell — a "0" next to a
                     default-visible tab reads as an error state. */}
                 {terminalsLength > 0 && (
@@ -365,7 +371,7 @@ export function WorkspacePanel({
                 className="h-[32px] gap-[6px] rounded-[8px] px-[12px] text-[13px] leading-5"
               >
                 <ListTodoIcon className="size-4" />
-                Tasks
+                {t("panels.workspace.tasks", { defaultValue: "Tasks" })}
                 <span className={cn(TAB_BADGE_BASE, "ml-0.5 bg-muted text-muted-foreground")}>
                   {todosCompleted}/{todosTotal}
                 </span>

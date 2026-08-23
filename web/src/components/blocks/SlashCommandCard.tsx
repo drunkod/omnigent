@@ -12,20 +12,19 @@
 
 import { ChevronRightIcon, CommandIcon, WandSparklesIcon, type LucideIcon } from "lucide-react";
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { CodeBlock, CodeBlockHeader, CodeBlockTitle } from "@/components/ai-elements/code-block";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 type SlashCommandKind = "skill" | "command";
 
 interface KindStyle {
-  prefix: string;
   Icon: LucideIcon;
   iconClass: string;
 }
 
 const KIND_STYLES: Record<SlashCommandKind, KindStyle> = {
   skill: {
-    prefix: "Skill",
     // WandSparkles, not Sparkles — plain Sparkles is the thinking/reasoning
     // marker (ai-elements/reasoning), and skills must not look like thoughts.
     Icon: WandSparklesIcon,
@@ -34,7 +33,6 @@ const KIND_STYLES: Record<SlashCommandKind, KindStyle> = {
     iconClass: "text-brand-accent",
   },
   command: {
-    prefix: "Command",
     Icon: CommandIcon,
     iconClass: "text-slate-500 dark:text-slate-400",
   },
@@ -55,7 +53,12 @@ export function SlashCommandCard({ kind, name, arguments: args, output }: SlashC
   const hasArgs = args.length > 0;
   const hasOutput = output !== null && output.length > 0;
   const canExpand = hasArgs || hasOutput;
-  const { prefix, Icon, iconClass } = KIND_STYLES[kind];
+  const { t } = useTranslation();
+  const { Icon, iconClass } = KIND_STYLES[kind];
+  const prefix =
+    kind === "skill"
+      ? t("permissions.cards.slashCommand.skill", { defaultValue: "Skill" })
+      : t("permissions.cards.slashCommand.command", { defaultValue: "Command" });
   // Tooltip keeps the title legible after truncation of long names.
   const tooltip = useMemo(
     () => (hasArgs ? `${prefix} ${name} ${args}` : `${prefix} ${name}`),
@@ -103,11 +106,14 @@ export function SlashCommandCard({ kind, name, arguments: args, output }: SlashC
 }
 
 function ArgsPanel({ args }: { args: string }) {
+  const { t } = useTranslation();
   return (
     <CodeBlock code={args} language="bash">
       <CodeBlockHeader>
         <CodeBlockTitle className="min-w-0">
-          <span className="truncate font-medium uppercase tracking-wide">Arguments</span>
+          <span className="truncate font-medium uppercase tracking-wide">
+            {t("permissions.cards.slashCommand.arguments", { defaultValue: "Arguments" })}
+          </span>
         </CodeBlockTitle>
       </CodeBlockHeader>
     </CodeBlock>
@@ -115,11 +121,14 @@ function ArgsPanel({ args }: { args: string }) {
 }
 
 function OutputPanel({ output }: { output: string }) {
+  const { t } = useTranslation();
   return (
     <CodeBlock code={output} language="bash">
       <CodeBlockHeader>
         <CodeBlockTitle className="min-w-0">
-          <span className="truncate font-medium uppercase tracking-wide">Output</span>
+          <span className="truncate font-medium uppercase tracking-wide">
+            {t("permissions.cards.slashCommand.output", { defaultValue: "Output" })}
+          </span>
         </CodeBlockTitle>
       </CodeBlockHeader>
     </CodeBlock>

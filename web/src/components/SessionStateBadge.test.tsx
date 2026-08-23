@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import i18n from "@/i18n";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SessionStateBadge } from "./SessionStateBadge";
 import type { SessionState } from "@/hooks/useSessionState";
@@ -12,7 +13,14 @@ function renderBadge(state: SessionState) {
   );
 }
 
-afterEach(cleanup);
+beforeEach(async () => {
+  await i18n.changeLanguage("en");
+});
+
+afterEach(async () => {
+  cleanup();
+  await i18n.changeLanguage("en");
+});
 
 describe("SessionStateBadge — per-state rendering", () => {
   it("renders awaiting as a 'Needs response' tag with a count-aware accessible label", () => {
@@ -31,6 +39,19 @@ describe("SessionStateBadge — per-state rendering", () => {
       "aria-label",
       "1 approval prompt waiting",
     );
+  });
+
+  it("renders the approval count in Russian", async () => {
+    await i18n.changeLanguage("ru");
+    try {
+      renderBadge({ kind: "awaiting", count: 3 });
+      expect(screen.getByTestId("session-state-badge")).toHaveAttribute(
+        "aria-label",
+        "Ожидают 3 запроса на подтверждение",
+      );
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 
   it("renders running with a spinning grey spinner", () => {

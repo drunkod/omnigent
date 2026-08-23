@@ -17,6 +17,7 @@
 // groups react to the same input.
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   InboxIcon,
   type LucideIcon,
@@ -70,6 +71,7 @@ export function CommandPalette({
   onToggleLeftSidebar,
   onToggleRightSidebar,
 }: CommandPaletteProps) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -93,41 +95,45 @@ export function CommandPalette({
     () => [
       {
         id: "new-chat",
-        label: "New chat",
+        label: t("misc.residual.commandPalette.newChat", { defaultValue: "New chat" }),
         icon: SquarePenIcon,
         keywords: ["compose", "start", "new session"],
         run: () => navigate("/"),
       },
       {
         id: "go-inbox",
-        label: "Go to Inbox",
+        label: t("misc.residual.commandPalette.goToInbox", { defaultValue: "Go to Inbox" }),
         icon: InboxIcon,
         keywords: ["notifications", "comments", "needs response"],
         run: () => navigate("/inbox"),
       },
       {
         id: "go-settings",
-        label: "Go to Settings",
+        label: t("misc.residual.commandPalette.goToSettings", { defaultValue: "Go to Settings" }),
         icon: SettingsIcon,
         keywords: ["preferences", "configuration", "account"],
         run: () => navigate("/settings"),
       },
       {
         id: "toggle-left-sidebar",
-        label: "Toggle conversations sidebar",
+        label: t("misc.residual.commandPalette.toggleConversationsSidebar", {
+          defaultValue: "Toggle conversations sidebar",
+        }),
         icon: PanelLeftIcon,
         keywords: ["panel", "left", "sessions list"],
         run: onToggleLeftSidebar,
       },
       {
         id: "toggle-right-sidebar",
-        label: "Toggle workspace sidebar",
+        label: t("misc.residual.commandPalette.toggleWorkspaceSidebar", {
+          defaultValue: "Toggle workspace sidebar",
+        }),
         icon: PanelRightIcon,
         keywords: ["panel", "right", "files", "terminal"],
         run: onToggleRightSidebar,
       },
     ],
-    [navigate, onToggleLeftSidebar, onToggleRightSidebar],
+    [navigate, onToggleLeftSidebar, onToggleRightSidebar, t],
   );
 
   const filteredActions = useMemo(() => {
@@ -182,23 +188,35 @@ export function CommandPalette({
         className="top-1/4 translate-y-0 overflow-hidden p-0 sm:max-w-2xl"
         showCloseButton={false}
       >
-        <DialogTitle className="sr-only">Command palette</DialogTitle>
+        <DialogTitle className="sr-only">
+          {t("misc.residual.commandPalette.title", { defaultValue: "Command palette" })}
+        </DialogTitle>
         {/* shouldFilter=false: the server filters sessions and we filter actions
             (see file header). vimBindings=false: keep Ctrl+K/J from doubling as
             list-nav on Win/Linux, where Ctrl+K is also the opener. */}
-        <Command shouldFilter={false} vimBindings={false} label="Command palette">
+        <Command
+          shouldFilter={false}
+          vimBindings={false}
+          label={t("misc.residual.commandPalette.ariaLabel", { defaultValue: "Command palette" })}
+        >
           <CommandInput
             value={query}
             onValueChange={setQuery}
-            placeholder="Search sessions or run a command"
+            placeholder={t("misc.residual.commandPalette.searchPlaceholder", {
+              defaultValue: "Search sessions or run a command",
+            })}
             data-testid="command-palette-input"
           />
           <CommandList>
             <CommandEmpty>
-              {isFetching && debouncedQuery ? "Searching…" : "No results found"}
+              {isFetching && debouncedQuery
+                ? t("misc.residual.commandPalette.searching", { defaultValue: "Searching…" })
+                : t("misc.residual.commandPalette.noResults", { defaultValue: "No results found" })}
             </CommandEmpty>
             {sessions.length > 0 && (
-              <CommandGroup heading="Sessions">
+              <CommandGroup
+                heading={t("misc.residual.commandPalette.sessions", { defaultValue: "Sessions" })}
+              >
                 {sessions.map((s) => (
                   // pl-6 indents the label to line up with the icon-prefixed
                   // Action rows below (their 16px icon + 8px gap), so the two
@@ -216,7 +234,9 @@ export function CommandPalette({
               </CommandGroup>
             )}
             {filteredActions.length > 0 && (
-              <CommandGroup heading="Actions">
+              <CommandGroup
+                heading={t("misc.residual.commandPalette.actions", { defaultValue: "Actions" })}
+              >
                 {filteredActions.map((a) => {
                   const Icon = a.icon;
                   return (

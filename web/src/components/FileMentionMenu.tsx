@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { FileTextIcon, FolderIcon, PlusIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { WorkspaceFile } from "@/hooks/useWorkspaceChangedFiles";
@@ -37,6 +38,7 @@ export function FileMentionMenu({
   onOpenDir,
   onAttach,
 }: FileMentionMenuProps) {
+  const { t } = useTranslation();
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (activeIndex < 0 || !listRef.current) return;
@@ -48,11 +50,21 @@ export function FileMentionMenu({
     <div className="absolute bottom-full left-0 z-10 mb-2 flex items-end gap-2">
       <div className="w-80 max-w-[calc(100vw-2rem)] shrink-0 overflow-hidden rounded-xl border border-border bg-popover shadow-lg">
         <div className="flex items-center justify-between gap-2 px-2 pb-0.5 pt-1.5 text-[11px] font-medium text-muted-foreground">
-          <span className="truncate">{currentDir ? `/${currentDir}` : "Workspace"}</span>
-          <span className="shrink-0 text-[10px]">↵ open · ⇥ attach</span>
+          <span className="truncate">
+            {currentDir
+              ? `/${currentDir}`
+              : t("misc.residual.fileMentionMenu.workspace", { defaultValue: "Workspace" })}
+          </span>
+          <span className="shrink-0 text-[10px]">
+            {t("misc.residual.fileMentionMenu.keyboardHint", {
+              defaultValue: "↵ open · ⇥ attach",
+            })}
+          </span>
         </div>
         {entries.length === 0 && loading ? (
-          <div className="px-3 py-2 text-[13px] text-muted-foreground">Loading…</div>
+          <div className="px-3 py-2 text-[13px] text-muted-foreground">
+            {t("misc.residual.fileMentionMenu.loading", { defaultValue: "Loading…" })}
+          </div>
         ) : (
           <div ref={listRef} role="listbox" className="max-h-80 overflow-y-auto p-1">
             {entries.map((entry, i) => {
@@ -75,7 +87,17 @@ export function FileMentionMenu({
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => (isDir ? onOpenDir(entry.path) : onAttach(entry.path, false))}
                     className="flex min-w-0 flex-1 items-center gap-2 hover:text-foreground"
-                    title={isDir ? `Open ${entry.name}` : `Attach ${entry.name}`}
+                    title={
+                      isDir
+                        ? t("misc.residual.fileMentionMenu.open", {
+                            defaultValue: "Open {{name}}",
+                            name: entry.name,
+                          })
+                        : t("misc.residual.fileMentionMenu.attach", {
+                            defaultValue: "Attach {{name}}",
+                            name: entry.name,
+                          })
+                    }
                   >
                     {isDir ? (
                       <FolderIcon className="size-3.5 shrink-0 text-slate-500 dark:text-slate-400" />
@@ -93,11 +115,17 @@ export function FileMentionMenu({
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => onAttach(entry.path, true)}
                       className="flex shrink-0 items-center gap-0.5 rounded-md border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
-                      aria-label={`Attach whole folder ${entry.name}`}
-                      title={`Attach whole folder ${entry.name}`}
+                      aria-label={t("misc.residual.fileMentionMenu.attachFolder", {
+                        defaultValue: "Attach whole folder {{name}}",
+                        name: entry.name,
+                      })}
+                      title={t("misc.residual.fileMentionMenu.attachFolder", {
+                        defaultValue: "Attach whole folder {{name}}",
+                        name: entry.name,
+                      })}
                     >
                       <PlusIcon className="size-3" />
-                      folder
+                      {t("misc.residual.fileMentionMenu.folder", { defaultValue: "folder" })}
                     </button>
                   )}
                 </div>

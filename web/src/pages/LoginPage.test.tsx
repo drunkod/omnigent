@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LoginPage } from "./LoginPage";
 import * as accountsApi from "@/lib/accountsApi";
+import i18n from "@/i18n";
 
 // The authenticated auto-bounce path is the simplest way to observe the
 // sanitized return_to reaching the navigation sink: getMe() resolving to an
@@ -28,6 +29,7 @@ function renderLoginAt(returnTo: string) {
 }
 
 beforeEach(() => {
+  void i18n.changeLanguage("en");
   hrefWrites = [];
   originalLocation = window.location;
   // Capture href writes without navigating jsdom. origin must be defined so

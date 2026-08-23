@@ -11,6 +11,7 @@
 //   highlighted range navigates to that comment in CommentsPanel.
 
 import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
 import {
   lazy,
   Suspense,
@@ -174,6 +175,7 @@ function ImageViewer({ data, path }: { data: FileContentResponse; path: string }
   const [url, setUrl] = useState<string | null>(null);
   const [errored, setErrored] = useState(false);
   const { open } = useLightbox();
+  const { t } = useTranslation();
 
   // Create the object URL in an effect and revoke it on cleanup so the blob is
   // released when the file changes or the viewer unmounts (avoids a leak).
@@ -210,7 +212,7 @@ function ImageViewer({ data, path }: { data: FileContentResponse; path: string }
           onClick={() => open({ src: url, alt: filename })}
           className="max-h-full max-w-full cursor-zoom-in object-contain"
           style={CHECKERBOARD_STYLE}
-          title="Click to zoom"
+          title={t("panels.codeViewer.clickToZoom", { defaultValue: "Click to zoom" })}
         />
       )}
     </div>
@@ -276,6 +278,7 @@ export function CodeViewer({
   onSaveStatusChange,
   pendingBodyRef,
 }: CodeViewerProps) {
+  const { t } = useTranslation();
   const canEdit = useCanEdit(conversationId);
 
   const [tokenLines, setTokenLines] = useState<ThemedToken[][] | null>(null);
@@ -532,14 +535,14 @@ export function CodeViewer({
   if (fileQuery.isLoading) {
     return (
       <div className="flex items-center justify-center p-8 text-muted-foreground text-sm">
-        Loading…
+        {t("panels.codeViewer.loading", { defaultValue: "Loading…" })}
       </div>
     );
   }
   if (fileQuery.isError) {
     return (
       <div className="p-8 text-destructive text-sm">
-        Error loading file:{" "}
+        {t("panels.codeViewer.errorLoadingFile", { defaultValue: "Error loading file:" })}{" "}
         {fileQuery.error instanceof Error ? fileQuery.error.message : String(fileQuery.error)}
       </div>
     );
@@ -550,7 +553,9 @@ export function CodeViewer({
   if (fileQuery.data?.encoding === "base64" || isBinaryPath(path)) {
     return (
       <div className="flex items-center justify-center p-8 text-muted-foreground text-sm">
-        Preview not available for binary files.
+        {t("panels.codeViewer.binaryPreviewUnavailable", {
+          defaultValue: "Preview not available for binary files.",
+        })}
       </div>
     );
   }
@@ -610,7 +615,7 @@ export function CodeViewer({
       <Suspense
         fallback={
           <div className="flex items-center justify-center p-8 text-muted-foreground text-sm">
-            Loading…
+            {t("panels.codeViewer.loading", { defaultValue: "Loading…" })}
           </div>
         }
       >
@@ -681,7 +686,7 @@ export function CodeViewer({
                 }
               }
             }}
-            placeholder="Find…"
+            placeholder={t("panels.codeViewer.find", { defaultValue: "Find…" })}
             className="min-w-0 flex-1 bg-transparent text-xs outline-none"
           />
           <span className="shrink-0 text-xs text-muted-foreground">
@@ -693,7 +698,7 @@ export function CodeViewer({
           </span>
           <button
             type="button"
-            aria-label="Previous match"
+            aria-label={t("panels.codeViewer.previousMatch", { defaultValue: "Previous match" })}
             className="rounded p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-40"
             disabled={matches.length === 0}
             onClick={() => setCurrentMatchIdx((i) => (i - 1 + matches.length) % matches.length)}
@@ -702,7 +707,7 @@ export function CodeViewer({
           </button>
           <button
             type="button"
-            aria-label="Next match"
+            aria-label={t("panels.codeViewer.nextMatch", { defaultValue: "Next match" })}
             className="rounded p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-40"
             disabled={matches.length === 0}
             onClick={() => setCurrentMatchIdx((i) => (i + 1) % matches.length)}
@@ -711,7 +716,7 @@ export function CodeViewer({
           </button>
           <button
             type="button"
-            aria-label="Close search"
+            aria-label={t("panels.codeViewer.closeSearch", { defaultValue: "Close search" })}
             className="rounded p-0.5 text-muted-foreground hover:bg-muted"
             onClick={() => {
               setSearchOpen(false);
@@ -887,7 +892,7 @@ export function CodeViewer({
               }}
             >
               <MessageSquarePlusIcon className="size-3.5" />
-              Add comment
+              {t("panels.codeViewer.addComment", { defaultValue: "Add comment" })}
             </button>
             {canAttachToAgent && (
               <button
@@ -914,7 +919,7 @@ export function CodeViewer({
                 }}
               >
                 <AtSignIcon className="size-3.5" />
-                Attach to agent
+                {t("panels.codeViewer.attachToAgent", { defaultValue: "Attach to agent" })}
               </button>
             )}
           </div>,
